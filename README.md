@@ -21,9 +21,9 @@ a single opinionated command surface for local and CI use.
 | Tool | Role |
 |---|---|
 | `delphi-inspect` | Detects installed Delphi toolchains |
-| `delphi-msbuild` | Drives MSBuild for Delphi projects |
 | `delphi-clean` | Removes Delphi build artifacts |
-| `delphi-dccbuild` | Alternate DCC32/DCC64 build path (future use) |
+| `delphi-msbuild` | Drives MSBuild for Delphi projects |
+| `delphi-dccbuild` | Drives DCC builds for Delphi projects |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
