@@ -150,7 +150,7 @@ Import the module and call `Invoke-DelphiCi` directly. The function always
 returns a structured result object; your script decides what to do with it:
 
 ```powershell
-Import-Module .\source\Delphi.PowerShell.CI.psm1
+Import-Module .\source\Delphi.PowerShell.CI.psd1
 
 $run = Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
 if (-not $run.Success) { exit 1 }

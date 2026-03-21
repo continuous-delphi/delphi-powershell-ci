@@ -1,0 +1,45 @@
+{
+  "root": ".",
+  "clean": {
+    "enabled": true,
+    "level": "build",
+    "includeFiles": [
+      "*.res"
+    ],
+    "excludeDirectories": [
+      "resources",
+      "branding"
+    ]
+  },
+  "build": {
+    "projectFile": "source/MyApp.dproj",
+    "engine": "MSBuild",
+    "toolchain": {
+      "version": "Latest"
+    },
+    "platform": "Win32",
+    "configuration": "Debug",
+    "defines": [
+      "CUSTOM_BEHAVIOR"
+    ]
+  },
+  "test": {
+    "testProjectFile": "tests/MyApp.Tests.dproj",
+    "testExecutable": null,
+    "build": true,
+    "run": true,
+    "defines": [
+      "CI",
+      "TESTING"
+    ],
+    "arguments": [
+      "--no-banner"
+    ],
+    "timeoutSeconds": 20
+  },
+  "steps": [
+    "Clean",
+    "Build",
+    "Test"
+  ]
+}
