@@ -1,5 +1,13 @@
 # delphi-powershell-ci
 
+![delphi-powershell-ci logo](https://continuous-delphi.github.io/assets/logos/delphi-powershell-ci-480x270.png)
+
+[![Delphi](https://img.shields.io/badge/delphi-red)](https://www.embarcadero.com/products/delphi)
+[![CI](https://github.com/continuous-delphi/delphi-powershell-ci/actions/workflows/ci.yml/badge.svg)](https://github.com/continuous-delphi/delphi-powershell-ci/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/continuous-delphi/delphi-powershell-ci)
+[![Continuous Delphi](https://img.shields.io/badge/org-continuous--delphi-red)](https://github.com/continuous-delphi)
+
 Bundled PowerShell CI orchestration layer for Delphi projects. Packages
 compatible versions of the standalone Continuous-Delphi tools and exposes
 a single opinionated command surface for local and CI use.
@@ -34,10 +42,10 @@ PowerShell Gallery publication.
 
 ## Requirements
 
-| Requirement | Detail |
-|---|---|
-| PowerShell (host) | 5.1 or later |
-| PowerShell (subprocess) | `pwsh` (7+) or `powershell` (5.1) must be in `PATH` -- used to run the bundled tools |
+Runs on the widely available Windows PowerShell 5.1 (`powershell.exe`)
+and the newer PowerShell 7+ (`pwsh`).
+
+Note: the test suite requires `pwsh`.
 
 No additional modules are required at runtime. The bundled tools are
 included in this repository under `bundled-tools/`.
@@ -178,7 +186,7 @@ to read a process exit code to determine pass or fail.
 2. JSON config file fields
 3. Built-in defaults
 
-A `-Platform` supplied on the command line always wins over the same
+For example, a `-Platform` supplied on the command line always wins over the same
 field in the config file.
 
 ### Supported config file schema
@@ -327,7 +335,6 @@ source/                 PowerShell module source
   Public/               Exported commands
 Examples/               Integration test projects and example config
   ConsoleProjectGroup/  Simple Delphi console app and DUnitX test project
-  delphi-ci.json        Fully annotated JSON config example
 docs/                   Per-command reference documentation
   Get-DelphiCiConfig.md
   Invoke-DelphiClean.md
@@ -355,25 +362,23 @@ Full parameter reference and examples for each command are in `docs/`.
 
 ---
 
-## Relationship to Continuous-Delphi
+## Maturity
 
-`delphi-powershell-ci` is part of the Continuous-Delphi ecosystem.
+This repository is currently `incubator`. Both implementations are under active development.
+It will graduate to `stable` once:
 
-- The **standalone tools** (`delphi-clean`, `delphi-inspect`,
-  `delphi-msbuild`) are independently versioned and usable on their own.
-- This repo **packages and orchestrates** them for common CI workflows.
+- At least one downstream consumer exists.
 
-Use the standalone tools when you need fine-grained control.
-Use `delphi-powershell-ci` for practical day-to-day CI workflows.
+Until graduation, breaking changes may occur
 
----
+![continuous-delphi logo](https://continuous-delphi.github.io/assets/logos/continuous-delphi-480x270.png)
 
-## License
+## Part of the Continuous Delphi Organization
 
-MIT
+This repository follows the Continuous Delphi organization taxonomy. See
+[cd-meta-org](https://github.com/continuous-delphi/cd-meta-org) for navigation and governance.
 
----
+- `docs/org-taxonomy.md` -- naming and tagging conventions
+- `docs/versioning-policy.md` -- release and versioning rules
+- `docs/repo-lifecycle.md` -- lifecycle states and graduation criteria
 
-### `delphi-powershell-ci` - a developer tool from Continuous Delphi
-
-https://github.com/continuous-delphi
