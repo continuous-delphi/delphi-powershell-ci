@@ -76,8 +76,10 @@ and builds `Win32 Debug`.
 
 ### Explicit project
 
+Clean + Build ConsoleProject:
+
 ```powershell
-Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
+Invoke-DelphiCi -ProjectFile .\examples\ConsoleProjectGroup\Source\ConsoleProject.dproj
 ```
 
 ### Clean only
