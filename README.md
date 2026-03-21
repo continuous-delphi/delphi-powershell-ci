@@ -20,10 +20,11 @@ a single opinionated command surface for local and CI use.
 
 | Tool | Role |
 |---|---|
-| `delphi-inspect` | Detects installed Delphi toolchains |
-| `delphi-clean` | Removes Delphi build artifacts |
-| `delphi-msbuild` | Drives MSBuild for Delphi projects |
-| `delphi-dccbuild` | Drives DCC builds for Delphi projects |
+| [delphi-compiler-versions](https://github.com/continuous-delphi/delphi-compiler-versions) | Canonical version mapping | 
+| [delphi-inspect](https://github.com/continuous-delphi/delphi-inspect) | Detects installed Delphi toolchains |
+| [delphi-clean](https://github.com/continuous-delphi/delphi-clean) | Removes Delphi build artifacts |
+| [delphi-msbuild](https://github.com/continuous-delphi/delphi-msbuild) | Drives MSBuild for Delphi projects |
+| [delphi-dccbuild](https://github.com/continuous-delphi/delphi-dccbuild) | Drives DCC builds for Delphi projects |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
