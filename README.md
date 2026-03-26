@@ -49,7 +49,7 @@ and the newer PowerShell 7+ (`pwsh`).
 Note: the test suite requires `pwsh`.
 
 No additional modules are required at runtime. The bundled tools are
-included in this repository under `bundled-tools/`.
+included in this repository under `source/bundled-tools/`.
 
 The module detects which executable is available at load time, preferring
 `pwsh` when both are present.
@@ -327,13 +327,14 @@ additionally have `TestProjectFile` and `TestExecutable` in place of
 ## Repository structure
 
 ```
-bundled-tools/          Packaged standalone tools (included, no install needed)
+tools (included, no install needed)
   delphi-clean.ps1
   delphi-inspect.ps1
   delphi-msbuild.ps1
   delphi-dccbuild.ps1
 source/                 PowerShell module source
   Delphi.PowerShell.CI.psm1
+  bundled-tools/        Packaged standalone
   Private/              Internal helpers (not exported)
   Public/               Exported commands
 Examples/               Integration test projects and example config

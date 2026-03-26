@@ -178,7 +178,7 @@ directly. The fields are identical.
 ## Notes
 
 - `Invoke-DelphiClean` delegates all file removal to `delphi-clean.ps1` from
-  the `bundled-tools/` folder. It does not delete anything itself.
+  the `source/bundled-tools/` folder. It does not delete anything itself.
 - The `lite` level is safe to run repeatedly without risk to source files.
 - Passing `-WhatIf` prints a `What if:` message and skips the tool invocation
   entirely. No files are examined or removed.
