@@ -88,7 +88,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:ToolVersion = '0.5.0'
+$script:ToolVersion = '0.6.0'
 
 if ($Version) {
     if ($Format -eq 'json') {
@@ -375,9 +375,7 @@ function Get-LevelDefinition {
         '*.dcp',
         '*.bpi',
         '*.so',
-        '*.dll',
         '*.exe',
-        '*.obj',
         '*.hpp',
         '*.dres',
         '*.ilc',
