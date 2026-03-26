@@ -41,6 +41,9 @@ powershell.exe -File .\delphi-clean.ps1 -Version
 
 .EXAMPLE
 powershell.exe -File .\delphi-clean.ps1 -Version -Format json
+
+.EXAMPLE
+powershell.exe -File .\delphi-clean.ps1 -Level build -RecycleBin
 #>
 
 [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Clean')]
@@ -76,13 +79,16 @@ param(
     [switch]$PassThru,
 
     [Parameter(ParameterSetName = 'Clean')]
-    [switch]$Json
+    [switch]$Json,
+
+    [Parameter(ParameterSetName = 'Clean')]
+    [switch]$RecycleBin
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:ToolVersion = '0.4.0'
+$script:ToolVersion = '0.5.0'
 
 if ($Version) {
     if ($Format -eq 'json') {
@@ -115,6 +121,121 @@ function Write-Section {
     Write-Information ('=' * 70) -InformationAction Continue
     Write-Information $Message -InformationAction Continue
     Write-Information ('=' * 70) -InformationAction Continue
+}
+
+function Get-TrashDestination {
+    param(
+        [Parameter(Mandatory)]
+        [string]$TrashFilesDir,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $dest = Join-Path $TrashFilesDir $Name
+    if (-not (Test-Path -LiteralPath $dest)) {
+        return $dest
+    }
+
+    $base    = [System.IO.Path]::GetFileNameWithoutExtension($Name)
+    $ext     = [System.IO.Path]::GetExtension($Name)
+    $counter = 2
+    do {
+        $uniqueName = if ($ext) { "$base $counter$ext" } else { "$Name $counter" }
+        $dest = Join-Path $TrashFilesDir $uniqueName
+        $counter++
+    } while (Test-Path -LiteralPath $dest)
+
+    return $dest
+}
+
+function Send-ToMacTrash {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $trashDir = Join-Path $HOME '.Trash'
+    if (-not (Test-Path -LiteralPath $trashDir)) {
+        New-Item -ItemType Directory -Path $trashDir | Out-Null
+    }
+
+    $name = Split-Path -Path $Path -Leaf
+    $dest = Get-TrashDestination -TrashFilesDir $trashDir -Name $name
+    Move-Item -LiteralPath $Path -Destination $dest
+}
+
+function Send-ToLinuxTrash {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $trashRoot = Join-Path $HOME '.local/share/Trash'
+    $filesDir  = Join-Path $trashRoot 'files'
+    $infoDir   = Join-Path $trashRoot 'info'
+
+    foreach ($dir in @($filesDir, $infoDir)) {
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir | Out-Null
+        }
+    }
+
+    $name      = Split-Path -Path $Path -Leaf
+    $destPath  = Get-TrashDestination -TrashFilesDir $filesDir -Name $name
+    $destName  = Split-Path -Path $destPath -Leaf
+    $infoFile  = Join-Path $infoDir "$destName.trashinfo"
+    $absPath   = [System.IO.Path]::GetFullPath($Path)
+    $timestamp = [datetime]::Now.ToString('yyyy-MM-ddTHH:mm:ss')
+
+    $trashInfoContent = "[Trash Info]`nPath=$absPath`nDeletionDate=$timestamp`n"
+    [System.IO.File]::WriteAllText($infoFile, $trashInfoContent)
+
+    try {
+        Move-Item -LiteralPath $Path -Destination $destPath
+    }
+    catch {
+        Remove-Item -LiteralPath $infoFile -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}
+
+function Send-ToRecycleBin {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('File', 'Directory')]
+        [string]$Type
+    )
+
+    if ($IsWindows) {
+        Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+        if ($Type -eq 'File') {
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
+                $Path,
+                [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+                [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+            )
+        }
+        else {
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+                $Path,
+                [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+                [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+            )
+        }
+    }
+    elseif ($IsMacOS) {
+        Send-ToMacTrash -Path $Path
+    }
+    elseif ($IsLinux) {
+        Send-ToLinuxTrash -Path $Path
+    }
+    else {
+        throw 'Unsupported platform for -RecycleBin.'
+    }
 }
 
 function Get-RelativePathCompat {
@@ -414,7 +535,8 @@ function Remove-FileList {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [System.IO.FileInfo[]]$Files = @(),
-        [switch]$ReturnRecords
+        [switch]$ReturnRecords,
+        [switch]$RecycleBin
     )
 
     $result = [PSCustomObject]@{
@@ -426,21 +548,29 @@ function Remove-FileList {
         return $result
     }
 
+    $action = if ($RecycleBin) { 'Recycle file' } else { 'Delete file' }
+    $verb   = if ($RecycleBin) { 'Recycled' } else { 'Deleted' }
+
     foreach ($file in $Files) {
         Write-Verbose "Evaluating file: $($file.FullName)"
 
-        if ($PSCmdlet.ShouldProcess($file.FullName, 'Delete file')) {
+        if ($PSCmdlet.ShouldProcess($file.FullName, $action)) {
             try {
-                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                if ($RecycleBin) {
+                    Send-ToRecycleBin -Path $file.FullName -Type 'File'
+                }
+                else {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                }
                 $result.DeletedCount++
-                Write-Information "Deleted file: $($file.FullName)" -InformationAction Continue
+                Write-Information "$verb file: $($file.FullName)" -InformationAction Continue
 
                 if ($ReturnRecords) {
                     $result.Records.Add((ConvertTo-DeletionRecord -Type File -Path $file.FullName -Deleted $true))
                 }
             }
             catch {
-                Write-Warning "Failed to delete file: $($file.FullName)"
+                Write-Warning "Failed to $($action.ToLower()): $($file.FullName)"
                 Write-Error -ErrorRecord $_
             }
         }
@@ -456,7 +586,8 @@ function Remove-DirectoryList {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [System.IO.DirectoryInfo[]]$Directories = @(),
-        [switch]$ReturnRecords
+        [switch]$ReturnRecords,
+        [switch]$RecycleBin
     )
 
     $result = [PSCustomObject]@{
@@ -468,6 +599,9 @@ function Remove-DirectoryList {
         return $result
     }
 
+    $action = if ($RecycleBin) { 'Recycle directory' } else { 'Delete directory' }
+    $verb   = if ($RecycleBin) { 'Recycled' } else { 'Deleted' }
+
     foreach ($dir in $Directories) {
         if (-not (Test-Path -LiteralPath $dir.FullName)) {
             continue
@@ -475,18 +609,23 @@ function Remove-DirectoryList {
 
         Write-Verbose "Evaluating directory: $($dir.FullName)"
 
-        if ($PSCmdlet.ShouldProcess($dir.FullName, 'Delete directory')) {
+        if ($PSCmdlet.ShouldProcess($dir.FullName, $action)) {
             try {
-                Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop
+                if ($RecycleBin) {
+                    Send-ToRecycleBin -Path $dir.FullName -Type 'Directory'
+                }
+                else {
+                    Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop
+                }
                 $result.DeletedCount++
-                Write-Information "Deleted directory: $($dir.FullName)" -InformationAction Continue
+                Write-Information "$verb directory: $($dir.FullName)" -InformationAction Continue
 
                 if ($ReturnRecords) {
                     $result.Records.Add((ConvertTo-DeletionRecord -Type Directory -Path $dir.FullName -Deleted $true))
                 }
             }
             catch {
-                Write-Warning "Failed to delete directory: $($dir.FullName)"
+                Write-Warning "Failed to $($action.ToLower()): $($dir.FullName)"
                 Write-Error -ErrorRecord $_
             }
         }
@@ -504,6 +643,7 @@ try {
 
     $definition = Get-LevelDefinition -Name $Level
     $mode = if ($WhatIfPreference) { 'WhatIf (no changes)' } else { 'Execute' }
+    $disposition = if ($RecycleBin) { 'Recycle Bin' } else { 'Permanent' }
     $returnRecords = ($PassThru -or $Json)
 
     $allFilePatterns = @($definition.FilePatterns) + @($IncludeFilePattern) | Sort-Object -Unique
@@ -521,6 +661,7 @@ try {
             Write-Information ('Extra patterns  : {0}' -f ($IncludeFilePattern -join ', ')) -InformationAction Continue
         }
         Write-Information ('Mode            : {0}' -f $mode) -InformationAction Continue
+        Write-Information ('Disposition     : {0}' -f $disposition) -InformationAction Continue
     }
 
     $filesToDelete = @(Get-FilesToDelete -Root $cleanRoot -Patterns $allFilePatterns -ExcludedDirectoryNames $ExcludeDirectories -ExcludedDirPatterns $ExcludeDirPattern)
@@ -542,6 +683,8 @@ try {
                 ExcludeDirPattern   = @($ExcludeDirPattern)
                 IncludeFilePattern  = @($IncludeFilePattern)
                 Mode                = $mode
+                Disposition         = $disposition
+                RecycleBin          = $RecycleBin.IsPresent
                 FilesFound          = 0
                 DirectoriesFound    = 0
                 FilesDeleted        = 0
@@ -558,8 +701,8 @@ try {
     }
 
     Write-Section 'Cleaning'
-    $fileRemovalResult = Remove-FileList -Files $filesToDelete -ReturnRecords:$returnRecords
-    $dirRemovalResult  = Remove-DirectoryList -Directories $dirsToDelete -ReturnRecords:$returnRecords
+    $fileRemovalResult = Remove-FileList -Files $filesToDelete -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin
+    $dirRemovalResult  = Remove-DirectoryList -Directories $dirsToDelete -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin
 
     #$allRecords = @($fileRemovalResult.Records) + @($dirRemovalResult.Records)
     $allRecords = New-Object System.Collections.Generic.List[object]
@@ -574,6 +717,8 @@ try {
             ExcludeDirPattern   = @($ExcludeDirPattern)
             IncludeFilePattern  = @($IncludeFilePattern)
             Mode                = $mode
+            Disposition         = $disposition
+            RecycleBin          = $RecycleBin.IsPresent
             FilesFound          = $filesToDelete.Count
             DirectoriesFound    = $dirsToDelete.Count
             FilesDeleted        = $fileRemovalResult.DeletedCount
@@ -582,9 +727,10 @@ try {
         } | ConvertTo-Json -Depth 5
     }
     else {
+        $removedLabel = if ($RecycleBin) { 'recycled' } else { 'deleted' }
         Write-Section 'Summary'
-        Write-Information ('Files deleted      : {0}' -f $fileRemovalResult.DeletedCount) -InformationAction Continue
-        Write-Information ('Directories deleted: {0}' -f $dirRemovalResult.DeletedCount) -InformationAction Continue
+        Write-Information ('Files {0}      : {1}' -f $removedLabel, $fileRemovalResult.DeletedCount) -InformationAction Continue
+        Write-Information ('Directories {0}: {1}' -f $removedLabel, $dirRemovalResult.DeletedCount) -InformationAction Continue
     }
 
     if ($PassThru -and -not $Json) {
