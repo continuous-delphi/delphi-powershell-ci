@@ -8,33 +8,33 @@ Cleans Delphi build artifacts from a repository tree using three cleanup levels.
 Runs from the tools location and targets the parent directory by default.
 Supports three cleanup levels:
 
-  lite  - safe, low-risk cleanup of common transient files
-  build - removes build outputs and common generated files
-  full  - aggressive cleanup including user-local IDE state files
+  basic  - safe, low-risk cleanup of common transient files
+  standard - removes build outputs and common generated files
+  deep  - aggressive cleanup including user-local IDE state files
 
 .EXAMPLE
 powershell.exe -File .\delphi-clean.ps1
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level build
+powershell.exe -File .\delphi-clean.ps1 -Level standard
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level full -Verbose
+powershell.exe -File .\delphi-clean.ps1 -Level deep -Verbose
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level full -WhatIf
+powershell.exe -File .\delphi-clean.ps1 -Level deep -WhatIf
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level build -PassThru
+powershell.exe -File .\delphi-clean.ps1 -Level standard -PassThru
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level build -Json
+powershell.exe -File .\delphi-clean.ps1 -Level standard -Json
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level lite -IncludeFilePattern '*.res'
+powershell.exe -File .\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res'
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level lite -IncludeFilePattern '*.res','*.mab' -ExcludeDirPattern 'assets','vendor*'
+powershell.exe -File .\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res','*.mab' -ExcludeDirPattern 'assets','vendor*'
 
 .EXAMPLE
 powershell.exe -File .\delphi-clean.ps1 -Version
@@ -43,7 +43,7 @@ powershell.exe -File .\delphi-clean.ps1 -Version
 powershell.exe -File .\delphi-clean.ps1 -Version -Format json
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level build -RecycleBin
+powershell.exe -File .\delphi-clean.ps1 -Level standard -RecycleBin
 #>
 
 [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Clean')]
@@ -56,8 +56,8 @@ param(
     [string]$Format = 'text',
 
     [Parameter(ParameterSetName = 'Clean')]
-    [ValidateSet('lite', 'build', 'full')]
-    [string]$Level = 'lite',
+    [ValidateSet('basic', 'standard', 'deep')]
+    [string]$Level = 'basic',
 
     [Parameter(ParameterSetName = 'Clean')]
     [string]$RootPath,
@@ -88,7 +88,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:ToolVersion = '0.6.0'
+$script:ToolVersion = '0.7.0'
 
 if ($Version) {
     if ($Format -eq 'json') {
@@ -342,12 +342,12 @@ function Test-PathUnderExcludedDirectory {
 function Get-LevelDefinition {
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('lite', 'build', 'full')]
+        [ValidateSet('basic', 'standard', 'deep')]
         [string]$Name
     )
 
-    # --- base (lite) ---
-    $liteFiles = @(
+    # --- base (basic) ---
+    $basicFiles = @(
         '*.dcu',
         '*.identcache',
         '*.bak',
@@ -357,16 +357,12 @@ function Get-LevelDefinition {
         '*.stat'
     )
 
-    $liteDirs = @(
+    $basicDirs = @(
         '__history'
     )
 
-    # --- build additions ---
-    $buildFilesExtra = @(
-        '*.local',
-        '*.dproj.local',
-        '*.groupproj.local',
-        '*.projdata',
+    # --- standard additions ---
+    $standardFilesExtra = @(
         '*.drc',
         '*.map',
         '*.rsm',
@@ -388,7 +384,7 @@ function Get-LevelDefinition {
         'dunitx-results.xml'
     )
 
-    $buildDirsExtra = @(
+    $standardDirsExtra = @(
         'Win32',
         'Win64',
         'Debug',
@@ -402,8 +398,12 @@ function Get-LevelDefinition {
         'TMSWeb'
     )
 
-    # --- full additions ---
-    $fullFilesExtra = @(
+    # --- deep additions ---
+    $deepFilesExtra = @(
+        '*.local',
+        '*.dproj.local',
+        '*.groupproj.local',
+        '*.projdata',
         '*.~*',
         '*.lib',
         '*.fbpInf',
@@ -413,25 +413,25 @@ function Get-LevelDefinition {
         'TestInsightSettings.ini'
     )
 
-    $fullDirsExtra = @(
+    $deepDirsExtra = @(
         '__recovery'
     )
 
     # --- compose ---
     switch ($Name) {
-        'lite' {
-            $files = $liteFiles
-            $dirs  = $liteDirs
+        'basic' {
+            $files = $basicFiles
+            $dirs  = $basicDirs
         }
 
-        'build' {
-            $files = $liteFiles + $buildFilesExtra
-            $dirs  = $liteDirs + $buildDirsExtra
+        'standard' {
+            $files = $basicFiles + $standardFilesExtra
+            $dirs  = $basicDirs + $standardDirsExtra
         }
 
-        'full' {
-            $files = $liteFiles + $buildFilesExtra + $fullFilesExtra
-            $dirs  = $liteDirs + $buildDirsExtra + $fullDirsExtra
+        'deep' {
+            $files = $basicFiles + $standardFilesExtra + $deepFilesExtra
+            $dirs  = $basicDirs + $standardDirsExtra + $deepDirsExtra
         }
     }
 
