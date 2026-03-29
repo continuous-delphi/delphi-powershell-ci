@@ -9,7 +9,7 @@ function Resolve-DelphiCiConfig {
     $root          = $null
     $projectFile   = $null
     $steps         = @('Clean', 'Build')
-    $cleanLevel              = 'lite'
+    $cleanLevel              = 'basic'
     $cleanIncludeFiles       = @()
     $cleanExcludeDirectories = @()
     $buildEngine   = 'MSBuild'
@@ -165,7 +165,7 @@ function Resolve-DelphiCiConfig {
     $root = [System.IO.Path]::GetFullPath($root)
 
     # Validate known enum-like fields so errors surface early
-    $validLevels  = @('lite', 'build', 'full')
+    $validLevels  = @('basic', 'standard', 'deep')
     $validEngines = @('MSBuild', 'DCCBuild')
     $validSteps   = @('Clean', 'Build', 'Test')
 

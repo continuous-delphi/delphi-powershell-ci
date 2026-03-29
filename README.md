@@ -72,7 +72,7 @@ If your repository has a single `.dproj` under `source\`:
 Invoke-DelphiCi
 ```
 
-This cleans with the `lite` level, detects the latest Delphi installation,
+This cleans with the `basic` level, detects the latest Delphi installation,
 and builds `Win32 Debug`.
 
 ### Explicit project
@@ -199,7 +199,7 @@ field in the config file.
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "lite"
+    "level": "basic"
   },
   "build": {
     "projectFile": "source/MyApp.dproj",
@@ -228,11 +228,11 @@ relative path or `.`.
 
 | Level | What is removed |
 |---|---|
-| `lite` | Compiler caches, IDE state (`.dcu`, `.identcache`, `__history`, etc.) |
-| `build` | Everything in `lite`, plus build outputs (`.exe`, `.dll`, `.bpl`, platform output folders, etc.) |
-| `full` | Everything in `build`, plus user-local IDE files (`.~*`, FireDAC project cache, etc.) |
+| `basic` | Compiler caches, IDE state (`.dcu`, `.identcache`, `__history`, etc.) |
+| `standard` | Everything in `basic`, plus build outputs (`.exe`, `.dll`, `.bpl`, platform output folders, etc.) |
+| `deep` | Everything in `standard`, plus user-local IDE files (`.~*`, FireDAC project cache, etc.) |
 
-Default level is `lite`.
+Default level is `basic`.
 
 ---
 
@@ -255,11 +255,11 @@ no explicit file was given.
 The step commands can also be called directly.
 
 ```powershell
-# Clean only -- lite level against the current directory
+# Clean only -- basic level against the current directory
 Invoke-DelphiClean
 
-# Clean with build level
-Invoke-DelphiClean -Level build -Root .\source
+# Clean with standard level
+Invoke-DelphiClean -Level standard -Root .\source
 
 # Build only -- latest Delphi, Win32 Debug
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj

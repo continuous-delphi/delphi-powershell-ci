@@ -39,10 +39,10 @@
 
     // Cleanup level passed through to delphi-clean.ps1.
     // Expected values depend on delphi-clean, commonly:
-    //   "lite"
-    //   "build"
-    //   "full"
-    "level": "build",
+    //   "basic
+    //   "standard"
+    //   "deep"
+    "level": "basic",
 
     // Optional extra file patterns to include in cleanup candidates.
     // Useful for generated files such as stray *.res files.

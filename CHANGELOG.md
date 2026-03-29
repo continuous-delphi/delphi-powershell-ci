@@ -6,7 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.0] - Unreleased
 
-Initial release of `delphi-powershell-ci`.
+- Update `delphi-clean` to `0.7.0` to use new clean levels (basic+standard+deep) 
+  [#5](https://github.com/continuous-delphi/delphi-powershell-ci/issues/5)
+
+Initial commit of `delphi-powershell-ci`.
 
 ### Public commands
 
@@ -14,7 +17,7 @@ Initial release of `delphi-powershell-ci`.
   and/or Test steps, supports convention-based project discovery and JSON
   config files; `-VersionInfo` reports module and bundled tool versions
 - `Invoke-DelphiClean` -- wraps `delphi-clean.ps1`; three cleanup levels
-  (lite, build, full), `-WhatIf` support, structured result object;
+  (basic, standard, deep), `-WhatIf` support, structured result object;
   `-IncludeFiles` and `-ExcludeDirectories` for pattern-based file control
 - `Invoke-DelphiBuild` -- wraps `delphi-inspect.ps1` + `delphi-msbuild.ps1`;
   detect-latest or pinned toolchain, platform/configuration/defines

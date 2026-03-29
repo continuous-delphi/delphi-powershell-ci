@@ -341,7 +341,7 @@ A config file can supply any subset of these fields:
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "lite",
+    "level": "basic",
     "includeFiles": ["*.res"],
     "excludeDirectories": ["vendor"]
   },
@@ -394,7 +394,7 @@ Invoke-DelphiCi
 ```
 
 Discovers a single `.dproj` under the current directory, cleans with
-`lite` level, then builds Win32 Debug using the latest Delphi.
+`basic` level, then builds Win32 Debug using the latest Delphi.
 
 ### Explicit project
 

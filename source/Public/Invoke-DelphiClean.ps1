@@ -3,8 +3,8 @@ function Invoke-DelphiClean {
     param(
         [string]$Root = (Get-Location).Path,
 
-        [ValidateSet('lite', 'build', 'full')]
-        [string]$Level = 'lite',
+        [ValidateSet('basic', 'standard', 'deep')]
+        [string]$Level = 'basic',
 
         [string[]]$IncludeFiles = @(),
 

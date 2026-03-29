@@ -18,7 +18,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Root        = 'C:\Fake'
             ProjectFile = $ProjectFile
             Steps       = $Steps
-            Clean       = [PSCustomObject]@{ Level = 'lite'; IncludeFiles = @(); ExcludeDirectories = @() }
+            Clean       = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @(); ExcludeDirectories = @() }
             Build       = [PSCustomObject]@{
                 Engine        = 'MSBuild'
                 Toolchain     = [PSCustomObject]@{ Version = 'Latest' }
@@ -244,17 +244,17 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes Level from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'build'; IncludeFiles = @(); ExcludeDirectories = @() }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; IncludeFiles = @(); ExcludeDirectories = @() }
                     $cfg
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter { $Level -eq 'build' }
+                Should -Invoke Invoke-DelphiClean -ParameterFilter { $Level -eq 'standard' }
             }
 
             It 'passes IncludeFiles from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'lite'; IncludeFiles = @('*.res', '*.mab'); ExcludeDirectories = @() }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @('*.res', '*.mab'); ExcludeDirectories = @() }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -266,7 +266,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes ExcludeDirectories from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'lite'; IncludeFiles = @(); ExcludeDirectories = @('vendor', 'assets') }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @(); ExcludeDirectories = @('vendor', 'assets') }
                     $cfg
                 }
                 Invoke-DelphiCi

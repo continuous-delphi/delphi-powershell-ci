@@ -38,14 +38,14 @@ Cleanup intensity level passed to `delphi-clean.ps1`.
 
 | Value   | Effect |
 |---------|--------|
-| `lite`  | Removes common transient files (.dcu, .dcp, .dres, etc.). Safe, low risk. Default. |
-| `build` | Also removes build outputs and generated files. |
-| `full`  | Aggressive cleanup including user-local IDE state files. |
+| `basic`  | Removes common transient files (.dcu, .dcp, .dres, etc.). Safe, low risk. Default. |
+| `standard` | Also removes build outputs and generated files. |
+| `deep`  | Aggressive cleanup including user-local IDE state files. |
 
 ```
 Type:     String
 Required: No
-Default:  lite
+Default:  basic
 ```
 
 ### -IncludeFiles
@@ -139,10 +139,10 @@ Invoke-DelphiClean -Root .\source -Level build
 ### Include extra file patterns
 
 ```powershell
-Invoke-DelphiClean -Root . -Level lite -IncludeFiles '*.res', '*.mab'
+Invoke-DelphiClean -Root . -Level basic -IncludeFiles '*.res', '*.mab'
 ```
 
-Deletes `.res` and `.mab` files in addition to the standard `lite` set.
+Deletes `.res` and `.mab` files in addition to the standard `basic` set.
 
 ### Exclude directories from cleanup
 
@@ -155,13 +155,13 @@ Skips any directory named `vendor` or `assets` when searching for files to remov
 ### Preview what would be removed
 
 ```powershell
-Invoke-DelphiClean -Root . -Level full -WhatIf
+Invoke-DelphiClean -Root . -Level deep -WhatIf
 ```
 
 ### Capture the result
 
 ```powershell
-$clean = Invoke-DelphiClean -Root . -Level lite
+$clean = Invoke-DelphiClean -Root . -Level basic
 if (-not $clean.Success) {
     Write-Error "Clean failed with exit code $($clean.ExitCode)"
 }
@@ -179,7 +179,7 @@ directly. The fields are identical.
 
 - `Invoke-DelphiClean` delegates all file removal to `delphi-clean.ps1` from
   the `source/bundled-tools/` folder. It does not delete anything itself.
-- The `lite` level is safe to run repeatedly without risk to source files.
+- The `basic` level is safe to run repeatedly without risk to source files.
 - Passing `-WhatIf` prints a `What if:` message and skips the tool invocation
   entirely. No files are examined or removed.
 - The `Duration` field includes subprocess startup time for `pwsh`.

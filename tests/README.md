@@ -150,7 +150,7 @@ the private `Invoke-BundledTool` helper. Uses `InModuleScope` with mocked
 - Success and ExitCode reflect tool exit code (0 and non-zero)
 - Message content on success and failure
 - Argument passing: tool name, -Level default and explicit values, -RootPath
-- Integration test against the real `ConsoleProjectGroup/Source` with level lite
+- Integration test against the real `ConsoleProjectGroup/Source` with level `basic`
 
 ### Resolve-TestProject.Tests.ps1
 

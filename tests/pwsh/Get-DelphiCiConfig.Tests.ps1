@@ -65,9 +65,9 @@ Describe 'Get-DelphiCiConfig' {
             $config.Build.Toolchain.Version | Should -Be 'Latest'
         }
 
-        It 'returns lite clean level' {
+        It 'returns basic clean level' {
             $config = Get-DelphiCiConfig
-            $config.Clean.Level | Should -Be 'lite'
+            $config.Clean.Level | Should -Be 'basic'
         }
 
         It 'returns empty clean include files array' {
@@ -126,10 +126,10 @@ Describe 'Get-DelphiCiConfig' {
 
         It 'loads clean level from config file' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ level = 'build' } } | ConvertTo-Json)
+            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ level = 'standard' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Clean.Level | Should -Be 'build'
+            $config.Clean.Level | Should -Be 'standard'
         }
 
         It 'loads toolchain version from config file' {
@@ -211,7 +211,7 @@ Describe 'Get-DelphiCiConfig' {
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
             $config.Build.Configuration | Should -Be 'Debug'
             $config.Build.Engine        | Should -Be 'MSBuild'
-            $config.Clean.Level         | Should -Be 'lite'
+            $config.Clean.Level         | Should -Be 'basic'
             $config.Steps               | Should -Be @('Clean', 'Build')
         }
 

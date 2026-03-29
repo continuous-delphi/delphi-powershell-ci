@@ -151,7 +151,7 @@ Root          string     Resolved absolute path to the working root
 ProjectFile   string     Path to the .dproj file, or $null if not set
 Steps         string[]   Ordered list of steps to run
 Clean
-  Level              string     Clean depth: lite | build | full
+  Level              string     Clean depth: basic | standard | deep
   IncludeFiles       string[]   Additional file patterns to delete (appended to level set)
   ExcludeDirectories string[]   Directory patterns to skip during cleanup
 Build
@@ -178,7 +178,7 @@ Test
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "lite",
+    "level": "basic",
     "includeFiles": ["*.res"],
     "excludeDirectories": ["vendor"]
   },

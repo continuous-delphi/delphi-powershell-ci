@@ -88,24 +88,24 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
-            It 'passes -Level lite by default' {
+            It 'passes -Level basic by default' {
                 Invoke-DelphiClean -Root 'C:\Fake'
                 Should -Invoke Invoke-BundledTool -ParameterFilter {
-                    $Arguments -contains '-Level' -and $Arguments -contains 'lite'
+                    $Arguments -contains '-Level' -and $Arguments -contains 'basic'
                 }
             }
 
-            It 'passes -Level build when specified' {
-                Invoke-DelphiClean -Root 'C:\Fake' -Level 'build'
+            It 'passes -Level standard when specified' {
+                Invoke-DelphiClean -Root 'C:\Fake' -Level 'standard'
                 Should -Invoke Invoke-BundledTool -ParameterFilter {
-                    $Arguments -contains '-Level' -and $Arguments -contains 'build'
+                    $Arguments -contains '-Level' -and $Arguments -contains 'standard'
                 }
             }
 
-            It 'passes -Level full when specified' {
-                Invoke-DelphiClean -Root 'C:\Fake' -Level 'full'
+            It 'passes -Level deep when specified' {
+                Invoke-DelphiClean -Root 'C:\Fake' -Level 'deep'
                 Should -Invoke Invoke-BundledTool -ParameterFilter {
-                    $Arguments -contains '-Level' -and $Arguments -contains 'full'
+                    $Arguments -contains '-Level' -and $Arguments -contains 'deep'
                 }
             }
 
@@ -154,11 +154,11 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     Describe 'Invoke-DelphiClean -- integration' {
 
-        It 'succeeds with level lite on real ConsoleProjectGroup source' {
+        It 'succeeds with level basic on real ConsoleProjectGroup source' {
             $sourceRoot = [System.IO.Path]::GetFullPath(
                 (Join-Path $PSScriptRoot '..\..' 'Examples\ConsoleProjectGroup\Source')
             )
-            $result = Invoke-DelphiClean -Root $sourceRoot -Level 'lite'
+            $result = Invoke-DelphiClean -Root $sourceRoot -Level 'basic'
             $result.Success    | Should -Be $true
             $result.StepName   | Should -Be 'Clean'
             $result.ExitCode   | Should -Be 0

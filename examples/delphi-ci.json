@@ -2,7 +2,7 @@
   "root": ".",
   "clean": {
     "enabled": true,
-    "level": "build",
+    "level": "standard",
     "includeFiles": [
       "*.res"
     ],
