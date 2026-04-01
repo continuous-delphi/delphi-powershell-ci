@@ -33,9 +33,9 @@ NOTES
   -Config is the RAD Studio MSBuild property name (/p:Config); common values
   are Debug and Release.
 
-  By default MSBuild output is captured and returned in the result object's
-  .output property.  Use -ShowOutput to stream output to stdout in real time;
-  in that case .output is null and errors are written via Write-Error.
+  MSBuild output is always captured and returned in the result object's
+  .output property.  Use -ShowOutput to also stream output to stdout in real
+  time; .output is populated in both cases.
 
   Exit codes:
     0  success
@@ -53,6 +53,8 @@ NOTES
   Justification='Script accepts at most one piped installation object; end-block semantics are correct.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-RsvarsEnvLines',
   Justification='Function returns multiple KEY=VALUE lines from cmd.exe set; plural noun is accurate.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+  Justification='Write-Host is intentional: -ShowOutput streams build text directly to the console host.')]
 param(
   [Parameter(ValueFromPipeline=$true)]
   [psobject]$DelphiInstallation,
@@ -87,7 +89,14 @@ param(
 
   [string[]]$Define = @(),
 
-  [switch]$ShowOutput
+  [switch]$ShowOutput,
+
+  # Output format for the result object.
+  # object (default) -- emits a PSCustomObject to the pipeline.
+  # json             -- emits a single compressed JSON line; used by Invoke-BuildPipeline
+  #                     to capture structured results from the subprocess.
+  [ValidateSet('object', 'json')]
+  [string]$Format = 'object'
 )
 
 Set-StrictMode -Version Latest
@@ -100,7 +109,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.5.0'
+$script:Version = '0.6.0'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -163,8 +172,9 @@ function Invoke-RsvarsEnvironment {
 }
 
 # Invoke msbuild.exe with the given arguments.
-# Returns [pscustomobject]@{ ExitCode; Output } where Output is $null when
-# -ShowOutput is set (output streams to stdout instead of being captured).
+# Returns [pscustomobject]@{ ExitCode; Output } where Output is always the
+# captured build text.  When -ShowOutput is set the text is also written to
+# the host so the caller sees it in real time.
 # Separated into its own function so tests can mock it.
 function Invoke-MsbuildExe {
   param(
@@ -172,12 +182,8 @@ function Invoke-MsbuildExe {
     [switch]$ShowOutput
   )
 
-  if ($ShowOutput) {
-    & msbuild.exe @Arguments | Out-Host
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $null }
-  }
-
   $output = & msbuild.exe @Arguments 2>&1 | Out-String
+  if ($ShowOutput) { Write-Host $output }
   return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
 }
 
@@ -210,11 +216,6 @@ function Invoke-MsbuildProject {
 
   if ($UnitSearchPath.Count -gt 0) {
     $unitSearchValue = '$(DCC_UnitSearchPath);' + ($UnitSearchPath -join ';')
-    $msbuildArgs += "/p:DCC_UnitSearchPath=$unitSearchValue"
-  }
-
-  if ($UnitSearchPath.Count -gt 0) {
-    $unitSearchValue = '$(DCC_UnitSearchPath);' + ($UnitSearchPath -join ';')
     $msbuildArgs += "/p:DCC_UnitSearchPath=`"$unitSearchValue`""
   }
 
@@ -224,6 +225,56 @@ function Invoke-MsbuildProject {
   }
 
   return Invoke-MsbuildExe -Arguments $msbuildArgs -ShowOutput:$ShowOutput
+}
+
+# Parse the dcc32.exe invocation line from captured msbuild output and extract
+# the exe output dir (-E flag) and DCU output dir (-NO flag).
+# Paths are resolved to absolute using the project file directory as base.
+# Returns [pscustomobject]@{ ExeOutputDir; DcuOutputDir } -- either may be $null.
+function Get-BuildOutputDir {
+  param(
+    [string]$Output,
+    [string]$ProjectFileDir
+  )
+
+  $result = [pscustomobject]@{ ExeOutputDir = $null; DcuOutputDir = $null }
+  if ([string]::IsNullOrWhiteSpace($Output)) { return $result }
+
+  $dcc32Line = ($Output -split "`n") |
+    Where-Object { $_ -match '[/\\]dcc32\.exe\s' } |
+    Select-Object -First 1
+  if (-not $dcc32Line) { return $result }
+
+  if ($dcc32Line -match '\s-E(\S+)') {
+    $result.ExeOutputDir = [System.IO.Path]::GetFullPath(
+      [System.IO.Path]::Combine($ProjectFileDir, $Matches[1]))
+  }
+
+  if ($dcc32Line -match '\s-NO(\S+)') {
+    $result.DcuOutputDir = [System.IO.Path]::GetFullPath(
+      [System.IO.Path]::Combine($ProjectFileDir, $Matches[1]))
+  }
+
+  return $result
+}
+
+# Parse the MSBuild summary block from captured output and return warning and
+# error counts as integers.
+# Returns [pscustomobject]@{ Warnings; Errors }.
+function Get-BuildCount {
+  param([string]$Output)
+
+  $warnings = 0
+  $errors   = 0
+  if (-not [string]::IsNullOrWhiteSpace($Output)) {
+    $wMatch = [regex]::Match($Output, '^\s*(\d+)\s+Warning\(s\)',
+      [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    $eMatch = [regex]::Match($Output, '^\s*(\d+)\s+Error\(s\)',
+      [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    if ($wMatch.Success) { $warnings = [int]$wMatch.Groups[1].Value }
+    if ($eMatch.Success) { $errors   = [int]$eMatch.Groups[1].Value }
+  }
+  return [pscustomobject]@{ Warnings = $warnings; Errors = $errors }
 }
 
 # Guard: skip top-level execution when the script is dot-sourced for testing.
@@ -277,6 +328,11 @@ try {
     -Define        $Define `
     -ShowOutput:$ShowOutput
 
+  $parsedDirs = Get-BuildOutputDir `
+    -Output         $buildResult.Output `
+    -ProjectFileDir (Split-Path $resolvedProjectFile -Parent)
+  $counts = Get-BuildCount -Output $buildResult.Output
+
   $resultObj = [pscustomobject]@{
     scriptVersion  = $script:Version
     projectFile    = $resolvedProjectFile
@@ -286,15 +342,21 @@ try {
     define         = $Define
     rootDir        = $resolvedRootDir
     rsvarsPath     = $rsvarsPath
-    exeOutputDir   = if ([string]::IsNullOrWhiteSpace($ExeOutputDir))  { $null } else { $ExeOutputDir }
-    dcuOutputDir   = if ([string]::IsNullOrWhiteSpace($DcuOutputDir))  { $null } else { $DcuOutputDir }
+    exeOutputDir   = if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { $ExeOutputDir } else { $parsedDirs.ExeOutputDir }
+    dcuOutputDir   = if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { $DcuOutputDir } else { $parsedDirs.DcuOutputDir }
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
+    warnings       = $counts.Warnings
+    errors         = $counts.Errors
     output         = $buildResult.Output
   }
 
-  Write-Output $resultObj
+  if ($Format -eq 'json') {
+    Write-Output ($resultObj | ConvertTo-Json -Depth 5 -Compress)
+  } else {
+    Write-Output $resultObj
+  }
 
   if ($buildResult.ExitCode -ne 0) {
     if ($ShowOutput) {

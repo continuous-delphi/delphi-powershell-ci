@@ -48,7 +48,7 @@ function Invoke-DelphiBuild {
         $buildArgs.Add($d)
     }
 
-    $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true }
+    $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
 
     if ($PSCmdlet.ShouldProcess($ProjectFile, "Build ($Platform|$Configuration)")) {
         $toolResult = Invoke-BuildPipeline -InspectArgs $inspectArgs -BuildArgs $buildArgs.ToArray() -Engine $BuildEngine
@@ -64,12 +64,16 @@ function Invoke-DelphiBuild {
     }
 
     return [PSCustomObject]@{
-        StepName    = 'Build'
-        Success     = $toolResult.Success
-        Duration    = $stopwatch.Elapsed
-        ExitCode    = $toolResult.ExitCode
-        Tool        = $tool
-        Message     = if ($toolResult.Success) { 'Build completed' } else { "Exit code $($toolResult.ExitCode)" }
-        ProjectFile = $ProjectFile
+        StepName     = 'Build'
+        Success      = $toolResult.Success
+        Duration     = $stopwatch.Elapsed
+        ExitCode     = $toolResult.ExitCode
+        Tool         = $tool
+        Message      = if ($toolResult.Success) { 'Build completed' } else { "Exit code $($toolResult.ExitCode)" }
+        ProjectFile  = $ProjectFile
+        Warnings     = $toolResult.Warnings
+        Errors       = $toolResult.Errors
+        ExeOutputDir = $toolResult.ExeOutputDir
+        Output       = $toolResult.Output
     }
 }

@@ -40,13 +40,23 @@ function Invoke-BuildPipeline {
         return [PSCustomObject]@{ ExitCode = 3; Success = $false }
     }
 
-    # Run the build tool with the resolved rootDir prepended to the caller's args
-    $allBuildArgs = @('-RootDir', $rootDir) + $BuildArgs
-    & $script:PowerShellExe -NoProfile -NonInteractive -File $buildToolPath @allBuildArgs | Out-Host
+    # Run the build tool with -Format json so the result object is returned as
+    # a captured JSON line on stdout.  -ShowOutput (already in $BuildArgs) continues
+    # to stream build text directly to the console via Write-Host in the subprocess.
+    $allBuildArgs = @('-RootDir', $rootDir, '-Format', 'json') + $BuildArgs
+    $jsonLines = & $script:PowerShellExe -NoProfile -NonInteractive -File $buildToolPath @allBuildArgs
     $buildExit = $LASTEXITCODE
 
+    $toolResult = $null
+    try   { $toolResult = ($jsonLines -join '') | ConvertFrom-Json }
+    catch { <# JSON parse failed; fall back to exit-code-only result #> }
+
     return [PSCustomObject]@{
-        ExitCode = $buildExit
-        Success  = ($buildExit -eq 0)
+        ExitCode     = $buildExit
+        Success      = ($buildExit -eq 0)
+        Warnings     = if ($null -ne $toolResult) { [int]$toolResult.warnings    } else { 0 }
+        Errors       = if ($null -ne $toolResult) { [int]$toolResult.errors      } else { 0 }
+        ExeOutputDir = if ($null -ne $toolResult) { $toolResult.exeOutputDir     } else { $null }
+        Output       = if ($null -ne $toolResult) { $toolResult.output           } else { $null }
     }
 }

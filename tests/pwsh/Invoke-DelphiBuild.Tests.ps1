@@ -9,7 +9,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         BeforeAll {
             Mock Invoke-BuildPipeline {
-                [PSCustomObject]@{ ExitCode = 0; Success = $true }
+                [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = 'C:\Out\Win32\Debug'; Output = 'build output text' }
             }
             Mock Write-DelphiCiMessage {}
         }
@@ -36,37 +36,53 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ProjectFile | Should -Be 'C:\Fake\App.dproj'
             }
 
+            It 'Warnings is surfaced from pipeline result' {
+                (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Warnings | Should -Be 0
+            }
+
+            It 'Errors is surfaced from pipeline result' {
+                (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Errors | Should -Be 0
+            }
+
+            It 'ExeOutputDir is surfaced from pipeline result' {
+                (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ExeOutputDir | Should -Be 'C:\Out\Win32\Debug'
+            }
+
+            It 'Output is surfaced from pipeline result' {
+                (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Output | Should -Be 'build output text'
+            }
+
         }
 
         Context 'success and failure' {
 
             It 'Success is true when pipeline exits 0' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Success | Should -Be $true
             }
 
             It 'ExitCode is 0 on success' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ExitCode | Should -Be 0
             }
 
             It 'Success is false when pipeline exits non-zero' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Success | Should -Be $false
             }
 
             It 'ExitCode reflects pipeline exit code on failure' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ExitCode | Should -Be 5
             }
 
             It 'Message says Build completed on success' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Message | Should -Be 'Build completed'
             }
 
             It 'Message contains exit code on failure' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Message | Should -BeLike '*5*'
             }
 
