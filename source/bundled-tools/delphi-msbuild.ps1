@@ -91,6 +91,11 @@ param(
 
   [switch]$ShowOutput,
 
+  # When set, the result object is written as compressed JSON to this file path.
+  # Used by Invoke-BuildPipeline to capture structured results from the subprocess
+  # while still streaming build output to the console via | Out-Host.
+  [string]$OutputFile,
+
   # Output format for the result object.
   # object (default) -- emits a PSCustomObject to the pipeline.
   # json             -- emits a single compressed JSON line; used by Invoke-BuildPipeline
@@ -350,6 +355,10 @@ try {
     warnings       = $counts.Warnings
     errors         = $counts.Errors
     output         = $buildResult.Output
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
+    Set-Content -LiteralPath $OutputFile -Value ($resultObj | ConvertTo-Json -Depth 5 -Compress) -Encoding UTF8
   }
 
   if ($Format -eq 'json') {

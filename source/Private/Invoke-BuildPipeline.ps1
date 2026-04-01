@@ -40,23 +40,32 @@ function Invoke-BuildPipeline {
         return [PSCustomObject]@{ ExitCode = 3; Success = $false }
     }
 
-    # Run the build tool with -Format json so the result object is returned as
-    # a captured JSON line on stdout.  -ShowOutput (already in $BuildArgs) continues
-    # to stream build text directly to the console via Write-Host in the subprocess.
-    $allBuildArgs = @('-RootDir', $rootDir, '-Format', 'json') + $BuildArgs
-    $jsonLines = & $script:PowerShellExe -NoProfile -NonInteractive -File $buildToolPath @allBuildArgs
-    $buildExit = $LASTEXITCODE
+    # Run the build tool with | Out-Host so build output streams to the terminal
+    # in real time.  A temp file carries the structured JSON result back to the
+    # caller without interfering with the streamed output.
+    $resultFile   = [System.IO.Path]::GetTempFileName()
+    $allBuildArgs = @('-RootDir', $rootDir, '-OutputFile', $resultFile) + $BuildArgs
+    try {
+        & $script:PowerShellExe -NoProfile -NonInteractive -File $buildToolPath @allBuildArgs | Out-Host
+        $buildExit = $LASTEXITCODE
 
-    $toolResult = $null
-    try   { $toolResult = ($jsonLines -join '') | ConvertFrom-Json }
-    catch { <# JSON parse failed; fall back to exit-code-only result #> }
+        $toolResult = $null
+        try {
+            $raw = Get-Content -LiteralPath $resultFile -Raw -ErrorAction Stop
+            $toolResult = $raw | ConvertFrom-Json
+        }
+        catch { <# result file missing or malformed; fall back to exit-code only #> }
 
-    return [PSCustomObject]@{
-        ExitCode     = $buildExit
-        Success      = ($buildExit -eq 0)
-        Warnings     = if ($null -ne $toolResult) { [int]$toolResult.warnings    } else { 0 }
-        Errors       = if ($null -ne $toolResult) { [int]$toolResult.errors      } else { 0 }
-        ExeOutputDir = if ($null -ne $toolResult) { $toolResult.exeOutputDir     } else { $null }
-        Output       = if ($null -ne $toolResult) { $toolResult.output           } else { $null }
+        return [PSCustomObject]@{
+            ExitCode     = $buildExit
+            Success      = ($buildExit -eq 0)
+            Warnings     = if ($null -ne $toolResult) { [int]$toolResult.warnings    } else { 0 }
+            Errors       = if ($null -ne $toolResult) { [int]$toolResult.errors      } else { 0 }
+            ExeOutputDir = if ($null -ne $toolResult) { $toolResult.exeOutputDir     } else { $null }
+            Output       = if ($null -ne $toolResult) { $toolResult.output           } else { $null }
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
     }
 }
