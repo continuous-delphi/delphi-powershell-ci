@@ -9,9 +9,10 @@ function Resolve-DelphiCiConfig {
     $root          = $null
     $projectFile   = $null
     $steps         = @('Clean', 'Build')
-    $cleanLevel              = 'basic'
-    $cleanIncludeFiles       = @()
-    $cleanExcludeDirectories = @()
+    $cleanLevel                  = 'basic'
+    $cleanIncludeFilePattern     = @()
+    $cleanExcludeDirectoryPattern = @()
+    $cleanConfigFile             = ''
     $buildEngine   = 'MSBuild'
     $buildToolchainVersion = 'Latest'
     $buildPlatform = $null
@@ -51,8 +52,12 @@ function Resolve-DelphiCiConfig {
                 -not [string]::IsNullOrWhiteSpace($c.level)) {
                 $cleanLevel = $c.level
             }
-            if ($c.PSObject.Properties['includeFiles'])       { $cleanIncludeFiles       = @($c.includeFiles) }
-            if ($c.PSObject.Properties['excludeDirectories']) { $cleanExcludeDirectories = @($c.excludeDirectories) }
+            if ($c.PSObject.Properties['includeFilePattern'])      { $cleanIncludeFilePattern      = @($c.includeFilePattern) }
+            if ($c.PSObject.Properties['excludeDirectoryPattern']) { $cleanExcludeDirectoryPattern = @($c.excludeDirectoryPattern) }
+            if ($c.PSObject.Properties['configFile'] -and
+                -not [string]::IsNullOrWhiteSpace($c.configFile)) {
+                $cleanConfigFile = $c.configFile
+            }
         }
 
         if ($json.PSObject.Properties['build']) {
@@ -105,11 +110,19 @@ function Resolve-DelphiCiConfig {
         $steps = @($Overrides['Steps'] | ForEach-Object { $_ -split ',' } |
                    ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
     }
-    if ($Overrides.ContainsKey('CleanIncludeFiles') -and $null -ne $Overrides['CleanIncludeFiles']) {
-        $cleanIncludeFiles = @($Overrides['CleanIncludeFiles'])
+    if ($Overrides.ContainsKey('CleanLevel') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CleanLevel'])) {
+        $cleanLevel = $Overrides['CleanLevel']
     }
-    if ($Overrides.ContainsKey('CleanExcludeDirectories') -and $null -ne $Overrides['CleanExcludeDirectories']) {
-        $cleanExcludeDirectories = @($Overrides['CleanExcludeDirectories'])
+    if ($Overrides.ContainsKey('CleanIncludeFilePattern') -and $null -ne $Overrides['CleanIncludeFilePattern']) {
+        $cleanIncludeFilePattern = @($Overrides['CleanIncludeFilePattern'])
+    }
+    if ($Overrides.ContainsKey('CleanExcludeDirectoryPattern') -and $null -ne $Overrides['CleanExcludeDirectoryPattern']) {
+        $cleanExcludeDirectoryPattern = @($Overrides['CleanExcludeDirectoryPattern'])
+    }
+    if ($Overrides.ContainsKey('CleanConfigFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CleanConfigFile'])) {
+        $cleanConfigFile = $Overrides['CleanConfigFile']
     }
     if ($Overrides.ContainsKey('Platform') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['Platform'])) {
@@ -186,9 +199,10 @@ function Resolve-DelphiCiConfig {
         ProjectFile = $projectFile
         Steps       = $steps
         Clean       = [PSCustomObject]@{
-            Level              = $cleanLevel
-            IncludeFiles       = $cleanIncludeFiles
-            ExcludeDirectories = $cleanExcludeDirectories
+            Level                   = $cleanLevel
+            IncludeFilePattern      = $cleanIncludeFilePattern
+            ExcludeDirectoryPattern = $cleanExcludeDirectoryPattern
+            ConfigFile              = $cleanConfigFile
         }
         Build       = [PSCustomObject]@{
             Engine        = $buildEngine

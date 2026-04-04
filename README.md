@@ -199,7 +199,10 @@ field in the config file.
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "basic"
+    "level": "basic",
+    "includeFilePattern": [],
+    "excludeDirectoryPattern": [],
+    "configFile": ""
   },
   "build": {
     "projectFile": "source/MyApp.dproj",
@@ -259,7 +262,7 @@ The step commands can also be called directly.
 Invoke-DelphiClean
 
 # Clean with standard level
-Invoke-DelphiClean -Level standard -Root .\source
+Invoke-DelphiClean -CleanLevel standard -CleanRoot .\source
 
 # Build only -- latest Delphi, Win32 Debug
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj

@@ -9,10 +9,11 @@ returns a structured step result.
 
 ```powershell
 Invoke-DelphiClean
-    [-Root <String>]
-    [-Level <String>]
-    [-IncludeFiles <String[]>]
-    [-ExcludeDirectories <String[]>]
+    [-CleanRoot <String>]
+    [-CleanLevel <String>]
+    [-CleanIncludeFilePattern <String[]>]
+    [-CleanExcludeDirectoryPattern <String[]>]
+    [-CleanConfigFile <String>]
     [-WhatIf]
     [<CommonParameters>]
 ```
@@ -21,7 +22,7 @@ Invoke-DelphiClean
 
 ## Parameters
 
-### -Root
+### -CleanRoot
 
 Absolute or relative path to the directory that `delphi-clean.ps1` should treat
 as the repository root. Defaults to the current working directory.
@@ -32,15 +33,15 @@ Required: No
 Default:  (Get-Location).Path
 ```
 
-### -Level
+### -CleanLevel
 
 Cleanup intensity level passed to `delphi-clean.ps1`.
 
-| Value   | Effect |
-|---------|--------|
-| `basic`  | Removes common transient files (.dcu, .dcp, .dres, etc.). Safe, low risk. Default. |
-| `standard` | Also removes build outputs and generated files. |
-| `deep`  | Aggressive cleanup including user-local IDE state files. |
+| Value      | Effect |
+|------------|--------|
+| `basic`    | Removes common transient files (.dcu, .identcache, `__history`, etc.). Safe, low risk. Default. |
+| `standard` | Also removes build outputs and generated files (platform output folders, .exe, .bpl, etc.). |
+| `deep`     | Aggressive cleanup including user-local IDE state files (.~*, FireDAC cache, etc.). |
 
 ```
 Type:     String
@@ -48,7 +49,7 @@ Required: No
 Default:  basic
 ```
 
-### -IncludeFiles
+### -CleanIncludeFilePattern
 
 Additional file glob patterns passed to `delphi-clean.ps1` as
 `-IncludeFilePattern`. Files matching these patterns are deleted regardless
@@ -61,9 +62,9 @@ Required: No
 Default:  (empty -- no extra patterns)
 ```
 
-### -ExcludeDirectories
+### -CleanExcludeDirectoryPattern
 
-Directory glob patterns passed to `delphi-clean.ps1` as `-ExcludeDirPattern`.
+Directory glob patterns passed to `delphi-clean.ps1` as `-ExcludeDirectoryPattern`.
 Directories whose names match any of these patterns are skipped entirely
 during cleanup. Useful for protecting vendored or generated trees that should
 not be touched (e.g. `vendor`, `assets`, `vendor*`).
@@ -72,6 +73,20 @@ not be touched (e.g. `vendor`, `assets`, `vendor*`).
 Type:     String[]
 Required: No
 Default:  (empty -- no directories excluded)
+```
+
+### -CleanConfigFile
+
+Path to an explicit `delphi-clean` JSON configuration file. Forwarded to the
+bundled tool as `-ConfigFile`. Loaded at higher priority than a project-level
+`delphi-clean.json` found in the root directory, but lower priority than the
+CLI parameters above. Useful in CI pipelines where the config lives outside
+the repository tree.
+
+```
+Type:     String
+Required: No
+Default:  (empty -- no explicit config file)
 ```
 
 ### -WhatIf
@@ -104,21 +119,22 @@ Returns a `PSCustomObject` with the following fields.
 
 ## JSON config equivalent
 
-The clean level is controlled by the `clean.level` field in the JSON config
+The clean step is controlled by the `clean` section in the JSON config
 file used with `Get-DelphiCiConfig` or `Invoke-DelphiCi`.
 
 ```json
 {
   "clean": {
-    "level": "build",
-    "includeFiles": ["*.res", "*.mab"],
-    "excludeDirectories": ["vendor", "assets"]
+    "level": "basic",
+    "includeFilePattern": ["*.res", "*.mab"],
+    "excludeDirectoryPattern": ["vendor", "assets"],
+    "configFile": ""
   }
 }
 ```
 
 `Invoke-DelphiClean` itself does not read a config file -- it is a step command
-that receives resolved values from the orchestration layer.
+that receives resolved values from the orchestration layer (`Invoke-DelphiCi`).
 
 ---
 
@@ -133,13 +149,13 @@ Invoke-DelphiClean
 ### Explicit root and level
 
 ```powershell
-Invoke-DelphiClean -Root .\source -Level build
+Invoke-DelphiClean -CleanRoot .\source -CleanLevel standard
 ```
 
 ### Include extra file patterns
 
 ```powershell
-Invoke-DelphiClean -Root . -Level basic -IncludeFiles '*.res', '*.mab'
+Invoke-DelphiClean -CleanRoot . -CleanLevel basic -CleanIncludeFilePattern '*.res', '*.mab'
 ```
 
 Deletes `.res` and `.mab` files in addition to the standard `basic` set.
@@ -147,21 +163,27 @@ Deletes `.res` and `.mab` files in addition to the standard `basic` set.
 ### Exclude directories from cleanup
 
 ```powershell
-Invoke-DelphiClean -Root . -Level build -ExcludeDirectories 'vendor', 'assets'
+Invoke-DelphiClean -CleanRoot . -CleanLevel standard -CleanExcludeDirectoryPattern 'vendor', 'assets'
 ```
 
 Skips any directory named `vendor` or `assets` when searching for files to remove.
 
+### Use an explicit delphi-clean config file
+
+```powershell
+Invoke-DelphiClean -CleanRoot . -CleanLevel standard -CleanConfigFile C:\ci\delphi-clean-ci.json
+```
+
 ### Preview what would be removed
 
 ```powershell
-Invoke-DelphiClean -Root . -Level deep -WhatIf
+Invoke-DelphiClean -CleanRoot . -CleanLevel deep -WhatIf
 ```
 
 ### Capture the result
 
 ```powershell
-$clean = Invoke-DelphiClean -Root . -Level basic
+$clean = Invoke-DelphiClean -CleanRoot . -CleanLevel basic
 if (-not $clean.Success) {
     Write-Error "Clean failed with exit code $($clean.ExitCode)"
 }
@@ -186,3 +208,7 @@ directly. The fields are identical.
 - `ProjectFile` is always `$null` for the clean step. It is present so that
   step result objects returned by all steps share a consistent shape for
   pipeline consumers.
+- The bundled `delphi-clean.ps1` also searches for `delphi-clean.json` and
+  `delphi-clean.local.json` in the root directory automatically. Use
+  `-CleanConfigFile` to supply an additional explicit config (e.g. a CI-specific
+  file stored outside the repository).

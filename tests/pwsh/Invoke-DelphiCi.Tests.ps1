@@ -18,7 +18,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Root        = 'C:\Fake'
             ProjectFile = $ProjectFile
             Steps       = $Steps
-            Clean       = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @(); ExcludeDirectories = @() }
+            Clean       = [PSCustomObject]@{
+                Level                   = 'basic'
+                IncludeFilePattern      = @()
+                ExcludeDirectoryPattern = @()
+                ConfigFile              = ''
+            }
             Build       = [PSCustomObject]@{
                 Engine        = 'MSBuild'
                 Toolchain     = [PSCustomObject]@{ Version = 'Latest' }
@@ -241,37 +246,49 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         Context 'parameter forwarding' {
 
-            It 'passes Level from config to Invoke-DelphiClean' {
+            It 'passes CleanLevel from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; IncludeFiles = @(); ExcludeDirectories = @() }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter { $Level -eq 'standard' }
+                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanLevel -eq 'standard' }
             }
 
-            It 'passes IncludeFiles from config to Invoke-DelphiClean' {
+            It 'passes CleanIncludeFilePattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @('*.res', '*.mab'); ExcludeDirectories = @() }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -ParameterFilter {
-                    $IncludeFiles -contains '*.res' -and $IncludeFiles -contains '*.mab'
+                    $CleanIncludeFilePattern -contains '*.res' -and $CleanIncludeFilePattern -contains '*.mab'
                 }
             }
 
-            It 'passes ExcludeDirectories from config to Invoke-DelphiClean' {
+            It 'passes CleanExcludeDirectoryPattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFiles = @(); ExcludeDirectories = @('vendor', 'assets') }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -ParameterFilter {
-                    $ExcludeDirectories -contains 'vendor' -and $ExcludeDirectories -contains 'assets'
+                    $CleanExcludeDirectoryPattern -contains 'vendor' -and $CleanExcludeDirectoryPattern -contains 'assets'
+                }
+            }
+
+            It 'passes CleanConfigFile from config to Invoke-DelphiClean' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Clean')
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json' }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiClean -ParameterFilter {
+                    $CleanConfigFile -eq 'C:/ci/delphi-clean-ci.json'
                 }
             }
 

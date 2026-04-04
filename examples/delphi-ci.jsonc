@@ -18,7 +18,7 @@
   "root": ".",
 
   // Ordered pipeline steps to run.
-  // Current supported examples:
+  // Current supported values:
   //   "Clean"
   //   "Build"
   //   "Test"
@@ -33,32 +33,31 @@
     "Test"
   ],
 
+  // Optional clean section.
+  // Settings here are passed as CLI arguments to delphi-clean.ps1, taking
+  // priority over any delphi-clean.json config files in the project tree.
+  // Omit this section entirely to rely on delphi-clean's own config files.
   "clean": {
-    // Whether the Clean step should run when "Clean" is included in steps.
-    "enabled": true,
+    // Cleanup level. One of: "basic" (default), "standard", "deep".
+    // Levels are cumulative -- standard includes basic, deep includes standard.
+    "level": "standard",
 
-    // Cleanup level passed through to delphi-clean.ps1.
-    // Expected values depend on delphi-clean, commonly:
-    //   "basic
-    //   "standard"
-    //   "deep"
-    "level": "basic",
-
-    // Optional extra file patterns to include in cleanup candidates.
-    // Useful for generated files such as stray *.res files.
-    // Be careful: some *.res files are project-owned and should NOT be deleted.
-    "includeFiles": [
+    // Additional file patterns to delete beyond the level's built-in list.
+    "includeFilePattern": [
       "*.res"
     ],
 
-    // Optional directory patterns to exclude from cleanup.
-    // Use these to protect directories containing hand-maintained resources.
-    "excludeDirectories": [
+    // Directory name patterns to skip entirely during scanning.
+    "excludeDirectoryPattern": [
       "resources",
-      "branding",
-      ".git",
-      ".github"
-    ]
+      "branding"
+    ],
+
+    // Optional path to an explicit delphi-clean config file.
+    // Loaded at higher priority than delphi-clean.json but lower than the
+    // settings above. Useful for CI pipelines where config lives outside
+    // the repository tree.
+    // "configFile": "C:/ci/delphi-clean-ci.json"
   },
 
   "build": {

@@ -1,12 +1,11 @@
 {
   "root": ".",
   "clean": {
-    "enabled": true,
     "level": "standard",
-    "includeFiles": [
+    "includeFilePattern": [
       "*.res"
     ],
-    "excludeDirectories": [
+    "excludeDirectoryPattern": [
       "resources",
       "branding"
     ]

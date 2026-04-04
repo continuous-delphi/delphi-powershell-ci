@@ -10,8 +10,11 @@ function Get-DelphiCiConfig {
         [string]$Toolchain,
         [string]$BuildEngine,
         [string[]]$Defines,
-        [string[]]$CleanIncludeFiles,
-        [string[]]$CleanExcludeDirectories,
+        [ValidateSet('basic', 'standard', 'deep')]
+        [string]$CleanLevel,
+        [string[]]$CleanIncludeFilePattern,
+        [string[]]$CleanExcludeDirectoryPattern,
+        [string]$CleanConfigFile,
         [string]$TestProjectFile,
         [string]$TestExecutable,
         [string[]]$TestDefines,
@@ -22,23 +25,25 @@ function Get-DelphiCiConfig {
     )
 
     $overrides = @{}
-    if ($PSBoundParameters.ContainsKey('Root'))               { $overrides['Root']               = $Root }
-    if ($PSBoundParameters.ContainsKey('ProjectFile'))        { $overrides['ProjectFile']        = $ProjectFile }
-    if ($PSBoundParameters.ContainsKey('Steps'))              { $overrides['Steps']              = $Steps }
-    if ($PSBoundParameters.ContainsKey('Platform'))           { $overrides['Platform']           = $Platform }
-    if ($PSBoundParameters.ContainsKey('Configuration'))      { $overrides['Configuration']      = $Configuration }
-    if ($PSBoundParameters.ContainsKey('Toolchain'))          { $overrides['Toolchain']          = $Toolchain }
-    if ($PSBoundParameters.ContainsKey('BuildEngine'))        { $overrides['BuildEngine']        = $BuildEngine }
-    if ($PSBoundParameters.ContainsKey('Defines'))                  { $overrides['Defines']                  = $Defines }
-    if ($PSBoundParameters.ContainsKey('CleanIncludeFiles'))        { $overrides['CleanIncludeFiles']        = $CleanIncludeFiles }
-    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectories'))  { $overrides['CleanExcludeDirectories']  = $CleanExcludeDirectories }
-    if ($PSBoundParameters.ContainsKey('TestProjectFile'))          { $overrides['TestProjectFile']          = $TestProjectFile }
-    if ($PSBoundParameters.ContainsKey('TestExecutable'))     { $overrides['TestExecutable']     = $TestExecutable }
-    if ($PSBoundParameters.ContainsKey('TestDefines'))        { $overrides['TestDefines']        = $TestDefines }
-    if ($PSBoundParameters.ContainsKey('TestArguments'))      { $overrides['TestArguments']      = $TestArguments }
-    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds')) { $overrides['TestTimeoutSeconds'] = $TestTimeoutSeconds }
-    if ($PSBoundParameters.ContainsKey('TestBuild'))          { $overrides['TestBuild']          = $TestBuild }
-    if ($PSBoundParameters.ContainsKey('TestRun'))            { $overrides['TestRun']            = $TestRun }
+    if ($PSBoundParameters.ContainsKey('Root'))                         { $overrides['Root']                         = $Root }
+    if ($PSBoundParameters.ContainsKey('ProjectFile'))                  { $overrides['ProjectFile']                  = $ProjectFile }
+    if ($PSBoundParameters.ContainsKey('Steps'))                        { $overrides['Steps']                        = $Steps }
+    if ($PSBoundParameters.ContainsKey('Platform'))                     { $overrides['Platform']                     = $Platform }
+    if ($PSBoundParameters.ContainsKey('Configuration'))                { $overrides['Configuration']                = $Configuration }
+    if ($PSBoundParameters.ContainsKey('Toolchain'))                    { $overrides['Toolchain']                    = $Toolchain }
+    if ($PSBoundParameters.ContainsKey('BuildEngine'))                  { $overrides['BuildEngine']                  = $BuildEngine }
+    if ($PSBoundParameters.ContainsKey('Defines'))                      { $overrides['Defines']                      = $Defines }
+    if ($PSBoundParameters.ContainsKey('CleanLevel'))                   { $overrides['CleanLevel']                   = $CleanLevel }
+    if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))      { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
+    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern')) { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
+    if ($PSBoundParameters.ContainsKey('CleanConfigFile'))              { $overrides['CleanConfigFile']              = $CleanConfigFile }
+    if ($PSBoundParameters.ContainsKey('TestProjectFile'))              { $overrides['TestProjectFile']              = $TestProjectFile }
+    if ($PSBoundParameters.ContainsKey('TestExecutable'))               { $overrides['TestExecutable']               = $TestExecutable }
+    if ($PSBoundParameters.ContainsKey('TestDefines'))                  { $overrides['TestDefines']                  = $TestDefines }
+    if ($PSBoundParameters.ContainsKey('TestArguments'))                { $overrides['TestArguments']                = $TestArguments }
+    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds'))           { $overrides['TestTimeoutSeconds']           = $TestTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('TestBuild'))                    { $overrides['TestBuild']                    = $TestBuild }
+    if ($PSBoundParameters.ContainsKey('TestRun'))                      { $overrides['TestRun']                      = $TestRun }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

@@ -32,10 +32,17 @@ function Invoke-DelphiCi {
         [string[]]$Defines,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string[]]$CleanIncludeFiles,
+        [ValidateSet('basic', 'standard', 'deep')]
+        [string]$CleanLevel,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string[]]$CleanExcludeDirectories,
+        [string[]]$CleanIncludeFilePattern,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CleanExcludeDirectoryPattern,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CleanConfigFile,
 
         [Parameter(ParameterSetName = 'Run')]
         [string]$TestProjectFile,
@@ -95,9 +102,11 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('Configuration'))    { $overrides['Configuration']    = $Configuration }
     if ($PSBoundParameters.ContainsKey('Toolchain'))        { $overrides['Toolchain']        = $Toolchain }
     if ($PSBoundParameters.ContainsKey('BuildEngine'))      { $overrides['BuildEngine']      = $BuildEngine }
-    if ($PSBoundParameters.ContainsKey('Defines'))                  { $overrides['Defines']                  = $Defines }
-    if ($PSBoundParameters.ContainsKey('CleanIncludeFiles'))        { $overrides['CleanIncludeFiles']        = $CleanIncludeFiles }
-    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectories'))  { $overrides['CleanExcludeDirectories']  = $CleanExcludeDirectories }
+    if ($PSBoundParameters.ContainsKey('Defines'))                      { $overrides['Defines']                      = $Defines }
+    if ($PSBoundParameters.ContainsKey('CleanLevel'))                   { $overrides['CleanLevel']                   = $CleanLevel }
+    if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))      { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
+    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern')) { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
+    if ($PSBoundParameters.ContainsKey('CleanConfigFile'))              { $overrides['CleanConfigFile']              = $CleanConfigFile }
     if ($PSBoundParameters.ContainsKey('TestProjectFile'))          { $overrides['TestProjectFile']          = $TestProjectFile }
     if ($PSBoundParameters.ContainsKey('TestExecutable'))       { $overrides['TestExecutable']       = $TestExecutable }
     if ($PSBoundParameters.ContainsKey('TestDefines'))          { $overrides['TestDefines']          = $TestDefines }
@@ -144,10 +153,11 @@ function Invoke-DelphiCi {
             switch ($step) {
                 'Clean' {
                     $result = Invoke-DelphiClean `
-                        -Root              $config.Root `
-                        -Level             $config.Clean.Level `
-                        -IncludeFiles      @($config.Clean.IncludeFiles) `
-                        -ExcludeDirectories @($config.Clean.ExcludeDirectories)
+                        -CleanRoot                   $config.Root `
+                        -CleanLevel                  $config.Clean.Level `
+                        -CleanIncludeFilePattern     @($config.Clean.IncludeFilePattern) `
+                        -CleanExcludeDirectoryPattern @($config.Clean.ExcludeDirectoryPattern) `
+                        -CleanConfigFile             $config.Clean.ConfigFile
                 }
                 'Build' {
                     $result = Invoke-DelphiBuild `

@@ -65,19 +65,24 @@ Describe 'Get-DelphiCiConfig' {
             $config.Build.Toolchain.Version | Should -Be 'Latest'
         }
 
-        It 'returns basic clean level' {
+        It 'returns basic as the default clean level' {
             $config = Get-DelphiCiConfig
             $config.Clean.Level | Should -Be 'basic'
         }
 
-        It 'returns empty clean include files array' {
+        It 'returns empty CleanIncludeFilePattern array by default' {
             $config = Get-DelphiCiConfig
-            $config.Clean.IncludeFiles | Should -BeNullOrEmpty
+            $config.Clean.IncludeFilePattern | Should -BeNullOrEmpty
         }
 
-        It 'returns empty clean exclude directories array' {
+        It 'returns empty CleanExcludeDirectoryPattern array by default' {
             $config = Get-DelphiCiConfig
-            $config.Clean.ExcludeDirectories | Should -BeNullOrEmpty
+            $config.Clean.ExcludeDirectoryPattern | Should -BeNullOrEmpty
+        }
+
+        It 'returns empty CleanConfigFile by default' {
+            $config = Get-DelphiCiConfig
+            $config.Clean.ConfigFile | Should -BeNullOrEmpty
         }
 
         It 'returns empty defines array' {
@@ -130,6 +135,30 @@ Describe 'Get-DelphiCiConfig' {
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
             $config.Clean.Level | Should -Be 'standard'
+        }
+
+        It 'loads clean includeFilePattern from config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ includeFilePattern = @('*.res', '*.mab') } } | ConvertTo-Json)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Clean.IncludeFilePattern | Should -Be @('*.res', '*.mab')
+        }
+
+        It 'loads clean excludeDirectoryPattern from config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ excludeDirectoryPattern = @('vendor', 'assets') } } | ConvertTo-Json)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Clean.ExcludeDirectoryPattern | Should -Be @('vendor', 'assets')
+        }
+
+        It 'loads clean configFile from config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ configFile = 'C:/ci/delphi-clean-ci.json' } } | ConvertTo-Json)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Clean.ConfigFile | Should -Be 'C:/ci/delphi-clean-ci.json'
         }
 
         It 'loads toolchain version from config file' {
@@ -209,10 +238,12 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win64' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Configuration | Should -Be 'Debug'
-            $config.Build.Engine        | Should -Be 'MSBuild'
-            $config.Clean.Level         | Should -Be 'basic'
-            $config.Steps               | Should -Be @('Clean', 'Build')
+            $config.Build.Configuration        | Should -Be 'Debug'
+            $config.Build.Engine               | Should -Be 'MSBuild'
+            $config.Clean.Level                | Should -Be 'basic'
+            $config.Clean.IncludeFilePattern   | Should -BeNullOrEmpty
+            $config.Clean.ConfigFile           | Should -BeNullOrEmpty
+            $config.Steps                      | Should -Be @('Clean', 'Build')
         }
 
     }
@@ -344,14 +375,24 @@ Describe 'Get-DelphiCiConfig' {
             $config.Build.Defines | Should -Be @('CI')
         }
 
-        It '-CleanIncludeFiles overrides default empty include files' {
-            $config = Get-DelphiCiConfig -CleanIncludeFiles '*.res', '*.mab'
-            $config.Clean.IncludeFiles | Should -Be @('*.res', '*.mab')
+        It '-CleanLevel overrides default basic level' {
+            $config = Get-DelphiCiConfig -CleanLevel 'deep'
+            $config.Clean.Level | Should -Be 'deep'
         }
 
-        It '-CleanExcludeDirectories overrides default empty exclude directories' {
-            $config = Get-DelphiCiConfig -CleanExcludeDirectories 'vendor', 'assets'
-            $config.Clean.ExcludeDirectories | Should -Be @('vendor', 'assets')
+        It '-CleanIncludeFilePattern overrides default empty array' {
+            $config = Get-DelphiCiConfig -CleanIncludeFilePattern '*.res', '*.mab'
+            $config.Clean.IncludeFilePattern | Should -Be @('*.res', '*.mab')
+        }
+
+        It '-CleanExcludeDirectoryPattern overrides default empty array' {
+            $config = Get-DelphiCiConfig -CleanExcludeDirectoryPattern 'vendor', 'assets'
+            $config.Clean.ExcludeDirectoryPattern | Should -Be @('vendor', 'assets')
+        }
+
+        It '-CleanConfigFile overrides default empty CleanConfigFile' {
+            $config = Get-DelphiCiConfig -CleanConfigFile 'C:/ci/delphi-clean-ci.json'
+            $config.Clean.ConfigFile | Should -Be 'C:/ci/delphi-clean-ci.json'
         }
 
         It '-TestProjectFile overrides default null test project file' {

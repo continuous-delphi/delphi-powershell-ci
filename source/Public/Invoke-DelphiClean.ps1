@@ -1,28 +1,37 @@
 function Invoke-DelphiClean {
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [string]$Root = (Get-Location).Path,
+        [string]$CleanRoot = (Get-Location).Path,
 
         [ValidateSet('basic', 'standard', 'deep')]
-        [string]$Level = 'basic',
+        [string]$CleanLevel = 'basic',
 
-        [string[]]$IncludeFiles = @(),
+        [string[]]$CleanIncludeFilePattern = @(),
 
-        [string[]]$ExcludeDirectories = @()
+        [string[]]$CleanExcludeDirectoryPattern = @(),
+
+        # Optional path to an explicit delphi-clean config file, forwarded as
+        # -ConfigFile to delphi-clean.ps1. Loaded at higher priority than
+        # delphi-clean.json but lower than the CLI parameters above.
+        [string]$CleanConfigFile = ''
     )
 
     $tool      = 'delphi-clean.ps1'
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-    Write-DelphiCiMessage -Level 'STEP' -Message "Clean ($Level) -- $Root"
+    Write-DelphiCiMessage -Level 'STEP' -Message "Clean ($CleanLevel) -- $CleanRoot"
 
-    $toolArgs = [System.Collections.Generic.List[string]]@('-Level', $Level, '-RootPath', $Root)
-    foreach ($p in $IncludeFiles)      { $toolArgs.Add('-IncludeFilePattern'); $toolArgs.Add($p) }
-    foreach ($p in $ExcludeDirectories){ $toolArgs.Add('-ExcludeDirPattern');  $toolArgs.Add($p) }
-    $toolArgs = $toolArgs.ToArray()
+    $toolArgs = [System.Collections.Generic.List[string]]@('-RootPath', $CleanRoot, '-Level', $CleanLevel)
+    foreach ($p in $CleanIncludeFilePattern)      { $toolArgs.Add('-IncludeFilePattern');      $toolArgs.Add($p) }
+    foreach ($p in $CleanExcludeDirectoryPattern) { $toolArgs.Add('-ExcludeDirectoryPattern'); $toolArgs.Add($p) }
+    if (-not [string]::IsNullOrEmpty($CleanConfigFile)) {
+        $toolArgs.Add('-ConfigFile')
+        $toolArgs.Add($CleanConfigFile)
+    }
+    $toolArgs   = $toolArgs.ToArray()
     $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true }
 
-    if ($PSCmdlet.ShouldProcess($Root, "Clean ($Level)")) {
+    if ($PSCmdlet.ShouldProcess($CleanRoot, "Clean ($CleanLevel)")) {
         $toolResult = Invoke-BundledTool -ToolName $tool -Arguments $toolArgs
     }
 
