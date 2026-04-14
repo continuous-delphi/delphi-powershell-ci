@@ -242,6 +242,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes -ExeOutputDir when specified' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -ExeOutputDir 'C:\Out\Bin'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-ExeOutputDir' -and $BuildArgs -contains 'C:\Out\Bin'
+                }
+            }
+
+            It 'does not pass -ExeOutputDir when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-ExeOutputDir'
+                }
+            }
+
         }
 
         Context 'engine routing' {

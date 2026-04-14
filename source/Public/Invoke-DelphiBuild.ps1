@@ -13,7 +13,11 @@ function Invoke-DelphiBuild {
         [ValidateSet('MSBuild', 'DCCBuild')]
         [string]$BuildEngine = 'MSBuild',
 
-        [string[]]$Defines = @()
+        [string[]]$Defines = @(),
+
+        [string]$ExeOutputDir,
+
+        [string]$DcuOutputDir
     )
 
     # Normalise project file extension to what the engine expects.
@@ -43,6 +47,14 @@ function Invoke-DelphiBuild {
         '-Config',      $Configuration,
         '-ShowOutput'
     )
+    if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) {
+        $buildArgs.Add('-ExeOutputDir')
+        $buildArgs.Add($ExeOutputDir)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) {
+        $buildArgs.Add('-DcuOutputDir')
+        $buildArgs.Add($DcuOutputDir)
+    }
     foreach ($d in $Defines) {
         $buildArgs.Add('-Define')
         $buildArgs.Add($d)
@@ -65,6 +77,7 @@ function Invoke-DelphiBuild {
 
     return [PSCustomObject]@{
         StepName     = 'Build'
+        Output       = $toolResult.Output
         Success      = $toolResult.Success
         Duration     = $stopwatch.Elapsed
         ExitCode     = $toolResult.ExitCode
@@ -74,6 +87,5 @@ function Invoke-DelphiBuild {
         Warnings     = $toolResult.Warnings
         Errors       = $toolResult.Errors
         ExeOutputDir = $toolResult.ExeOutputDir
-        Output       = $toolResult.Output
     }
 }
