@@ -114,7 +114,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.6.0'
+$script:Version = '0.7.0'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -339,6 +339,7 @@ try {
   $counts = Get-BuildCount -Output $buildResult.Output
 
   $resultObj = [pscustomobject]@{
+    output         = $buildResult.Output
     scriptVersion  = $script:Version
     projectFile    = $resolvedProjectFile
     platform       = $Platform
@@ -354,7 +355,6 @@ try {
     success        = ($buildResult.ExitCode -eq 0)
     warnings       = $counts.Warnings
     errors         = $counts.Errors
-    output         = $buildResult.Output
   }
 
   if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
