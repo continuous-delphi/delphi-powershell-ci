@@ -32,8 +32,16 @@ function Invoke-DelphiCi {
         [string[]]$Defines,
 
         [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
+        [string]$BuildVerbosity,
+
+        [Parameter(ParameterSetName = 'Run')]
         [ValidateSet('basic', 'standard', 'deep')]
         [string]$CleanLevel,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('detailed', 'summary', 'quiet')]
+        [string]$CleanOutputLevel,
 
         [Parameter(ParameterSetName = 'Run')]
         [string[]]$CleanIncludeFilePattern,
@@ -103,7 +111,9 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('Toolchain'))        { $overrides['Toolchain']        = $Toolchain }
     if ($PSBoundParameters.ContainsKey('BuildEngine'))      { $overrides['BuildEngine']      = $BuildEngine }
     if ($PSBoundParameters.ContainsKey('Defines'))                      { $overrides['Defines']                      = $Defines }
+    if ($PSBoundParameters.ContainsKey('BuildVerbosity'))               { $overrides['BuildVerbosity']               = $BuildVerbosity }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                   { $overrides['CleanLevel']                   = $CleanLevel }
+    if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))            { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))      { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
     if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern')) { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
     if ($PSBoundParameters.ContainsKey('CleanConfigFile'))              { $overrides['CleanConfigFile']              = $CleanConfigFile }
@@ -155,18 +165,20 @@ function Invoke-DelphiCi {
                     $result = Invoke-DelphiClean `
                         -CleanRoot                   $config.Root `
                         -CleanLevel                  $config.Clean.Level `
+                        -CleanOutputLevel            $config.Clean.OutputLevel `
                         -CleanIncludeFilePattern     @($config.Clean.IncludeFilePattern) `
                         -CleanExcludeDirectoryPattern @($config.Clean.ExcludeDirectoryPattern) `
                         -CleanConfigFile             $config.Clean.ConfigFile
                 }
                 'Build' {
                     $result = Invoke-DelphiBuild `
-                        -ProjectFile   $resolvedProject `
-                        -Platform      $resolvedBuildPlatform `
-                        -Configuration $config.Build.Configuration `
-                        -Toolchain     $config.Build.Toolchain.Version `
-                        -BuildEngine   $config.Build.Engine `
-                        -Defines       @($config.Build.Defines)
+                        -ProjectFile    $resolvedProject `
+                        -Platform       $resolvedBuildPlatform `
+                        -Configuration  $config.Build.Configuration `
+                        -Toolchain      $config.Build.Toolchain.Version `
+                        -BuildEngine    $config.Build.Engine `
+                        -Defines        @($config.Build.Defines) `
+                        -BuildVerbosity $config.Build.Verbosity
                 }
                 'Test' {
                     $result = Invoke-DelphiTest `

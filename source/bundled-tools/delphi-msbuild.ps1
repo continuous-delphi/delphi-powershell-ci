@@ -213,6 +213,7 @@ function Invoke-MsbuildProject {
     "/t:$Target",
     "/p:Config=$Config",
     "/p:Platform=$Platform",
+    "/nologo",
     "/v:$Verbosity"
   )
 

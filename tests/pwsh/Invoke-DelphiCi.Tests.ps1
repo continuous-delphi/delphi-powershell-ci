@@ -20,6 +20,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Steps       = $Steps
             Clean       = [PSCustomObject]@{
                 Level                   = 'basic'
+                OutputLevel             = 'detailed'
                 IncludeFilePattern      = @()
                 ExcludeDirectoryPattern = @()
                 ConfigFile              = ''
@@ -30,6 +31,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Platform      = 'Win32'
                 Configuration = 'Debug'
                 Defines       = @()
+                Verbosity     = 'normal'
             }
             Test        = [PSCustomObject]@{
                 TestProjectFile  = 'C:\Fake\Tests\App.Tests.dproj'
@@ -249,7 +251,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanLevel from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -259,7 +261,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanIncludeFilePattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -271,7 +273,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanExcludeDirectoryPattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = '' }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -283,7 +285,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanConfigFile from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json' }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -297,7 +299,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win64'; Configuration = 'Debug'; Defines = @()
+                        Platform = 'Win64'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
                     }
                     $cfg
                 }
@@ -310,7 +312,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Release'; Defines = @()
+                        Platform = 'Win32'; Configuration = 'Release'; Defines = @(); Verbosity = 'normal'
                     }
                     $cfg
                 }
@@ -323,7 +325,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @('CI', 'RELEASE_BUILD')
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @('CI', 'RELEASE_BUILD'); Verbosity = 'normal'
                     }
                     $cfg
                 }
@@ -331,6 +333,19 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter {
                     $Defines -contains 'CI' -and $Defines -contains 'RELEASE_BUILD'
                 }
+            }
+
+            It 'passes BuildVerbosity from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'minimal'
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $BuildVerbosity -eq 'minimal' }
             }
 
             It 'passes TestExecutable from config to Invoke-DelphiTest' {
@@ -430,7 +445,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = $null; Configuration = 'Debug'; Defines = @()
+                        Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
                     }
                     $cfg
                 }
@@ -450,7 +465,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = $null; Configuration = 'Debug'; Defines = @()
+                        Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
                     }
                     $cfg
                 }

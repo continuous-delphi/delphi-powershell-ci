@@ -256,6 +256,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes -Verbosity normal by default' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Verbosity' -and $BuildArgs -contains 'normal'
+                }
+            }
+
+            It 'passes -Verbosity minimal when specified' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -BuildVerbosity 'minimal'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Verbosity' -and $BuildArgs -contains 'minimal'
+                }
+            }
+
         }
 
         Context 'engine routing' {

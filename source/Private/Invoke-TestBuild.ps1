@@ -35,6 +35,7 @@ function Invoke-TestBuild {
         '-ProjectFile', $TestProjectFile,
         '-Platform',    $Platform,
         '-Config',      $Configuration,
+        '-Verbosity',   'quiet', 
         '-ShowOutput'
     )
     foreach ($d in $Defines) {

@@ -17,7 +17,10 @@ function Invoke-DelphiBuild {
 
         [string]$ExeOutputDir,
 
-        [string]$DcuOutputDir
+        [string]$DcuOutputDir,
+
+        [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
+        [string]$BuildVerbosity = 'normal'
     )
 
     # Normalise project file extension to what the engine expects.
@@ -45,6 +48,7 @@ function Invoke-DelphiBuild {
         '-ProjectFile', $ProjectFile,
         '-Platform',    $Platform,
         '-Config',      $Configuration,
+        '-Verbosity',   $BuildVerbosity,
         '-ShowOutput'
     )
     if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) {

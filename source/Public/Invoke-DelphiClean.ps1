@@ -6,6 +6,9 @@ function Invoke-DelphiClean {
         [ValidateSet('basic', 'standard', 'deep')]
         [string]$CleanLevel = 'basic',
 
+        [ValidateSet('detailed', 'summary', 'quiet')]
+        [string]$CleanOutputLevel = 'detailed',
+
         [string[]]$CleanIncludeFilePattern = @(),
 
         [string[]]$CleanExcludeDirectoryPattern = @(),
@@ -21,7 +24,7 @@ function Invoke-DelphiClean {
 
     Write-DelphiCiMessage -Level 'STEP' -Message "Clean ($CleanLevel) -- $CleanRoot"
 
-    $toolArgs = [System.Collections.Generic.List[string]]@('-RootPath', $CleanRoot, '-Level', $CleanLevel)
+    $toolArgs = [System.Collections.Generic.List[string]]@('-RootPath', $CleanRoot, '-Level', $CleanLevel, '-OutputLevel', $CleanOutputLevel)
     foreach ($p in $CleanIncludeFilePattern)      { $toolArgs.Add('-IncludeFilePattern');      $toolArgs.Add($p) }
     foreach ($p in $CleanExcludeDirectoryPattern) { $toolArgs.Add('-ExcludeDirectoryPattern'); $toolArgs.Add($p) }
     if (-not [string]::IsNullOrEmpty($CleanConfigFile)) {

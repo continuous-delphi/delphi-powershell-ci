@@ -13,11 +13,13 @@ function Resolve-DelphiCiConfig {
     $cleanIncludeFilePattern     = @()
     $cleanExcludeDirectoryPattern = @()
     $cleanConfigFile             = ''
+    $cleanOutputLevel            = 'detailed'
     $buildEngine   = 'MSBuild'
     $buildToolchainVersion = 'Latest'
     $buildPlatform = $null
     $buildConfig   = 'Debug'
     $buildDefines  = @()
+    $buildVerbosity = 'normal'
 
     $testProjectFile    = $null
     $testExecutable     = $null
@@ -58,6 +60,10 @@ function Resolve-DelphiCiConfig {
                 -not [string]::IsNullOrWhiteSpace($c.configFile)) {
                 $cleanConfigFile = $c.configFile
             }
+            if ($c.PSObject.Properties['outputLevel'] -and
+                -not [string]::IsNullOrWhiteSpace($c.outputLevel)) {
+                $cleanOutputLevel = $c.outputLevel
+            }
         }
 
         if ($json.PSObject.Properties['build']) {
@@ -78,6 +84,8 @@ function Resolve-DelphiCiConfig {
             if ($b.PSObject.Properties['configuration'] -and
                 -not [string]::IsNullOrWhiteSpace($b.configuration)) { $buildConfig   = $b.configuration }
             if ($b.PSObject.Properties['defines'])                   { $buildDefines  = @($b.defines) }
+            if ($b.PSObject.Properties['verbosity'] -and
+                -not [string]::IsNullOrWhiteSpace($b.verbosity))    { $buildVerbosity = $b.verbosity }
         }
 
         if ($json.PSObject.Properties['test']) {
@@ -124,6 +132,10 @@ function Resolve-DelphiCiConfig {
         -not [string]::IsNullOrWhiteSpace($Overrides['CleanConfigFile'])) {
         $cleanConfigFile = $Overrides['CleanConfigFile']
     }
+    if ($Overrides.ContainsKey('CleanOutputLevel') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CleanOutputLevel'])) {
+        $cleanOutputLevel = $Overrides['CleanOutputLevel']
+    }
     if ($Overrides.ContainsKey('Platform') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['Platform'])) {
         $buildPlatform = $Overrides['Platform']
@@ -143,6 +155,10 @@ function Resolve-DelphiCiConfig {
     if ($Overrides.ContainsKey('Defines') -and $null -ne $Overrides['Defines']) {
         $buildDefines = @($Overrides['Defines'] | ForEach-Object { $_ -split ',' } |
                           ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+    }
+    if ($Overrides.ContainsKey('BuildVerbosity') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['BuildVerbosity'])) {
+        $buildVerbosity = $Overrides['BuildVerbosity']
     }
     if ($Overrides.ContainsKey('TestProjectFile') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['TestProjectFile'])) {
@@ -178,15 +194,23 @@ function Resolve-DelphiCiConfig {
     $root = [System.IO.Path]::GetFullPath($root)
 
     # Validate known enum-like fields so errors surface early
-    $validLevels  = @('basic', 'standard', 'deep')
-    $validEngines = @('MSBuild', 'DCCBuild')
-    $validSteps   = @('Clean', 'Build', 'Test')
+    $validLevels        = @('basic', 'standard', 'deep')
+    $validOutputLevels  = @('detailed', 'summary', 'quiet')
+    $validEngines       = @('MSBuild', 'DCCBuild')
+    $validVerbosities   = @('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')
+    $validSteps         = @('Clean', 'Build', 'Test')
 
     if ($cleanLevel -notin $validLevels) {
         throw "Invalid clean level '$cleanLevel'. Valid values: $($validLevels -join ', ')"
     }
+    if ($cleanOutputLevel -notin $validOutputLevels) {
+        throw "Invalid clean output level '$cleanOutputLevel'. Valid values: $($validOutputLevels -join ', ')"
+    }
     if ($buildEngine -notin $validEngines) {
         throw "Invalid build engine '$buildEngine'. Valid values: $($validEngines -join ', ')"
+    }
+    if ($buildVerbosity -notin $validVerbosities) {
+        throw "Invalid build verbosity '$buildVerbosity'. Valid values: $($validVerbosities -join ', ')"
     }
     foreach ($step in $steps) {
         if ($step -notin $validSteps) {
@@ -200,6 +224,7 @@ function Resolve-DelphiCiConfig {
         Steps       = $steps
         Clean       = [PSCustomObject]@{
             Level                   = $cleanLevel
+            OutputLevel             = $cleanOutputLevel
             IncludeFilePattern      = $cleanIncludeFilePattern
             ExcludeDirectoryPattern = $cleanExcludeDirectoryPattern
             ConfigFile              = $cleanConfigFile
@@ -212,6 +237,7 @@ function Resolve-DelphiCiConfig {
             Platform      = $buildPlatform
             Configuration = $buildConfig
             Defines       = $buildDefines
+            Verbosity     = $buildVerbosity
         }
         Test        = [PSCustomObject]@{
             TestProjectFile  = $testProjectFile
