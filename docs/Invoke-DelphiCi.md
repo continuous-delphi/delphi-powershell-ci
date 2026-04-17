@@ -1,8 +1,8 @@
 # Invoke-DelphiCi
 
-Primary orchestration command. Loads configuration, discovers the project if
-needed, then runs the requested steps (Clean, Build, and/or Test) in order.
-Always returns a structured result object.
+Primary orchestration command. Loads configuration, then runs the requested
+step types (Clean, Build, and/or Test) in order. Each step type can have
+multiple jobs. Always returns a structured result object.
 
 ---
 
@@ -14,8 +14,8 @@ Run mode (default):
 Invoke-DelphiCi
     [-ConfigFile <String>]
     [-Root <String>]
-    [-ProjectFile <String>]
     [-Steps <String[]>]
+    [-ProjectFile <String>]
     [-Platform <String>]
     [-Configuration <String>]
     [-Toolchain <String>]
@@ -35,384 +35,76 @@ Invoke-DelphiCi
     [-CleanConfigFile <String>]
     [-CleanRecycleBin <Bool>]
     [-CleanCheck <Bool>]
-    [-TestProjectFile <String>]
-    [-TestExecutable <String>]
-    [-TestDefines <String[]>]
+    [-TestExeFile <String>]
     [-TestArguments <String[]>]
     [-TestTimeoutSeconds <Int>]
-    [-TestBuild <Bool>]
-    [-TestRun <Bool>]
     [<CommonParameters>]
 ```
 
 Version info mode:
 
 ```powershell
-Invoke-DelphiCi
-    -VersionInfo
-    [<CommonParameters>]
+Invoke-DelphiCi -VersionInfo
 ```
+
+---
+
+## Jobs model
+
+Each step type (Clean, Build, Test) supports multiple **jobs** defined in
+the config file. Jobs within a step run sequentially. Build jobs support
+**matrix expansion** -- `platform` and `configuration` can be arrays,
+producing a cross product of builds.
+
+When no jobs are defined:
+- **Clean** creates a default job from the clean defaults + root.
+- **Build** throws an error (a project file is required).
+- **Test** throws an error (a test executable is required).
+
+For CLI shorthand, `-ProjectFile` creates a single build job and
+`-TestExeFile` creates a single test job.
 
 ---
 
 ## Parameters
 
-### -VersionInfo
-
-Reports the module version and the version of each bundled tool. Mutually
-exclusive with all Run-mode parameters. Always returns a structured result object.
-
-```
-Type:     SwitchParameter
-Required: Yes (in VersionInfo parameter set)
-```
-
 ### -ConfigFile
 
-Path to a JSON configuration file. All fields are optional; absent fields
-fall back to built-in defaults. See `Get-DelphiCiConfig` for the supported
-schema.
-
-```
-Type:     String
-Required: No
-```
+Path to a JSON configuration file. See the JSON config section below.
 
 ### -Root
 
-Root directory used for project discovery when no `-ProjectFile` is
-given. Also passed as the working root to the Clean step.
-
-When a config file is supplied and contains a `root` field, that value is
-used if `-Root` is not explicitly bound. An explicit `-Root` parameter
-always takes precedence.
-
-```
-Type:     String
-Required: No
-Default:  Current working directory (or config file directory when -ConfigFile is used)
-```
-
-### -ProjectFile
-
-Explicit path to the `.dproj` file to build. Skips project discovery.
-
-When absent, discovery runs against the resolved root:
-1. `<root>` -- if exactly one `.dproj` is present
-2. `<root>\source` -- fallback
-3. `<root>\..\source` -- tools-folder convention fallback
-4. Fails with a clear error if no `.dproj` is found, or if more than one
-   is found and no explicit file was given.
-
-```
-Type:     String
-Required: No
-```
+Root directory used for project discovery and as the default clean root.
 
 ### -Steps
 
-One or more step names to run, in order. Valid values: `Clean`, `Build`, `Test`.
+Step types to run, in order. Valid values: `Clean`, `Build`, `Test`.
+Default: `Clean, Build`.
 
-```
-Type:     String[]
-Required: No
-Default:  Clean, Build
-```
+### -ProjectFile
 
-### -Platform
+CLI shorthand: creates a single build job with this project file. Overrides
+any `build.jobs` in the config file.
 
-Target platform. Overrides the config file value.
+### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace
 
-When not supplied, each step resolves its platform independently: Build reads
-from the main project file; Test reads from the test project file. Both fall
-back to `Win32` when the project has no active platform set, or when the
-engine is `DCCBuild`.
+Build defaults. Apply to all build jobs that do not override these fields.
+See `Invoke-DelphiBuild` for descriptions.
 
-```
-Type:     String
-Required: No
-Default:  auto (resolved per step from the respective project file)
-```
+### -CleanLevel, -CleanOutputLevel, -CleanIncludeFilePattern, -CleanExcludeDirectoryPattern, -CleanConfigFile, -CleanRecycleBin, -CleanCheck
 
-### -Configuration
+Clean defaults. Apply to all clean jobs that do not override these fields.
+See `Invoke-DelphiClean` for descriptions.
 
-MSBuild configuration. Overrides the config file value.
+### -TestExeFile
 
-```
-Type:     String
-Required: No
-Default:  Debug
-```
+CLI shorthand: creates a single test job with this executable path.
+Overrides any `test.jobs` in the config file.
 
-### -Toolchain
+### -TestArguments, -TestTimeoutSeconds
 
-Delphi toolchain version. `Latest` detects the highest ready installation;
-any other value (e.g. `VER370`, `Delphi 13`) pins to that version.
-Overrides the config file value.
-
-```
-Type:     String
-Required: No
-Default:  Latest
-```
-
-### -BuildEngine
-
-Build engine to invoke. Valid values: `MSBuild`, `DCCBuild`.
-
-```
-Type:     String
-Required: No
-Default:  MSBuild
-```
-
-### -Defines
-
-Additional conditional compiler defines passed to the Build step. Overrides
-any `defines` array present in the JSON config file. Values are appended to
-the project's existing defines -- they do not replace them.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -BuildVerbosity
-
-Controls the verbosity of the build tool output.
-
-```
-Type:     String
-Accepted: quiet, minimal, normal, detailed, diagnostic
-Required: No
-Default:  normal
-```
-
-### -BuildTarget
-
-MSBuild target to run. `Clean` is MSBuild-only; `DCCBuild` accepts
-`Build` and `Rebuild`. The CI `Clean` step (`delphi-clean.ps1`) is
-unrelated to MSBuild's `Clean` target.
-
-```
-Type:     String
-Accepted: Build, Clean, Rebuild
-Required: No
-Default:  Build
-```
-
-### -ExeOutputDir
-
-Output directory for the compiled executable or DLL. Passed to the build
-tool as `/p:DCC_ExeOutput` (MSBuild) or `-E` (DCCBuild).
-
-```
-Type:     String
-Required: No
-Default:  (project default)
-```
-
-### -DcuOutputDir
-
-Output directory for compiled DCU files. Passed to the build tool as
-`/p:DCC_DcuOutput` (MSBuild) or `-N0` (DCCBuild).
-
-```
-Type:     String
-Required: No
-Default:  (project default)
-```
-
-### -UnitSearchPath
-
-Additional unit search paths. Appended to the project's existing paths.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -IncludePath
-
-Additional include file search paths (DCC `-I` flag). DCCBuild-only.
-Rejected with a clear error when `BuildEngine` is `MSBuild`.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -Namespace
-
-Unit scope names for resolving unqualified unit names (DCC `-NS` flag).
-DCCBuild-only. Rejected with a clear error when `BuildEngine` is `MSBuild`.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -CleanLevel
-
-Cleanup intensity level for the Clean step.
-
-```
-Type:     String
-Accepted: basic, standard, deep
-Required: No
-Default:  basic
-```
-
-### -CleanOutputLevel
-
-Controls the amount of plain-text output produced by the Clean step.
-
-```
-Type:     String
-Accepted: detailed, summary, quiet
-Required: No
-Default:  detailed
-```
-
-### -CleanIncludeFilePattern
-
-Additional file glob patterns forwarded to the Clean step as
-`-IncludeFilePattern`. Files matching these patterns are deleted in addition
-to the standard level set (e.g. `*.res`, `*.mab`).
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -CleanExcludeDirectoryPattern
-
-Directory glob patterns forwarded to the Clean step as `-ExcludeDirectoryPattern`.
-Directories whose names match are skipped entirely during cleanup
-(e.g. `vendor`, `assets`).
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -CleanConfigFile
-
-Path to an explicit `delphi-clean` JSON configuration file. See
-`Invoke-DelphiClean` for details.
-
-```
-Type:     String
-Required: No
-Default:  (empty)
-```
-
-### -CleanRecycleBin
-
-When `$true`, sends removed items to the platform recycle bin / trash
-instead of deleting them permanently.
-
-```
-Type:     Bool
-Required: No
-Default:  $false
-```
-
-### -CleanCheck
-
-When `$true`, runs the Clean step in audit-only mode. Scans for artifacts
-but never deletes. Returns a failing exit code when artifacts are present.
-
-```
-Type:     Bool
-Required: No
-Default:  $false
-```
-
-### -TestProjectFile
-
-Explicit path to the test `.dproj` or `.dpr` file. When absent, discovery
-searches `<root>\tests\` then `<root>` for a project whose name starts or
-ends with `Tests`.
-
-```
-Type:     String
-Required: No
-Default:  (auto-discover)
-```
-
-### -TestExecutable
-
-Explicit path to the test `.exe`. When supplied, skips the standard
-derivation (`[TestProjectDir]\[Platform]\[Config]\[BaseName].exe`).
-Use when the project overrides `DCC_ExeOutput` or places output in a
-non-default location.
-
-```
-Type:     String
-Required: No
-Default:  (auto-derive from test project file, platform, and configuration)
-```
-
-### -TestDefines
-
-Conditional compiler defines passed to the test project build. DUnitX
-projects typically require `CI` here to activate the headless console runner
-instead of the TestInsight IDE runner. Not injected automatically.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -TestArguments
-
-Extra command-line arguments forwarded to the test executable at runtime.
-
-```
-Type:     String[]
-Required: No
-Default:  (empty, or config file value)
-```
-
-### -TestTimeoutSeconds
-
-Maximum seconds the test process may run before it is killed. If killed,
-the step fails with exit code `-1`.
-
-```
-Type:     Int
-Required: No
-Default:  10
-```
-
-### -TestBuild
-
-Set to `$false` to skip building the test project and only run a previously
-built executable.
-
-```
-Type:     Bool
-Required: No
-Default:  $true
-```
-
-### -TestRun
-
-Set to `$false` to skip running the test executable and only build.
-
-```
-Type:     Bool
-Required: No
-Default:  $true
-```
+Test defaults. Apply to all test jobs that do not override these fields.
+See `Invoke-DelphiTest` for descriptions.
 
 ---
 
@@ -420,249 +112,112 @@ Default:  $true
 
 ### Run mode
 
-Returns a `PSCustomObject` with the following fields.
+| Field      | Type       | Notes |
+|-----------|------------|-------|
+| `Success` | Boolean    | `$true` when every job succeeded |
+| `Duration`| TimeSpan   | Wall-clock time for the entire run |
+| `Steps`   | Object[]   | One result per job that ran |
 
-| Field         | Type       | Notes |
-|--------------|------------|-------|
-| `Success`    | Boolean    | `$true` when every executed step succeeded |
-| `Duration`   | TimeSpan   | Wall-clock time for the entire run |
-| `ProjectFile`| String     | Resolved main project file path |
-| `Steps`      | Object[]   | One step result per step that ran (see below) |
-
-Execution stops at the first failing step. Steps that did not run are not
+Execution stops at the first failing job. Jobs that did not run are not
 included in the `Steps` array.
-
-Each Clean entry in `Steps`:
-
-| Field         | Type    | Notes |
-|--------------|---------|-------|
-| `StepName`   | String  | `Clean` |
-| `Success`    | Boolean | |
-| `Duration`   | TimeSpan | |
-| `ExitCode`   | Int     | |
-| `Tool`       | String  | |
-| `Message`    | String  | |
-| `ProjectFile`| String  | Always `$null` for Clean |
-
-Each Build entry in `Steps`:
-
-| Field         | Type    | Notes |
-|--------------|---------|-------|
-| `StepName`   | String  | `Build` |
-| `Success`    | Boolean | |
-| `Duration`   | TimeSpan | |
-| `ExitCode`   | Int     | |
-| `Tool`       | String  | |
-| `Message`    | String  | |
-| `ProjectFile`| String  | |
-| `Warnings`   | Int     | Warning count parsed from build output |
-| `Errors`     | Int     | Error count parsed from build output |
-| `ExeOutputDir`| String | Resolved output directory |
-| `Output`     | String  | Full build output text |
-
-Each Test entry in `Steps`:
-
-| Field            | Type    | Notes |
-|-----------------|---------|-------|
-| `StepName`      | String  | `Test` |
-| `Success`       | Boolean | |
-| `Duration`      | TimeSpan | |
-| `ExitCode`      | Int     | `-1` on timeout |
-| `Tool`          | String  | `test runner` |
-| `Message`       | String  | |
-| `TestProjectFile`| String | Resolved test project path |
-| `TestExecutable` | String | Derived EXE path; `$null` if build failed |
 
 ### VersionInfo mode
 
-Always returns a `PSCustomObject` with the following fields.
-
-| Field    | Type         | Notes |
-|---------|--------------|-------|
-| `Module` | PSCustomObject | `Name` (string) and `Version` (string) of the orchestration module |
-| `Tools`  | Object[]     | One entry per bundled tool (see below) |
-
-Each entry in `Tools`:
-
-| Field     | Type    | Notes |
-|----------|---------|-------|
-| `Name`    | String  | Tool file name without extension, e.g. `delphi-inspect` |
-| `Version` | String  | Reported version string, or `$null` if it could not be read |
-| `Present` | Boolean | `$true` if the tool file exists in the bundled-tools folder |
-| `Path`    | String  | Full path to the tool file |
+| Field    | Type           | Notes |
+|---------|----------------|-------|
+| `Module`| PSCustomObject | `Name` and `Version` of the module |
+| `Tools` | Object[]       | One entry per bundled tool |
 
 ---
 
-## JSON config equivalent
-
-A config file can supply any subset of these fields:
+## JSON config file
 
 ```json
 {
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "basic",
+    "level": "deep",
     "outputLevel": "detailed",
-    "includeFilePattern": ["*.res"],
-    "excludeDirectoryPattern": ["vendor"],
-    "configFile": "",
     "recycleBin": false,
-    "check": false
+    "check": false,
+    "jobs": [
+      { "name": "Repo clean", "root": "./" }
+    ]
   },
   "build": {
-    "projectFile": "source/MyApp.dproj",
     "engine": "MSBuild",
     "toolchain": { "version": "Latest" },
-    "platform": "Win32",
-    "configuration": "Debug",
-    "defines": [],
-    "verbosity": "normal",
-    "target": "Build",
-    "exeOutputDir": "",
-    "dcuOutputDir": "",
-    "unitSearchPath": [],
-    "includePath": [],
-    "namespace": []
+    "platform": "Win64",
+    "configuration": "Release",
+    "verbosity": "minimal",
+    "jobs": [
+      { "name": "Main App",
+        "projectFile": "source/MyApp.dproj" },
+      { "name": "Test project",
+        "projectFile": "test/MyApp.Tests.dproj",
+        "platform": ["Win32", "Win64"],
+        "configuration": ["Debug", "Release"],
+        "defines": ["CI"] }
+    ]
   },
   "test": {
-    "testProjectFile": "tests/MyApp.Tests.dproj",
-    "testExecutable": "tests/Win32/Debug/MyApp.Tests.exe",
-    "defines": ["CI"],
-    "arguments": [],
     "timeoutSeconds": 10,
-    "build": true,
-    "run": true
+    "jobs": [
+      { "name": "Tests Win32 Debug",
+        "testExeFile": "test/Win32/Debug/MyApp.Tests.exe" },
+      { "name": "Tests Win64 Release",
+        "testExeFile": "test/Win64/Release/MyApp.Tests.exe" }
+    ]
   }
 }
 ```
 
-`includePath` and `namespace` apply only when `engine` is `DCCBuild`.
+### Key concepts
 
-CLI parameters always take precedence over config file values, which take
-precedence over built-in defaults.
+- **Step defaults** (top-level fields in `clean`, `build`, `test`) are
+  inherited by every job in that section.
+- **Per-job overrides**: any field can be overridden in a job entry.
+- **Matrix expansion** (build only): `platform` and `configuration` can be
+  string or array. Arrays produce a cross product of builds.
+- `includePath` and `namespace` are DCCBuild-only and ignored for MSBuild.
+- CLI parameters override the corresponding defaults but not per-job values.
 
 ---
 
 ## Examples
 
-### Report module and bundled tool versions
-
-```powershell
-Invoke-DelphiCi -VersionInfo
-```
-
-Displays the module version and the version of each bundled tool. Returns
-a structured object so the output can be inspected programmatically:
-
-```powershell
-$info = Invoke-DelphiCi -VersionInfo
-$info.Module.Version                          # e.g. '0.1.0'
-$info.Tools | Where-Object Name -eq 'delphi-inspect' | Select-Object -ExpandProperty Version
-```
-
-### Convention-based run from the current directory
-
-```powershell
-Invoke-DelphiCi
-```
-
-Discovers a single `.dproj` under the current directory, cleans with
-`basic` level, then builds Win32 Debug using the latest Delphi.
-
-### Explicit project
+### Simple single-project build
 
 ```powershell
 Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
 ```
 
-### Full pipeline: clean, build, and test
+### Clean only (no project needed)
 
 ```powershell
-Invoke-DelphiCi -Steps Clean,Build,Test `
-    -ProjectFile .\source\MyApp.dproj `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
+Invoke-DelphiCi -Steps Clean -Root C:\MyRepo
 ```
 
-The `CI` define switches DUnitX from the TestInsight IDE runner to the
-headless console runner. It is not injected automatically.
-
-### Rebuild with minimal verbosity
+### Config-file-driven multi-project build
 
 ```powershell
-Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj `
-    -BuildTarget Rebuild -BuildVerbosity minimal
+Invoke-DelphiCi -ConfigFile .\delphi-ci.json
 ```
 
-### Redirect build output directories
+### Version info
 
 ```powershell
-Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj `
-    -ExeOutputDir C:\Out\Bin -DcuOutputDir C:\Out\Dcu
-```
-
-### Clean audit -- verify a clean workspace without deleting
-
-```powershell
-Invoke-DelphiCi -Steps Clean -CleanCheck $true -CleanLevel standard
-```
-
-### Config-file-driven run
-
-```powershell
-Invoke-DelphiCi -ConfigFile .\myapp-ci.json
-```
-
-### Build only, pinned version, release config
-
-```powershell
-Invoke-DelphiCi -Steps Build -ProjectFile .\source\MyApp.dproj `
-    -Toolchain VER370 -Configuration Release
-```
-
-### Capture and inspect the full result
-
-```powershell
-$run = Invoke-DelphiCi -Steps Clean,Build,Test `
-    -ProjectFile .\source\MyApp.dproj `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
-if (-not $run.Success) {
-    $failed = $run.Steps | Where-Object { -not $_.Success }
-    Write-Error "Failed steps: $($failed.StepName -join ', ')"
-}
-Write-Host "Total time: $($run.Duration.TotalSeconds.ToString('F2'))s"
-```
-
-### Map result to a process exit code in a CI wrapper script
-
-```powershell
-$run = Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
-exit [int](-not $run.Success)
+Invoke-DelphiCi -VersionInfo
 ```
 
 ---
 
 ## Notes
 
-- Steps run in the order listed in `-Steps` (or in the config file). The
-  default order is `Clean` then `Build`.
-- Execution stops at the first step that fails. Subsequent steps are skipped.
-- The Clean step runs against the resolved root, not the project file's
-  directory. Use `-Root` to target a different tree.
-- `Defines` (for Build) and `TestDefines` (for Test) are appended to the
-  project's existing PropertyGroup defines -- they do not replace them.
-- When `-Platform` is not supplied, Build and Test each resolve the platform
-  independently from their respective project files. Supply `-Platform`
-  explicitly to use the same value for both.
-- The `CI` define is not injected automatically into the Test step. Include
-  it in `-TestDefines` when the test project requires it.
-- `-IncludePath` and `-Namespace` apply only when `BuildEngine` is
-  `DCCBuild`. With `MSBuild`, these are rejected with a clear error.
-- `-CleanRecycleBin` and `-CleanCheck` are `[Bool]` (not `[Switch]`) so
-  that a CLI value of `$false` can override a config file that set them
-  to `true`.
-- The command always returns a structured result. In a CI wrapper script,
-  check `$result.Success` and call `exit 1` (or `exit [int](-not $result.Success)`)
-  to produce a non-zero process exit code on failure.
+- Steps run in the order listed in `-Steps`. All jobs within a step complete
+  before the next step begins.
+- Execution halts on the first failing job in any step.
+- Clean-only runs work without a project file on disk.
+- `-CleanRecycleBin` and `-CleanCheck` are `[Bool]` (not `[Switch]`) so a
+  CLI value of `$false` can override a config file that set them to `true`.

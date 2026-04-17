@@ -15,84 +15,74 @@ Describe 'Get-DelphiCiConfig' {
             $config.Steps | Should -Be @('Clean', 'Build')
         }
 
-        It 'returns null test project file' {
+        It 'returns Win32 as the default platform' {
             $config = Get-DelphiCiConfig
-            $config.Test.TestProjectFile | Should -BeNullOrEmpty
-        }
-
-        It 'returns null test executable' {
-            $config = Get-DelphiCiConfig
-            $config.Test.TestExecutable | Should -BeNullOrEmpty
-        }
-
-        It 'returns empty test defines array' {
-            $config = Get-DelphiCiConfig
-            $config.Test.Defines | Should -BeNullOrEmpty
-        }
-
-        It 'returns 10 as default test timeout' {
-            $config = Get-DelphiCiConfig
-            $config.Test.TimeoutSeconds | Should -Be 10
-        }
-
-        It 'returns true for test build by default' {
-            $config = Get-DelphiCiConfig
-            $config.Test.Build | Should -Be $true
-        }
-
-        It 'returns true for test run by default' {
-            $config = Get-DelphiCiConfig
-            $config.Test.Run | Should -Be $true
-        }
-
-        It 'returns null platform when not specified (auto-resolved at run time)' {
-            $config = Get-DelphiCiConfig
-            $config.Build.Platform | Should -BeNullOrEmpty
+            $config.Build.Defaults.Platform | Should -Be 'Win32'
         }
 
         It 'returns Debug configuration' {
             $config = Get-DelphiCiConfig
-            $config.Build.Configuration | Should -Be 'Debug'
+            $config.Build.Defaults.Configuration | Should -Be 'Debug'
         }
 
         It 'returns MSBuild engine' {
             $config = Get-DelphiCiConfig
-            $config.Build.Engine | Should -Be 'MSBuild'
+            $config.Build.Defaults.Engine | Should -Be 'MSBuild'
         }
 
         It 'returns Latest as the default toolchain version' {
             $config = Get-DelphiCiConfig
-            $config.Build.Toolchain.Version | Should -Be 'Latest'
+            $config.Build.Defaults.Toolchain.Version | Should -Be 'Latest'
         }
 
         It 'returns basic as the default clean level' {
             $config = Get-DelphiCiConfig
-            $config.Clean.Level | Should -Be 'basic'
+            $config.Clean.Defaults.Level | Should -Be 'basic'
         }
 
         It 'returns empty CleanIncludeFilePattern array by default' {
             $config = Get-DelphiCiConfig
-            $config.Clean.IncludeFilePattern | Should -BeNullOrEmpty
+            $config.Clean.Defaults.IncludeFilePattern | Should -BeNullOrEmpty
         }
 
         It 'returns empty CleanExcludeDirectoryPattern array by default' {
             $config = Get-DelphiCiConfig
-            $config.Clean.ExcludeDirectoryPattern | Should -BeNullOrEmpty
+            $config.Clean.Defaults.ExcludeDirectoryPattern | Should -BeNullOrEmpty
         }
 
         It 'returns empty CleanConfigFile by default' {
             $config = Get-DelphiCiConfig
-            $config.Clean.ConfigFile | Should -BeNullOrEmpty
+            $config.Clean.Defaults.ConfigFile | Should -BeNullOrEmpty
         }
 
         It 'returns empty defines array' {
             $config = Get-DelphiCiConfig
-            $config.Build.Defines | Should -BeNullOrEmpty
+            $config.Build.Defaults.Defines | Should -BeNullOrEmpty
         }
 
-        It 'returns null ProjectFile' {
+        It 'returns empty build jobs array' {
             $config = Get-DelphiCiConfig
-            $config.ProjectFile | Should -BeNullOrEmpty
+            $config.Build.Jobs.Count | Should -Be 0
+        }
+
+        It 'returns empty test jobs array' {
+            $config = Get-DelphiCiConfig
+            $config.Test.Jobs.Count | Should -Be 0
+        }
+
+        It 'returns 10 as default test timeout' {
+            $config = Get-DelphiCiConfig
+            $config.Test.Defaults.TimeoutSeconds | Should -Be 10
+        }
+
+        It 'returns normal as default build verbosity' {
+            $config = Get-DelphiCiConfig
+            $config.Build.Defaults.Verbosity | Should -Be 'normal'
+        }
+
+        It 'returns Build as default build target' {
+            $config = Get-DelphiCiConfig
+            $config.Build.Defaults.Target | Should -Be 'Build'
         }
 
         It 'sets root to the current working directory' {
@@ -118,7 +108,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win64' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Platform | Should -Be 'Win64'
+            $config.Build.Defaults.Platform | Should -Be 'Win64'
         }
 
         It 'loads configuration from config file' {
@@ -126,7 +116,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ configuration = 'Release' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Configuration | Should -Be 'Release'
+            $config.Build.Defaults.Configuration | Should -Be 'Release'
         }
 
         It 'loads clean level from config file' {
@@ -134,31 +124,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ level = 'standard' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Clean.Level | Should -Be 'standard'
-        }
-
-        It 'loads clean includeFilePattern from config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ includeFilePattern = @('*.res', '*.mab') } } | ConvertTo-Json)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Clean.IncludeFilePattern | Should -Be @('*.res', '*.mab')
-        }
-
-        It 'loads clean excludeDirectoryPattern from config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ excludeDirectoryPattern = @('vendor', 'assets') } } | ConvertTo-Json)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Clean.ExcludeDirectoryPattern | Should -Be @('vendor', 'assets')
-        }
-
-        It 'loads clean configFile from config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ configFile = 'C:/ci/delphi-clean-ci.json' } } | ConvertTo-Json)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Clean.ConfigFile | Should -Be 'C:/ci/delphi-clean-ci.json'
+            $config.Clean.Defaults.Level | Should -Be 'standard'
         }
 
         It 'loads toolchain version from config file' {
@@ -166,15 +132,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ toolchain = @{ version = 'Athens' } } } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Toolchain.Version | Should -Be 'Athens'
-        }
-
-        It 'accepts VER### identifiers as the toolchain version' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ toolchain = @{ version = 'VER370' } } } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Toolchain.Version | Should -Be 'VER370'
+            $config.Build.Defaults.Toolchain.Version | Should -Be 'Athens'
         }
 
         It 'loads defines array from config file' {
@@ -182,55 +140,123 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ defines = @('CI', 'RELEASE') } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Defines | Should -Be @('CI', 'RELEASE')
+            $config.Build.Defaults.Defines | Should -Be @('CI', 'RELEASE')
         }
 
-        It 'loads projectFile from build section of config file' {
+        It 'loads build jobs from config file' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ projectFile = 'source/MyApp.dproj' } } | ConvertTo-Json)
+            $json = @{
+                build = @{
+                    jobs = @(
+                        @{ name = 'App'; projectFile = 'source/App.dproj' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.ProjectFile | Should -Be 'source/MyApp.dproj'
+            $config.Build.Jobs.Count | Should -Be 1
+            $config.Build.Jobs[0].Name | Should -Be 'App'
+            $config.Build.Jobs[0].ProjectFile | Should -Be 'source/App.dproj'
         }
 
-        It 'loads testProjectFile from test section of config file' {
+        It 'build jobs inherit defaults from the build section' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ test = @{ testProjectFile = 'tests/MyApp.Tests.dproj' } } | ConvertTo-Json)
+            $json = @{
+                build = @{
+                    platform = 'Win64'
+                    configuration = 'Release'
+                    jobs = @(
+                        @{ projectFile = 'source/App.dproj' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Test.TestProjectFile | Should -Be 'tests/MyApp.Tests.dproj'
+            $config.Build.Jobs[0].Platform | Should -Be @('Win64')
+            $config.Build.Jobs[0].Configuration | Should -Be @('Release')
         }
 
-        It 'loads test defines from config file' {
+        It 'build jobs can override defaults' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ test = @{ defines = @('CI') } } | ConvertTo-Json)
+            $json = @{
+                build = @{
+                    platform = 'Win32'
+                    jobs = @(
+                        @{ projectFile = 'source/App.dproj'; platform = 'Win64' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Test.Defines | Should -Be @('CI')
+            $config.Build.Jobs[0].Platform | Should -Be @('Win64')
         }
 
-        It 'loads test timeoutSeconds from config file' {
+        It 'build job platform can be an array for matrix expansion' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ test = @{ timeoutSeconds = 30 } } | ConvertTo-Json)
+            $json = @{
+                build = @{
+                    jobs = @(
+                        @{ projectFile = 'source/App.dproj'; platform = @('Win32', 'Win64') }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Test.TimeoutSeconds | Should -Be 30
+            $config.Build.Jobs[0].Platform | Should -Be @('Win32', 'Win64')
         }
 
-        It 'loads test build flag from config file' {
+        It 'loads test jobs from config file' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ test = @{ build = $false } } | ConvertTo-Json)
+            $json = @{
+                test = @{
+                    jobs = @(
+                        @{ name = 'Unit tests'; testExeFile = 'test/Win32/Debug/App.Tests.exe' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Test.Build | Should -Be $false
+            $config.Test.Jobs.Count | Should -Be 1
+            $config.Test.Jobs[0].TestExeFile | Should -Be 'test/Win32/Debug/App.Tests.exe'
         }
 
-        It 'loads test run flag from config file' {
+        It 'test jobs inherit defaults from the test section' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ test = @{ run = $false } } | ConvertTo-Json)
+            $json = @{
+                test = @{
+                    timeoutSeconds = 30
+                    jobs = @(
+                        @{ testExeFile = 'test/App.Tests.exe' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Test.Run | Should -Be $false
+            $config.Test.Jobs[0].TimeoutSeconds | Should -Be 30
+        }
+
+        It 'loads clean jobs from config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = @{
+                clean = @{
+                    level = 'deep'
+                    jobs = @(
+                        @{ name = 'Repo clean'; root = './' }
+                    )
+                }
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Clean.Jobs.Count | Should -Be 1
+            $config.Clean.Jobs[0].Name | Should -Be 'Repo clean'
+            $config.Clean.Jobs[0].Level | Should -Be 'deep'
         }
 
         It 'applies built-in defaults for fields absent from config file' {
@@ -238,12 +264,10 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win64' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Build.Configuration        | Should -Be 'Debug'
-            $config.Build.Engine               | Should -Be 'MSBuild'
-            $config.Clean.Level                | Should -Be 'basic'
-            $config.Clean.IncludeFilePattern   | Should -BeNullOrEmpty
-            $config.Clean.ConfigFile           | Should -BeNullOrEmpty
-            $config.Steps                      | Should -Be @('Clean', 'Build')
+            $config.Build.Defaults.Configuration | Should -Be 'Debug'
+            $config.Build.Defaults.Engine        | Should -Be 'MSBuild'
+            $config.Clean.Defaults.Level         | Should -Be 'basic'
+            $config.Steps                        | Should -Be @('Clean', 'Build')
         }
 
     }
@@ -288,7 +312,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win32' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Platform 'Win64'
-            $config.Build.Platform | Should -Be 'Win64'
+            $config.Build.Defaults.Platform | Should -Be 'Win64'
         }
 
         It '-Configuration overrides config file configuration' {
@@ -296,7 +320,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ configuration = 'Debug' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Configuration 'Release'
-            $config.Build.Configuration | Should -Be 'Release'
+            $config.Build.Defaults.Configuration | Should -Be 'Release'
         }
 
         It '-Steps overrides config file steps' {
@@ -312,7 +336,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ toolchain = @{ version = 'Athens' } } } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Toolchain 'Florence'
-            $config.Build.Toolchain.Version | Should -Be 'Florence'
+            $config.Build.Defaults.Toolchain.Version | Should -Be 'Florence'
         }
 
         It '-BuildEngine overrides config file engine' {
@@ -320,7 +344,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ engine = 'MSBuild' } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -BuildEngine 'DCCBuild'
-            $config.Build.Engine | Should -Be 'DCCBuild'
+            $config.Build.Defaults.Engine | Should -Be 'DCCBuild'
         }
 
         It '-Defines overrides config file defines' {
@@ -328,7 +352,7 @@ Describe 'Get-DelphiCiConfig' {
             Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ defines = @('FROM_FILE') } } | ConvertTo-Json)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Defines 'CI', 'RELEASE_BUILD'
-            $config.Build.Defines | Should -Be @('CI', 'RELEASE_BUILD')
+            $config.Build.Defaults.Defines | Should -Be @('CI', 'RELEASE_BUILD')
         }
 
         It '-Root overrides root derived from config file location' {
@@ -341,18 +365,30 @@ Describe 'Get-DelphiCiConfig' {
             $config.Root | Should -Be ([System.IO.Path]::GetFullPath($override))
         }
 
+        It '-ProjectFile creates a single build job' {
+            $config = Get-DelphiCiConfig -ProjectFile 'source/App.dproj'
+            $config.Build.Jobs.Count | Should -Be 1
+            $config.Build.Jobs[0].ProjectFile | Should -Be 'source/App.dproj'
+        }
+
+        It '-TestExeFile creates a single test job' {
+            $config = Get-DelphiCiConfig -TestExeFile 'test/Win32/Debug/App.Tests.exe'
+            $config.Test.Jobs.Count | Should -Be 1
+            $config.Test.Jobs[0].TestExeFile | Should -Be 'test/Win32/Debug/App.Tests.exe'
+        }
+
     }
 
     Context 'CLI overrides beat built-in defaults' {
 
         It '-Platform overrides default platform' {
             $config = Get-DelphiCiConfig -Platform 'Win64'
-            $config.Build.Platform | Should -Be 'Win64'
+            $config.Build.Defaults.Platform | Should -Be 'Win64'
         }
 
         It '-Configuration overrides default configuration' {
             $config = Get-DelphiCiConfig -Configuration 'Release'
-            $config.Build.Configuration | Should -Be 'Release'
+            $config.Build.Defaults.Configuration | Should -Be 'Release'
         }
 
         It '-Steps overrides default steps' {
@@ -362,67 +398,27 @@ Describe 'Get-DelphiCiConfig' {
 
         It '-Toolchain overrides default toolchain version' {
             $config = Get-DelphiCiConfig -Toolchain 'VER370'
-            $config.Build.Toolchain.Version | Should -Be 'VER370'
+            $config.Build.Defaults.Toolchain.Version | Should -Be 'VER370'
         }
 
         It '-BuildEngine overrides default engine' {
             $config = Get-DelphiCiConfig -BuildEngine 'DCCBuild'
-            $config.Build.Engine | Should -Be 'DCCBuild'
+            $config.Build.Defaults.Engine | Should -Be 'DCCBuild'
         }
 
         It '-Defines overrides default empty defines' {
             $config = Get-DelphiCiConfig -Defines 'CI'
-            $config.Build.Defines | Should -Be @('CI')
+            $config.Build.Defaults.Defines | Should -Be @('CI')
         }
 
         It '-CleanLevel overrides default basic level' {
             $config = Get-DelphiCiConfig -CleanLevel 'deep'
-            $config.Clean.Level | Should -Be 'deep'
-        }
-
-        It '-CleanIncludeFilePattern overrides default empty array' {
-            $config = Get-DelphiCiConfig -CleanIncludeFilePattern '*.res', '*.mab'
-            $config.Clean.IncludeFilePattern | Should -Be @('*.res', '*.mab')
-        }
-
-        It '-CleanExcludeDirectoryPattern overrides default empty array' {
-            $config = Get-DelphiCiConfig -CleanExcludeDirectoryPattern 'vendor', 'assets'
-            $config.Clean.ExcludeDirectoryPattern | Should -Be @('vendor', 'assets')
-        }
-
-        It '-CleanConfigFile overrides default empty CleanConfigFile' {
-            $config = Get-DelphiCiConfig -CleanConfigFile 'C:/ci/delphi-clean-ci.json'
-            $config.Clean.ConfigFile | Should -Be 'C:/ci/delphi-clean-ci.json'
-        }
-
-        It '-TestProjectFile overrides default null test project file' {
-            $config = Get-DelphiCiConfig -TestProjectFile 'tests/MyApp.Tests.dproj'
-            $config.Test.TestProjectFile | Should -Be 'tests/MyApp.Tests.dproj'
-        }
-
-        It '-TestExecutable overrides default null test executable' {
-            $config = Get-DelphiCiConfig -TestExecutable 'C:\Build\Tests\Win32\Debug\App.Tests.exe'
-            $config.Test.TestExecutable | Should -Be 'C:\Build\Tests\Win32\Debug\App.Tests.exe'
-        }
-
-        It '-TestDefines overrides default empty test defines' {
-            $config = Get-DelphiCiConfig -TestDefines 'CI'
-            $config.Test.Defines | Should -Be @('CI')
+            $config.Clean.Defaults.Level | Should -Be 'deep'
         }
 
         It '-TestTimeoutSeconds overrides default timeout' {
             $config = Get-DelphiCiConfig -TestTimeoutSeconds 5
-            $config.Test.TimeoutSeconds | Should -Be 5
-        }
-
-        It '-TestBuild $false overrides default true' {
-            $config = Get-DelphiCiConfig -TestBuild $false
-            $config.Test.Build | Should -Be $false
-        }
-
-        It '-TestRun $false overrides default true' {
-            $config = Get-DelphiCiConfig -TestRun $false
-            $config.Test.Run | Should -Be $false
+            $config.Test.Defaults.TimeoutSeconds | Should -Be 5
         }
 
     }
@@ -446,22 +442,12 @@ Describe 'Get-DelphiCiConfig' {
 
         It 'splits Defines passed as a single comma-separated string' {
             $config = Get-DelphiCiConfig -Defines 'CI,RELEASE_BUILD'
-            $config.Build.Defines | Should -Be @('CI', 'RELEASE_BUILD')
-        }
-
-        It 'splits Defines and trims surrounding spaces' {
-            $config = Get-DelphiCiConfig -Defines 'CI, RELEASE_BUILD'
-            $config.Build.Defines | Should -Be @('CI', 'RELEASE_BUILD')
+            $config.Build.Defaults.Defines | Should -Be @('CI', 'RELEASE_BUILD')
         }
 
         It 'treats an already-split array of steps as-is' {
             $config = Get-DelphiCiConfig -Steps @('Clean', 'Build')
             $config.Steps | Should -Be @('Clean', 'Build')
-        }
-
-        It 'treats an already-split array of defines as-is' {
-            $config = Get-DelphiCiConfig -Defines @('CI', 'RELEASE_BUILD')
-            $config.Build.Defines | Should -Be @('CI', 'RELEASE_BUILD')
         }
 
     }

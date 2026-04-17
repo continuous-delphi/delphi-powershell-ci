@@ -11,10 +11,12 @@ function Invoke-DelphiCi {
         [string]$Root,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$ProjectFile,
+        [string[]]$Steps,
+
+        # --- Build defaults (CLI shorthand for single-job use) ---
 
         [Parameter(ParameterSetName = 'Run')]
-        [string[]]$Steps,
+        [string]$ProjectFile,
 
         [Parameter(ParameterSetName = 'Run')]
         [string]$Platform,
@@ -54,6 +56,8 @@ function Invoke-DelphiCi {
         [Parameter(ParameterSetName = 'Run')]
         [string[]]$Namespace,
 
+        # --- Clean defaults (CLI shorthand) ---
+
         [Parameter(ParameterSetName = 'Run')]
         [ValidateSet('basic', 'standard', 'deep')]
         [string]$CleanLevel,
@@ -77,30 +81,20 @@ function Invoke-DelphiCi {
         [Parameter(ParameterSetName = 'Run')]
         [bool]$CleanCheck,
 
-        [Parameter(ParameterSetName = 'Run')]
-        [string]$TestProjectFile,
+        # --- Test defaults (CLI shorthand for single-job use) ---
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$TestExecutable,
-
-        [Parameter(ParameterSetName = 'Run')]
-        [string[]]$TestDefines,
+        [string]$TestExeFile,
 
         [Parameter(ParameterSetName = 'Run')]
         [string[]]$TestArguments,
 
         [Parameter(ParameterSetName = 'Run')]
-        [int]$TestTimeoutSeconds,
-
-        [Parameter(ParameterSetName = 'Run')]
-        [bool]$TestBuild,
-
-        [Parameter(ParameterSetName = 'Run')]
-        [bool]$TestRun
+        [int]$TestTimeoutSeconds
     )
 
     # ---------------------------------------------------------------------------
-    # VersionInfo branch -- display module and bundled tool versions, then return
+    # VersionInfo branch
     # ---------------------------------------------------------------------------
 
     if ($VersionInfo) {
@@ -126,72 +120,36 @@ function Invoke-DelphiCi {
     # Run branch
     # ---------------------------------------------------------------------------
 
-    # Build overrides from explicitly bound parameters
     $overrides = @{}
-    if ($PSBoundParameters.ContainsKey('Root'))             { $overrides['Root']             = $Root }
-    if ($PSBoundParameters.ContainsKey('ProjectFile'))      { $overrides['ProjectFile']      = $ProjectFile }
-    if ($PSBoundParameters.ContainsKey('Steps'))            { $overrides['Steps']            = $Steps }
-    if ($PSBoundParameters.ContainsKey('Platform'))         { $overrides['Platform']         = $Platform }
-    if ($PSBoundParameters.ContainsKey('Configuration'))    { $overrides['Configuration']    = $Configuration }
-    if ($PSBoundParameters.ContainsKey('Toolchain'))        { $overrides['Toolchain']        = $Toolchain }
-    if ($PSBoundParameters.ContainsKey('BuildEngine'))      { $overrides['BuildEngine']      = $BuildEngine }
-    if ($PSBoundParameters.ContainsKey('Defines'))                      { $overrides['Defines']                      = $Defines }
-    if ($PSBoundParameters.ContainsKey('BuildVerbosity'))               { $overrides['BuildVerbosity']               = $BuildVerbosity }
-    if ($PSBoundParameters.ContainsKey('BuildTarget'))                  { $overrides['BuildTarget']                  = $BuildTarget }
-    if ($PSBoundParameters.ContainsKey('ExeOutputDir'))                 { $overrides['ExeOutputDir']                 = $ExeOutputDir }
-    if ($PSBoundParameters.ContainsKey('DcuOutputDir'))                 { $overrides['DcuOutputDir']                 = $DcuOutputDir }
-    if ($PSBoundParameters.ContainsKey('UnitSearchPath'))               { $overrides['UnitSearchPath']               = $UnitSearchPath }
-    if ($PSBoundParameters.ContainsKey('IncludePath'))                  { $overrides['IncludePath']                  = $IncludePath }
-    if ($PSBoundParameters.ContainsKey('Namespace'))                    { $overrides['Namespace']                    = $Namespace }
-    if ($PSBoundParameters.ContainsKey('CleanLevel'))                   { $overrides['CleanLevel']                   = $CleanLevel }
-    if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))            { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
-    if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))      { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
-    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern')) { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
-    if ($PSBoundParameters.ContainsKey('CleanConfigFile'))              { $overrides['CleanConfigFile']              = $CleanConfigFile }
-    if ($PSBoundParameters.ContainsKey('CleanRecycleBin'))              { $overrides['CleanRecycleBin']              = $CleanRecycleBin }
-    if ($PSBoundParameters.ContainsKey('CleanCheck'))                   { $overrides['CleanCheck']                   = $CleanCheck }
-    if ($PSBoundParameters.ContainsKey('TestProjectFile'))          { $overrides['TestProjectFile']          = $TestProjectFile }
-    if ($PSBoundParameters.ContainsKey('TestExecutable'))       { $overrides['TestExecutable']       = $TestExecutable }
-    if ($PSBoundParameters.ContainsKey('TestDefines'))          { $overrides['TestDefines']          = $TestDefines }
-    if ($PSBoundParameters.ContainsKey('TestArguments'))        { $overrides['TestArguments']        = $TestArguments }
-    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds'))   { $overrides['TestTimeoutSeconds']   = $TestTimeoutSeconds }
-    if ($PSBoundParameters.ContainsKey('TestBuild'))            { $overrides['TestBuild']            = $TestBuild }
-    if ($PSBoundParameters.ContainsKey('TestRun'))              { $overrides['TestRun']              = $TestRun }
+    if ($PSBoundParameters.ContainsKey('Root'))                          { $overrides['Root']                         = $Root }
+    if ($PSBoundParameters.ContainsKey('Steps'))                         { $overrides['Steps']                        = $Steps }
+    if ($PSBoundParameters.ContainsKey('ProjectFile'))                   { $overrides['ProjectFile']                  = $ProjectFile }
+    if ($PSBoundParameters.ContainsKey('Platform'))                      { $overrides['Platform']                     = $Platform }
+    if ($PSBoundParameters.ContainsKey('Configuration'))                 { $overrides['Configuration']                = $Configuration }
+    if ($PSBoundParameters.ContainsKey('Toolchain'))                     { $overrides['Toolchain']                    = $Toolchain }
+    if ($PSBoundParameters.ContainsKey('BuildEngine'))                   { $overrides['BuildEngine']                  = $BuildEngine }
+    if ($PSBoundParameters.ContainsKey('Defines'))                       { $overrides['Defines']                      = $Defines }
+    if ($PSBoundParameters.ContainsKey('BuildVerbosity'))                { $overrides['BuildVerbosity']               = $BuildVerbosity }
+    if ($PSBoundParameters.ContainsKey('BuildTarget'))                   { $overrides['BuildTarget']                  = $BuildTarget }
+    if ($PSBoundParameters.ContainsKey('ExeOutputDir'))                  { $overrides['ExeOutputDir']                 = $ExeOutputDir }
+    if ($PSBoundParameters.ContainsKey('DcuOutputDir'))                  { $overrides['DcuOutputDir']                 = $DcuOutputDir }
+    if ($PSBoundParameters.ContainsKey('UnitSearchPath'))                { $overrides['UnitSearchPath']               = $UnitSearchPath }
+    if ($PSBoundParameters.ContainsKey('IncludePath'))                   { $overrides['IncludePath']                  = $IncludePath }
+    if ($PSBoundParameters.ContainsKey('Namespace'))                     { $overrides['Namespace']                    = $Namespace }
+    if ($PSBoundParameters.ContainsKey('CleanLevel'))                    { $overrides['CleanLevel']                   = $CleanLevel }
+    if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))              { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
+    if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))       { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
+    if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern'))  { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
+    if ($PSBoundParameters.ContainsKey('CleanConfigFile'))               { $overrides['CleanConfigFile']              = $CleanConfigFile }
+    if ($PSBoundParameters.ContainsKey('CleanRecycleBin'))               { $overrides['CleanRecycleBin']              = $CleanRecycleBin }
+    if ($PSBoundParameters.ContainsKey('CleanCheck'))                    { $overrides['CleanCheck']                   = $CleanCheck }
+    if ($PSBoundParameters.ContainsKey('TestExeFile'))                   { $overrides['TestExeFile']                  = $TestExeFile }
+    if ($PSBoundParameters.ContainsKey('TestArguments'))                 { $overrides['TestArguments']                = $TestArguments }
+    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds'))            { $overrides['TestTimeoutSeconds']           = $TestTimeoutSeconds }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
-    # Resolve main project file and platform only when a Build or Test step
-    # needs them.  Clean-only runs work without a .dproj in the tree.
-    $needsProject          = @($config.Steps | Where-Object { $_ -in @('Build', 'Test') }).Count -gt 0
-    $resolvedProject       = $config.ProjectFile
-    $resolvedBuildPlatform = $config.Build.Platform
-
-    if ($needsProject) {
-        if ([string]::IsNullOrWhiteSpace($resolvedProject)) {
-            $candidates = @(Find-DelphiProjects -Root $config.Root)
-            if ($candidates.Count -eq 0) {
-                throw "No .dproj files found under '$($config.Root)'. Use -ProjectFile or -Root to point at the project."
-            }
-            if ($candidates.Count -gt 1) {
-                $list = ($candidates | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', '
-                throw "Multiple .dproj files found; use -ProjectFile to select one. Found: $list"
-            }
-            $resolvedProject = $candidates[0]
-        }
-
-        if ($null -eq $resolvedBuildPlatform) {
-            $resolvedBuildPlatform = if ($config.Build.Engine -ne 'DCCBuild') {
-                Resolve-DefaultPlatform -ProjectFile ([System.IO.Path]::ChangeExtension($resolvedProject, '.dproj'))
-            } else {
-                'Win32'
-            }
-        }
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($resolvedProject)) {
-        Write-DelphiCiMessage -Level 'INFO' -Message "Project : $resolvedProject"
-    }
-    Write-DelphiCiMessage -Level 'INFO' -Message "Steps   : $($config.Steps -join ', ')"
+    Write-DelphiCiMessage -Level 'INFO' -Message "Steps : $($config.Steps -join ', ')"
 
     $stepResults    = [System.Collections.Generic.List[object]]::new()
     $overallSuccess = $true
@@ -200,59 +158,126 @@ function Invoke-DelphiCi {
     try {
         foreach ($step in $config.Steps) {
             switch ($step) {
+
                 'Clean' {
-                    $result = Invoke-DelphiClean `
-                        -CleanRoot                    $config.Root `
-                        -CleanLevel                   $config.Clean.Level `
-                        -CleanOutputLevel             $config.Clean.OutputLevel `
-                        -CleanIncludeFilePattern      @($config.Clean.IncludeFilePattern) `
-                        -CleanExcludeDirectoryPattern @($config.Clean.ExcludeDirectoryPattern) `
-                        -CleanConfigFile              $config.Clean.ConfigFile `
-                        -CleanRecycleBin:             $config.Clean.RecycleBin `
-                        -CleanCheck:                  $config.Clean.Check
+                    $jobs = $config.Clean.Jobs
+                    # When no jobs are defined, create a default job from the
+                    # clean defaults + the resolved root.
+                    if ($jobs.Count -eq 0) {
+                        $jobs = @([PSCustomObject]@{
+                            Name                    = ''
+                            Root                    = $config.Root
+                            Level                   = $config.Clean.Defaults.Level
+                            OutputLevel             = $config.Clean.Defaults.OutputLevel
+                            IncludeFilePattern      = $config.Clean.Defaults.IncludeFilePattern
+                            ExcludeDirectoryPattern = $config.Clean.Defaults.ExcludeDirectoryPattern
+                            ConfigFile              = $config.Clean.Defaults.ConfigFile
+                            RecycleBin              = $config.Clean.Defaults.RecycleBin
+                            Check                   = $config.Clean.Defaults.Check
+                        })
+                    }
+
+                    foreach ($job in $jobs) {
+                        if (-not [string]::IsNullOrWhiteSpace($job.Name)) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Clean job: $($job.Name)"
+                        }
+
+                        $result = Invoke-DelphiClean `
+                            -CleanRoot                    $job.Root `
+                            -CleanLevel                   $job.Level `
+                            -CleanOutputLevel             $job.OutputLevel `
+                            -CleanIncludeFilePattern      @($job.IncludeFilePattern) `
+                            -CleanExcludeDirectoryPattern @($job.ExcludeDirectoryPattern) `
+                            -CleanConfigFile              $job.ConfigFile `
+                            -CleanRecycleBin:             $job.RecycleBin `
+                            -CleanCheck:                  $job.Check
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break
+                        }
+                    }
                 }
+
                 'Build' {
-                    $result = Invoke-DelphiBuild `
-                        -ProjectFile    $resolvedProject `
-                        -Platform       $resolvedBuildPlatform `
-                        -Configuration  $config.Build.Configuration `
-                        -Toolchain      $config.Build.Toolchain.Version `
-                        -BuildEngine    $config.Build.Engine `
-                        -Defines        @($config.Build.Defines) `
-                        -BuildVerbosity $config.Build.Verbosity `
-                        -BuildTarget    $config.Build.Target `
-                        -ExeOutputDir   $config.Build.ExeOutputDir `
-                        -DcuOutputDir   $config.Build.DcuOutputDir `
-                        -UnitSearchPath @($config.Build.UnitSearchPath) `
-                        -IncludePath   @($config.Build.IncludePath) `
-                        -Namespace     @($config.Build.Namespace)
+                    $jobs = $config.Build.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No build jobs defined. Use -ProjectFile or define build.jobs in the config file.'
+                    }
+
+                    :buildJobs foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job.ProjectFile)) {
+                            throw "Build job '$($job.Name)' has no projectFile."
+                        }
+
+                        # Expand platform x configuration matrix
+                        foreach ($plat in $job.Platform) {
+                            foreach ($cfg in $job.Configuration) {
+                                $label = "$($job.Name)"
+                                if ($label -ne '') { $label += ' ' }
+                                $label += "($plat|$cfg)"
+                                Write-DelphiCiMessage -Level 'INFO' -Message "Build job: $label"
+
+                                $result = Invoke-DelphiBuild `
+                                    -ProjectFile    $job.ProjectFile `
+                                    -Platform       $plat `
+                                    -Configuration  $cfg `
+                                    -Toolchain      $job.Toolchain.Version `
+                                    -BuildEngine    $job.Engine `
+                                    -Defines        @($job.Defines) `
+                                    -BuildVerbosity $job.Verbosity `
+                                    -BuildTarget    $job.Target `
+                                    -ExeOutputDir   $job.ExeOutputDir `
+                                    -DcuOutputDir   $job.DcuOutputDir `
+                                    -UnitSearchPath @($job.UnitSearchPath) `
+                                    -IncludePath    @($job.IncludePath) `
+                                    -Namespace      @($job.Namespace)
+
+                                $stepResults.Add($result)
+                                if (-not $result.Success) {
+                                    $overallSuccess = $false
+                                    break buildJobs
+                                }
+                            }
+                        }
+                    }
                 }
+
                 'Test' {
-                    $result = Invoke-DelphiTest `
-                        -Root            $config.Root `
-                        -TestProjectFile $config.Test.TestProjectFile `
-                        -TestExecutable  ([string]$config.Test.TestExecutable) `
-                        -Platform        ([string]$config.Build.Platform) `
-                        -Configuration   $config.Build.Configuration `
-                        -Toolchain       $config.Build.Toolchain.Version `
-                        -BuildEngine     $config.Build.Engine `
-                        -Defines         @($config.Test.Defines) `
-                        -Arguments       @($config.Test.Arguments) `
-                        -TimeoutSeconds  $config.Test.TimeoutSeconds `
-                        -Build           $config.Test.Build `
-                        -Run             $config.Test.Run
+                    $jobs = $config.Test.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No test jobs defined. Use -TestExeFile or define test.jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job.TestExeFile)) {
+                            throw "Test job '$($job.Name)' has no testExeFile."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job.Name)) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Test job: $($job.Name)"
+                        }
+
+                        $result = Invoke-DelphiTest `
+                            -TestExeFile    $job.TestExeFile `
+                            -Arguments      @($job.Arguments) `
+                            -TimeoutSeconds $job.TimeoutSeconds
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break
+                        }
+                    }
                 }
+
                 default {
                     throw "Unknown step: $step"
                 }
             }
 
-            $stepResults.Add($result)
-
-            if (-not $result.Success) {
-                $overallSuccess = $false
-                break
-            }
+            if (-not $overallSuccess) { break }
         }
     }
     catch {
@@ -272,9 +297,8 @@ function Invoke-DelphiCi {
     }
 
     return [PSCustomObject]@{
-        Success     = $overallSuccess
-        Duration    = $stopwatch.Elapsed
-        ProjectFile = $resolvedProject
-        Steps       = $stepResults.ToArray()
+        Success  = $overallSuccess
+        Duration = $stopwatch.Elapsed
+        Steps    = $stepResults.ToArray()
     }
 }

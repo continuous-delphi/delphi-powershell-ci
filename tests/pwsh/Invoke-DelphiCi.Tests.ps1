@@ -11,45 +11,88 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     function script:New-MockConfig {
         param(
-            [string]$ProjectFile = 'C:\Fake\Source\App.dproj',
-            [string[]]$Steps = @('Clean', 'Build')
+            [string[]]$Steps = @('Clean', 'Build'),
+            [object[]]$BuildJobs = @(),
+            [object[]]$CleanJobs = @(),
+            [object[]]$TestJobs  = @()
         )
         [PSCustomObject]@{
-            Root        = 'C:\Fake'
-            ProjectFile = $ProjectFile
-            Steps       = $Steps
-            Clean       = [PSCustomObject]@{
-                Level                   = 'basic'
-                OutputLevel             = 'detailed'
-                IncludeFilePattern      = @()
-                ExcludeDirectoryPattern = @()
-                ConfigFile              = ''
-                RecycleBin              = $false
-                Check                   = $false
+            Root  = 'C:\Fake'
+            Steps = $Steps
+            Clean = [PSCustomObject]@{
+                Defaults = [PSCustomObject]@{
+                    Level                   = 'basic'
+                    OutputLevel             = 'detailed'
+                    IncludeFilePattern      = @()
+                    ExcludeDirectoryPattern = @()
+                    ConfigFile              = ''
+                    RecycleBin              = $false
+                    Check                   = $false
+                }
+                Jobs = $CleanJobs
             }
-            Build       = [PSCustomObject]@{
-                Engine         = 'MSBuild'
-                Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
-                Platform       = 'Win32'
-                Configuration  = 'Debug'
-                Defines        = @()
-                Verbosity      = 'normal'
-                Target         = 'Build'
-                ExeOutputDir   = ''
-                DcuOutputDir   = ''
-                UnitSearchPath = @()
-                IncludePath    = @()
-                Namespace      = @()
+            Build = [PSCustomObject]@{
+                Defaults = [PSCustomObject]@{
+                    Engine         = 'MSBuild'
+                    Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
+                    Platform       = 'Win32'
+                    Configuration  = 'Debug'
+                    Defines        = @()
+                    Verbosity      = 'normal'
+                    Target         = 'Build'
+                    ExeOutputDir   = ''
+                    DcuOutputDir   = ''
+                    UnitSearchPath = @()
+                    IncludePath    = @()
+                    Namespace      = @()
+                }
+                Jobs = $BuildJobs
             }
-            Test        = [PSCustomObject]@{
-                TestProjectFile  = 'C:\Fake\Tests\App.Tests.dproj'
-                TestExecutable   = $null
-                Defines          = @()
-                Arguments        = @()
-                TimeoutSeconds   = 10
-                Build            = $true
-                Run              = $true
+            Test = [PSCustomObject]@{
+                Defaults = [PSCustomObject]@{
+                    TimeoutSeconds = 10
+                    Arguments      = @()
+                }
+                Jobs = $TestJobs
             }
+        }
+    }
+
+    function script:New-BuildJob {
+        param(
+            [string]$Name = 'App build',
+            [string]$ProjectFile = 'C:\Fake\Source\App.dproj',
+            [string[]]$Platform = @('Win32'),
+            [string[]]$Configuration = @('Debug')
+        )
+        [PSCustomObject]@{
+            Name           = $Name
+            ProjectFile    = $ProjectFile
+            Engine         = 'MSBuild'
+            Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
+            Platform       = $Platform
+            Configuration  = $Configuration
+            Defines        = @()
+            Verbosity      = 'normal'
+            Target         = 'Build'
+            ExeOutputDir   = ''
+            DcuOutputDir   = ''
+            UnitSearchPath = @()
+            IncludePath    = @()
+            Namespace      = @()
+        }
+    }
+
+    function script:New-TestJob {
+        param(
+            [string]$Name = 'Unit tests',
+            [string]$TestExeFile = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
+        )
+        [PSCustomObject]@{
+            Name           = $Name
+            TestExeFile    = $TestExeFile
+            Arguments      = @()
+            TimeoutSeconds = 10
         }
     }
 
@@ -69,27 +112,30 @@ InModuleScope 'Delphi.PowerShell.CI' {
     function script:New-BuildResult {
         param([bool]$Success = $true)
         [PSCustomObject]@{
-            StepName    = 'Build'
-            Success     = $Success
-            Duration    = [timespan]::Zero
-            ExitCode    = if ($Success) { 0 } else { 5 }
-            Tool        = 'delphi-msbuild.ps1'
-            Message     = if ($Success) { 'Build completed' } else { 'Exit code 5' }
-            ProjectFile = 'C:\Fake\Source\App.dproj'
+            StepName     = 'Build'
+            Success      = $Success
+            Duration     = [timespan]::Zero
+            ExitCode     = if ($Success) { 0 } else { 5 }
+            Tool         = 'delphi-msbuild.ps1'
+            Message      = if ($Success) { 'Build completed' } else { 'Exit code 5' }
+            ProjectFile  = 'C:\Fake\Source\App.dproj'
+            Warnings     = 0
+            Errors       = 0
+            ExeOutputDir = $null
+            Output       = $null
         }
     }
 
     function script:New-TestResult {
         param([bool]$Success = $true)
         [PSCustomObject]@{
-            StepName        = 'Test'
-            Success         = $Success
-            Duration        = [timespan]::Zero
-            ExitCode        = if ($Success) { 0 } else { 1 }
-            Tool            = 'test runner'
-            Message         = if ($Success) { 'Tests passed' } else { 'Exit code 1' }
-            TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-            TestExecutable  = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
+            StepName    = 'Test'
+            Success     = $Success
+            Duration    = [timespan]::Zero
+            ExitCode    = if ($Success) { 0 } else { 1 }
+            Tool        = 'test runner'
+            Message     = if ($Success) { 'Tests passed' } else { 'Exit code 1' }
+            TestExeFile = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
         }
     }
 
@@ -98,13 +144,13 @@ InModuleScope 'Delphi.PowerShell.CI' {
     Describe 'Invoke-DelphiCi -- unit' {
 
         BeforeAll {
-            Mock Resolve-DelphiCiConfig  { script:New-MockConfig }
-            Mock Find-DelphiProjects     { @('C:\Fake\Source\App.dproj') }
+            Mock Resolve-DelphiCiConfig  {
+                script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+            }
             Mock Invoke-DelphiClean      { script:New-CleanResult }
             Mock Invoke-DelphiBuild      { script:New-BuildResult }
             Mock Invoke-DelphiTest       { script:New-TestResult }
             Mock Write-DelphiCiMessage   {}
-            Mock Resolve-DefaultPlatform { 'Win32' }
         }
 
         Context 'step routing' {
@@ -116,16 +162,31 @@ InModuleScope 'Delphi.PowerShell.CI' {
             }
 
             It 'runs Invoke-DelphiBuild when Steps contains Build' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Build') }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(script:New-BuildJob)
+                }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 1
             }
 
-            It 'runs both steps when Steps is Clean,Build (default)' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean', 'Build') }
+            It 'runs Invoke-DelphiTest when Steps contains Test' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Test') -TestJobs @(script:New-TestJob)
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiTest -Times 1
+            }
+
+            It 'runs all three steps when Steps is Clean,Build,Test' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Clean', 'Build', 'Test') `
+                        -BuildJobs @(script:New-BuildJob) `
+                        -TestJobs  @(script:New-TestJob)
+                }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -Times 1
                 Should -Invoke Invoke-DelphiBuild -Times 1
+                Should -Invoke Invoke-DelphiTest  -Times 1
             }
 
             It 'does not run Build when Steps is only Clean' {
@@ -135,30 +196,11 @@ InModuleScope 'Delphi.PowerShell.CI' {
             }
 
             It 'does not run Clean when Steps is only Build' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Build') }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(script:New-BuildJob)
+                }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -Times 0
-            }
-
-            It 'runs Invoke-DelphiTest when Steps contains Test' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Test') }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -Times 1
-            }
-
-            It 'does not run Build or Clean when Steps is only Test' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Test') }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -Times 0
-                Should -Invoke Invoke-DelphiClean -Times 0
-            }
-
-            It 'runs all three steps when Steps is Clean,Build,Test' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean', 'Build', 'Test') }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -Times 1
-                Should -Invoke Invoke-DelphiBuild -Times 1
-                Should -Invoke Invoke-DelphiTest  -Times 1
             }
 
         }
@@ -166,6 +208,9 @@ InModuleScope 'Delphi.PowerShell.CI' {
         Context 'step halt on failure' {
 
             It 'does not run Build when Clean fails' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                }
                 Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 0
@@ -182,433 +227,164 @@ InModuleScope 'Delphi.PowerShell.CI' {
         Context 'result shape' {
 
             It 'always returns a result object' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                }
                 $result = Invoke-DelphiCi
                 $result | Should -Not -BeNullOrEmpty
             }
 
             It 'result Success is true when all steps succeed' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $true
             }
 
             It 'result Duration is a TimeSpan' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                }
                 $result = Invoke-DelphiCi
                 $result.Duration | Should -BeOfType [timespan]
             }
 
-            It 'result ProjectFile matches the resolved project' {
-                $result = Invoke-DelphiCi
-                $result.ProjectFile | Should -Be 'C:\Fake\Source\App.dproj'
-            }
-
-            It 'result Steps array contains one entry per step run' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean', 'Build') }
+            It 'result Steps array contains one entry per job run' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Clean', 'Build') -BuildJobs @(script:New-BuildJob)
+                }
                 $result = Invoke-DelphiCi
                 $result.Steps.Count | Should -Be 2
             }
 
             It 'result Steps entries carry the step names' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean', 'Build') }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Clean', 'Build') -BuildJobs @(script:New-BuildJob)
+                }
                 $result = Invoke-DelphiCi
                 $result.Steps[0].StepName | Should -Be 'Clean'
                 $result.Steps[1].StepName | Should -Be 'Build'
             }
 
-            It 'result Steps contains only executed steps when halted by failure' {
-                Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
+        }
+
+        Context 'clean-only without project file' {
+
+            It 'does not require a project file when Steps is Clean only' {
+                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean') }
                 $result = Invoke-DelphiCi
-                $result.Steps.Count | Should -Be 1
-                $result.Steps[0].StepName | Should -Be 'Clean'
+                $result.Success | Should -Be $true
             }
 
         }
 
-        Context 'project discovery' {
+        Context 'build matrix expansion' {
 
-            It 'uses ProjectFile from config when set' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile 'C:\Explicit\App.dproj' }
+            It 'expands platform x configuration matrix for a single build job' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
+                        script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -Times 4
+            }
+
+            It 'passes each platform/config combination to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
+                        script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win32' -and $Configuration -eq 'Debug' }
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win32' -and $Configuration -eq 'Release' }
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' -and $Configuration -eq 'Debug' }
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' -and $Configuration -eq 'Release' }
+            }
+
+            It 'runs multiple build jobs in sequence' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
+                        (script:New-BuildJob -Name 'App' -ProjectFile 'C:\Fake\App.dproj'),
+                        (script:New-BuildJob -Name 'Lib' -ProjectFile 'C:\Fake\Lib.dproj')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -Times 2
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $ProjectFile -eq 'C:\Fake\App.dproj' }
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $ProjectFile -eq 'C:\Fake\Lib.dproj' }
+            }
+
+            It 'halts on first build job failure' {
+                Mock Invoke-DelphiBuild { script:New-BuildResult -Success $false }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
+                        (script:New-BuildJob -Name 'A' -ProjectFile 'C:\Fake\A.dproj'),
+                        (script:New-BuildJob -Name 'B' -ProjectFile 'C:\Fake\B.dproj')
+                    )
+                }
                 $result = Invoke-DelphiCi
-                $result.ProjectFile | Should -Be 'C:\Explicit\App.dproj'
-                Should -Invoke Find-DelphiProjects -Times 0
+                $result.Success | Should -Be $false
+                Should -Invoke Invoke-DelphiBuild -Times 1
             }
 
-            It 'calls Find-DelphiProjects when config has no ProjectFile' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile '' }
-                Mock Find-DelphiProjects    { @('C:\Fake\Source\Discovered.dproj') }
-                $result = Invoke-DelphiCi
-                Should -Invoke Find-DelphiProjects -Times 1
-                $result.ProjectFile | Should -Be 'C:\Fake\Source\Discovered.dproj'
+        }
+
+        Context 'multiple test jobs' {
+
+            It 'runs multiple test jobs in sequence' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Test') -TestJobs @(
+                        (script:New-TestJob -Name 'Win32' -TestExeFile 'C:\Fake\Win32\App.Tests.exe'),
+                        (script:New-TestJob -Name 'Win64' -TestExeFile 'C:\Fake\Win64\App.Tests.exe')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiTest -Times 2
             }
 
-            It 'throws when no .dproj is found' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile '' }
-                Mock Find-DelphiProjects    { @() }
-                { Invoke-DelphiCi } | Should -Throw
-            }
-
-            It 'throws when multiple .dproj files are found' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile '' }
-                Mock Find-DelphiProjects    { @('C:\Fake\A.dproj', 'C:\Fake\B.dproj') }
-                { Invoke-DelphiCi } | Should -Throw
-            }
-
-            It 'does not require a project file when Steps is Clean only' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile '' -Steps @('Clean') }
-                Mock Find-DelphiProjects    { @() }
-                $result = Invoke-DelphiCi
-                $result.Success     | Should -Be $true
-                $result.ProjectFile | Should -BeNullOrEmpty
-                Should -Invoke Find-DelphiProjects -Times 0
+            It 'passes testExeFile to Invoke-DelphiTest for each job' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Steps @('Test') -TestJobs @(
+                        (script:New-TestJob -Name 'Win32' -TestExeFile 'C:\Fake\Win32\App.Tests.exe'),
+                        (script:New-TestJob -Name 'Win64' -TestExeFile 'C:\Fake\Win64\App.Tests.exe')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiTest -ParameterFilter { $TestExeFile -eq 'C:\Fake\Win32\App.Tests.exe' }
+                Should -Invoke Invoke-DelphiTest -ParameterFilter { $TestExeFile -eq 'C:\Fake\Win64\App.Tests.exe' }
             }
 
         }
 
         Context 'parameter forwarding' {
 
-            It 'passes CleanLevel from config to Invoke-DelphiClean' {
+            It 'passes build job fields to Invoke-DelphiBuild' {
+                $job = script:New-BuildJob
+                $job.Verbosity = 'minimal'
+                $job.Target = 'Rebuild'
                 Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $false }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanLevel -eq 'standard' }
-            }
-
-            It 'passes CleanIncludeFilePattern from config to Invoke-DelphiClean' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $false }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter {
-                    $CleanIncludeFilePattern -contains '*.res' -and $CleanIncludeFilePattern -contains '*.mab'
-                }
-            }
-
-            It 'passes CleanExcludeDirectoryPattern from config to Invoke-DelphiClean' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = ''; RecycleBin = $false; Check = $false }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter {
-                    $CleanExcludeDirectoryPattern -contains 'vendor' -and $CleanExcludeDirectoryPattern -contains 'assets'
-                }
-            }
-
-            It 'passes CleanConfigFile from config to Invoke-DelphiClean' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json'; RecycleBin = $false; Check = $false }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter {
-                    $CleanConfigFile -eq 'C:/ci/delphi-clean-ci.json'
-                }
-            }
-
-            It 'passes CleanRecycleBin true from config to Invoke-DelphiClean' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $true; Check = $false }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanRecycleBin -eq $true }
-            }
-
-            It 'passes CleanCheck true from config to Invoke-DelphiClean' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $true }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanCheck -eq $true }
-            }
-
-            It 'passes Platform from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win64'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' }
-            }
-
-            It 'passes Configuration from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Release'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Configuration -eq 'Release' }
-            }
-
-            It 'passes Defines from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @('CI', 'RELEASE_BUILD'); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
+                    script:New-MockConfig -Steps @('Build') -BuildJobs @($job)
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter {
-                    $Defines -contains 'CI' -and $Defines -contains 'RELEASE_BUILD'
+                    $BuildVerbosity -eq 'minimal' -and $BuildTarget -eq 'Rebuild'
                 }
             }
 
-            It 'passes BuildTarget from config to Invoke-DelphiBuild' {
+            It 'passes test job fields to Invoke-DelphiTest' {
+                $job = script:New-TestJob
+                $job.TimeoutSeconds = 30
+                $job.Arguments = @('--verbose')
                 Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Rebuild'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $BuildTarget -eq 'Rebuild' }
-            }
-
-            It 'passes ExeOutputDir from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = 'C:\Out\Bin'; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $ExeOutputDir -eq 'C:\Out\Bin' }
-            }
-
-            It 'passes DcuOutputDir from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = 'C:\Out\Dcu'; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $DcuOutputDir -eq 'C:\Out\Dcu' }
-            }
-
-            It 'passes UnitSearchPath from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''
-                        UnitSearchPath = @('C:\Libs\A', 'C:\Libs\B'); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
-                    $UnitSearchPath -contains 'C:\Libs\A' -and $UnitSearchPath -contains 'C:\Libs\B'
-                }
-            }
-
-            It 'passes IncludePath from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @()
-                        IncludePath = @('C:\Inc\A', 'C:\Inc\B'); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
-                    $IncludePath -contains 'C:\Inc\A' -and $IncludePath -contains 'C:\Inc\B'
-                }
-            }
-
-            It 'passes Namespace from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @()
-                        IncludePath = @(); Namespace = @('System', 'Vcl', 'Winapi')
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
-                    $Namespace -contains 'System' -and $Namespace -contains 'Vcl'
-                }
-            }
-
-            It 'passes BuildVerbosity from config to Invoke-DelphiBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'minimal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $BuildVerbosity -eq 'minimal' }
-            }
-
-            It 'passes TestExecutable from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = 'C:\Custom\Out\App.Tests.exe'
-                        Defines = @(); Arguments = @(); TimeoutSeconds = 10; Build = $true; Run = $true
-                    }
-                    $cfg
+                    script:New-MockConfig -Steps @('Test') -TestJobs @($job)
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiTest -ParameterFilter {
-                    $TestExecutable -eq 'C:\Custom\Out\App.Tests.exe'
+                    $TimeoutSeconds -eq 30
                 }
-            }
-
-            It 'passes Defines from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = $null
-                        Defines = @('CI'); Arguments = @(); TimeoutSeconds = 10; Build = $true; Run = $true
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $Defines -contains 'CI' }
-            }
-
-            It 'passes Arguments from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = $null
-                        Defines = @(); Arguments = @('--output', 'xml'); TimeoutSeconds = 10; Build = $true; Run = $true
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter {
-                    $Arguments -contains '--output' -and $Arguments -contains 'xml'
-                }
-            }
-
-            It 'passes TimeoutSeconds from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = $null
-                        Defines = @(); Arguments = @(); TimeoutSeconds = 30; Build = $true; Run = $true
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $TimeoutSeconds -eq 30 }
-            }
-
-            It 'passes Build false from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = $null
-                        Defines = @(); Arguments = @(); TimeoutSeconds = 10; Build = $false; Run = $true
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $Build -eq $false }
-            }
-
-            It 'passes Run false from config to Invoke-DelphiTest' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Test')
-                    $cfg.Test = [PSCustomObject]@{
-                        TestProjectFile = 'C:\Fake\Tests\App.Tests.dproj'
-                        TestExecutable  = $null
-                        Defines = @(); Arguments = @(); TimeoutSeconds = 10; Build = $true; Run = $false
-                    }
-                    $cfg
-                }
-                Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $Run -eq $false }
-            }
-
-        }
-
-        Context 'platform auto-resolution' {
-
-            It 'calls Resolve-DefaultPlatform when config platform is null' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Mock Resolve-DefaultPlatform { 'Win64' }
-                Invoke-DelphiCi
-                Should -Invoke Resolve-DefaultPlatform -Times 1
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' }
-            }
-
-            It 'does not call Resolve-DefaultPlatform when platform is explicitly set' {
-                Invoke-DelphiCi
-                Should -Invoke Resolve-DefaultPlatform -Times 0
-            }
-
-            It 'does not call Resolve-DefaultPlatform when BuildEngine is DCCBuild' {
-                Mock Resolve-DelphiCiConfig {
-                    $cfg = script:New-MockConfig -Steps @('Build')
-                    $cfg.Build = [PSCustomObject]@{
-                        Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
-                        Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
-                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
-                    }
-                    $cfg
-                }
-                Mock Resolve-DefaultPlatform { 'Win32' }
-                Invoke-DelphiCi
-                Should -Invoke Resolve-DefaultPlatform -Times 0
-                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win32' }
             }
 
         }

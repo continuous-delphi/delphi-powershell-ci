@@ -83,10 +83,10 @@ Clean + Build ConsoleProject:
 Invoke-DelphiCi -ProjectFile .\examples\ConsoleProjectGroup\Source\ConsoleProject.dproj
 ```
 
-### Clean only
+### Clean only (no project file needed)
 
 ```powershell
-Invoke-DelphiCi -Steps Clean -ProjectFile .\source\MyApp.dproj
+Invoke-DelphiCi -Steps Clean -Root C:\MyRepo
 ```
 
 ### Build only
@@ -95,17 +95,15 @@ Invoke-DelphiCi -Steps Clean -ProjectFile .\source\MyApp.dproj
 Invoke-DelphiCi -Steps Build -ProjectFile .\source\MyApp.dproj
 ```
 
-### Full pipeline: clean, build, and test
+### Full pipeline via config file
 
 ```powershell
-Invoke-DelphiCi -Steps Clean,Build,Test `
-    -ProjectFile .\source\MyApp.dproj `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
+Invoke-DelphiCi -ConfigFile .\delphi-ci.json
 ```
 
-The `CI` define switches DUnitX from the TestInsight IDE runner to the
-headless console runner. It is not injected automatically.
+The config file defines clean jobs, build jobs (with matrix expansion for
+platform x configuration), and test jobs. See the Configuration section
+below for the full schema.
 
 ### Pin the Delphi version
 
@@ -194,40 +192,48 @@ field in the config file.
 
 ### Supported config file schema
 
+Each step type (Clean, Build, Test) has section-level defaults and a `jobs`
+array. Jobs inherit from the defaults and can override any field. Build jobs
+support **matrix expansion**: `platform` and `configuration` can be string
+or array, producing a cross product of builds.
+
 ```json
 {
   "root": ".",
   "steps": ["Clean", "Build", "Test"],
   "clean": {
-    "level": "basic",
+    "level": "deep",
     "outputLevel": "detailed",
-    "includeFilePattern": [],
-    "excludeDirectoryPattern": [],
-    "configFile": "",
     "recycleBin": false,
-    "check": false
+    "check": false,
+    "jobs": [
+      { "name": "Repo clean", "root": "./" }
+    ]
   },
   "build": {
-    "projectFile": "source/MyApp.dproj",
     "engine": "MSBuild",
     "toolchain": { "version": "Latest" },
-    "platform": "Win32",
-    "configuration": "Debug",
-    "defines": [],
-    "verbosity": "normal",
-    "target": "Build",
-    "exeOutputDir": "",
-    "dcuOutputDir": "",
-    "unitSearchPath": [],
-    "includePath": [],
-    "namespace": []
+    "platform": "Win64",
+    "configuration": "Release",
+    "verbosity": "minimal",
+    "jobs": [
+      { "name": "Main App",
+        "projectFile": "source/MyApp.dproj" },
+      { "name": "Test project",
+        "projectFile": "tests/MyApp.Tests.dproj",
+        "platform": ["Win32", "Win64"],
+        "configuration": ["Debug", "Release"],
+        "defines": ["CI"] }
+    ]
   },
   "test": {
-    "testProjectFile": "tests/MyApp.Tests.dproj",
-    "defines": ["CI"],
     "timeoutSeconds": 10,
-    "build": true,
-    "run": true
+    "jobs": [
+      { "name": "Tests Win32 Debug",
+        "testExeFile": "tests/Win32/Debug/MyApp.Tests.exe" },
+      { "name": "Tests Win64 Release",
+        "testExeFile": "tests/Win64/Release/MyApp.Tests.exe" }
+    ]
   }
 }
 ```
@@ -284,11 +290,8 @@ Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj `
     -Platform Win64 -Configuration Release -Toolchain VER370
 
-# Build and run a DUnitX test project
-Invoke-DelphiTest -TestProjectFile .\tests\MyApp.Tests.dproj -Defines CI
-
-# Build the test project without running it
-Invoke-DelphiTest -TestProjectFile .\tests\MyApp.Tests.dproj -Defines CI -Run $false
+# Run a pre-built DUnitX test executable
+Invoke-DelphiTest -TestExeFile .\tests\Win32\Debug\MyApp.Tests.exe
 ```
 
 ---
@@ -328,15 +331,14 @@ Result shape:
 
 | Field | Type | Notes |
 |---|---|---|
-| `Success` | Boolean | `$true` when every step succeeded |
+| `Success` | Boolean | `$true` when every job succeeded |
 | `Duration` | TimeSpan | Wall-clock time for the run |
-| `ProjectFile` | String | Resolved project file path |
-| `Steps` | Object[] | One result per step that ran |
+| `Steps` | Object[] | One result per job that ran |
 
-Clean and Build step results have `StepName`, `Success`, `Duration`,
-`ExitCode`, `Tool`, `Message`, and `ProjectFile`. Test step results
-additionally have `TestProjectFile` and `TestExecutable` in place of
-`ProjectFile`.
+Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
+`Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
+`Errors`, `ExeOutputDir`, and `Output`. Test results have `TestExeFile`
+instead of `ProjectFile`.
 
 ---
 
