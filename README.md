@@ -200,9 +200,12 @@ field in the config file.
   "steps": ["Clean", "Build", "Test"],
   "clean": {
     "level": "basic",
+    "outputLevel": "detailed",
     "includeFilePattern": [],
     "excludeDirectoryPattern": [],
-    "configFile": ""
+    "configFile": "",
+    "recycleBin": false,
+    "check": false
   },
   "build": {
     "projectFile": "source/MyApp.dproj",
@@ -210,7 +213,14 @@ field in the config file.
     "toolchain": { "version": "Latest" },
     "platform": "Win32",
     "configuration": "Debug",
-    "defines": []
+    "defines": [],
+    "verbosity": "normal",
+    "target": "Build",
+    "exeOutputDir": "",
+    "dcuOutputDir": "",
+    "unitSearchPath": [],
+    "includePath": [],
+    "namespace": []
   },
   "test": {
     "testProjectFile": "tests/MyApp.Tests.dproj",
@@ -221,6 +231,9 @@ field in the config file.
   }
 }
 ```
+
+`includePath` and `namespace` are DCCBuild-only and are ignored when `engine`
+is `MSBuild`.
 
 All fields are optional. Absent fields fall back to built-in defaults.
 

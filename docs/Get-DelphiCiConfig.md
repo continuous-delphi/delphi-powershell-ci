@@ -24,8 +24,20 @@ Get-DelphiCiConfig
     [-Toolchain <string>]
     [-BuildEngine <string>]
     [-Defines <string[]>]
-    [-CleanIncludeFiles <string[]>]
-    [-CleanExcludeDirectories <string[]>]
+    [-BuildVerbosity <string>]
+    [-BuildTarget <string>]
+    [-ExeOutputDir <string>]
+    [-DcuOutputDir <string>]
+    [-UnitSearchPath <string[]>]
+    [-IncludePath <string[]>]
+    [-Namespace <string[]>]
+    [-CleanLevel <string>]
+    [-CleanOutputLevel <string>]
+    [-CleanIncludeFilePattern <string[]>]
+    [-CleanExcludeDirectoryPattern <string[]>]
+    [-CleanConfigFile <string>]
+    [-CleanRecycleBin <bool>]
+    [-CleanCheck <bool>]
     [-TestProjectFile <string>]
     [-TestExecutable <string>]
     [-TestDefines <string[]>]
@@ -95,15 +107,91 @@ defines set in the JSON config file. Each value is appended to the
 project's existing defines at build time -- the project's own defines are
 not replaced.
 
-### -CleanIncludeFiles
+### -BuildVerbosity
+
+Controls the verbosity of the build tool output.
+Valid values: `quiet`, `minimal`, `normal`, `detailed`, `diagnostic`.
+Default: `normal`.
+
+Maps to `build.verbosity` in the JSON config file.
+
+### -BuildTarget
+
+Build target to run.
+Valid values: `Build`, `Clean`, `Rebuild`.
+Default: `Build`.
+
+Maps to `build.target` in the JSON config file.
+
+### -ExeOutputDir
+
+Output directory for the compiled executable or DLL.
+Maps to `build.exeOutputDir` in the JSON config file.
+
+### -DcuOutputDir
+
+Output directory for compiled DCU files.
+Maps to `build.dcuOutputDir` in the JSON config file.
+
+### -UnitSearchPath
+
+Additional unit search paths appended to the project's existing paths.
+Maps to `build.unitSearchPath` in the JSON config file.
+
+### -IncludePath
+
+Additional include file search paths. DCCBuild-only.
+Maps to `build.includePath` in the JSON config file.
+
+### -Namespace
+
+Unit scope names for resolving unqualified unit names. DCCBuild-only.
+Maps to `build.namespace` in the JSON config file.
+
+### -CleanLevel
+
+Cleanup intensity level.
+Valid values: `basic`, `standard`, `deep`.
+Default: `basic`.
+
+### -CleanOutputLevel
+
+Controls how much output the clean step produces.
+Valid values: `detailed`, `summary`, `quiet`.
+Default: `detailed`.
+
+Maps to `clean.outputLevel` in the JSON config file.
+
+### -CleanIncludeFilePattern
 
 Additional file glob patterns forwarded to the Clean step. Files matching
 these patterns are deleted in addition to the standard level set.
 
-### -CleanExcludeDirectories
+### -CleanExcludeDirectoryPattern
 
 Directory glob patterns forwarded to the Clean step. Directories whose names
 match are skipped entirely during cleanup.
+
+### -CleanConfigFile
+
+Path to an explicit `delphi-clean` JSON configuration file. See
+`Invoke-DelphiClean` for details.
+
+### -CleanRecycleBin
+
+When `$true`, sends removed items to the recycle bin / trash instead of
+deleting permanently.
+Default: `$false`.
+
+Maps to `clean.recycleBin` in the JSON config file.
+
+### -CleanCheck
+
+When `$true`, runs the clean step in audit-only mode. No files are deleted;
+a failing exit code signals that artifacts are present.
+Default: `$false`.
+
+Maps to `clean.check` in the JSON config file.
 
 ### -TestProjectFile
 
@@ -151,16 +239,27 @@ Root          string     Resolved absolute path to the working root
 ProjectFile   string     Path to the .dproj file, or $null if not set
 Steps         string[]   Ordered list of steps to run
 Clean
-  Level              string     Clean depth: basic | standard | deep
-  IncludeFiles       string[]   Additional file patterns to delete (appended to level set)
-  ExcludeDirectories string[]   Directory patterns to skip during cleanup
+  Level                   string     Clean depth: basic | standard | deep
+  OutputLevel             string     Output verbosity: detailed | summary | quiet
+  IncludeFilePattern      string[]   Additional file patterns to delete
+  ExcludeDirectoryPattern string[]   Directory patterns to skip during cleanup
+  ConfigFile              string     Explicit delphi-clean config file path
+  RecycleBin              bool       Send removed items to recycle bin
+  Check                   bool       Audit-only mode (no deletion)
 Build
-  Engine          string   MSBuild | DCCBuild
+  Engine          string     MSBuild | DCCBuild
   Toolchain
-    Version       string   Toolchain selector or "Latest"
-  Platform        string   Target platform, or $null if not set (auto-resolve at run time)
-  Configuration   string   MSBuild configuration
-  Defines         string[] Additional compiler defines (appended, not replaced)
+    Version       string     Toolchain selector or "Latest"
+  Platform        string     Target platform, or $null (auto-resolve at run time)
+  Configuration   string     MSBuild configuration
+  Defines         string[]   Additional compiler defines (appended, not replaced)
+  Verbosity       string     Build output verbosity
+  Target          string     Build | Clean | Rebuild
+  ExeOutputDir    string     Output directory for executables
+  DcuOutputDir    string     Output directory for DCU files
+  UnitSearchPath  string[]   Additional unit search paths
+  IncludePath     string[]   Additional include paths (DCCBuild-only)
+  Namespace       string[]   Unit scope names (DCCBuild-only)
 Test
   TestProjectFile  string     Explicit test project path, or $null (auto-discover)
   TestExecutable   string     Explicit test EXE path, or $null (auto-derive)
@@ -179,8 +278,12 @@ Test
   "steps": ["Clean", "Build", "Test"],
   "clean": {
     "level": "basic",
-    "includeFiles": ["*.res"],
-    "excludeDirectories": ["vendor"]
+    "outputLevel": "detailed",
+    "includeFilePattern": ["*.res"],
+    "excludeDirectoryPattern": ["vendor"],
+    "configFile": "",
+    "recycleBin": false,
+    "check": false
   },
   "build": {
     "projectFile": "source/MyApp.dproj",
@@ -190,7 +293,14 @@ Test
     },
     "platform": "Win32",
     "configuration": "Debug",
-    "defines": []
+    "defines": [],
+    "verbosity": "normal",
+    "target": "Build",
+    "exeOutputDir": "",
+    "dcuOutputDir": "",
+    "unitSearchPath": [],
+    "includePath": [],
+    "namespace": []
   },
   "test": {
     "testProjectFile": "tests/MyApp.Tests.dproj",
@@ -211,6 +321,8 @@ matching CLI parameter.
 `root` is resolved relative to the directory that contains the config file.
 Use `"."` to anchor to that directory (the typical case) or a relative
 path such as `".."` to refer to a parent.
+
+`includePath` and `namespace` apply only when `engine` is `DCCBuild`.
 
 ## Examples
 
@@ -260,6 +372,16 @@ Get-DelphiCiConfig -Steps Clean,Build,Test `
     -TestTimeoutSeconds 30
 ```
 
+### Build with output directories and rebuild target
+
+```powershell
+Get-DelphiCiConfig -Steps Build `
+    -ProjectFile .\source\MyApp.dproj `
+    -BuildTarget Rebuild `
+    -ExeOutputDir C:\Out\Bin `
+    -DcuOutputDir C:\Out\Dcu
+```
+
 ### Test-only run
 
 ```powershell
@@ -267,14 +389,6 @@ Get-DelphiCiConfig -Steps Test
 ```
 
 Returns a config where only the `Test` step is requested.
-
-### Build-only run
-
-```powershell
-Get-DelphiCiConfig -Steps Build
-```
-
-Returns a config where only the `Build` step is requested.
 
 ## Notes
 
@@ -288,5 +402,9 @@ Returns a config where only the `Build` step is requested.
 - When `build.platform` is `$null` (not set), `Invoke-DelphiCi` resolves
   the Build platform from the main project file and the Test platform from
   the test project file independently at run time.
-- Validation errors (invalid step name, clean level, or engine value)
-  are thrown immediately so problems surface before any build work begins.
+- `build.includePath` and `build.namespace` apply only when `build.engine`
+  is `DCCBuild`. With `MSBuild`, setting them triggers a validation error
+  at build time.
+- Validation errors (invalid step name, clean level, engine value, build
+  verbosity, or build target) are thrown immediately so problems surface
+  before any build work begins.

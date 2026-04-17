@@ -21,8 +21,20 @@ Invoke-DelphiCi
     [-Toolchain <String>]
     [-BuildEngine <String>]
     [-Defines <String[]>]
-    [-CleanIncludeFiles <String[]>]
-    [-CleanExcludeDirectories <String[]>]
+    [-BuildVerbosity <String>]
+    [-BuildTarget <String>]
+    [-ExeOutputDir <String>]
+    [-DcuOutputDir <String>]
+    [-UnitSearchPath <String[]>]
+    [-IncludePath <String[]>]
+    [-Namespace <String[]>]
+    [-CleanLevel <String>]
+    [-CleanOutputLevel <String>]
+    [-CleanIncludeFilePattern <String[]>]
+    [-CleanExcludeDirectoryPattern <String[]>]
+    [-CleanConfigFile <String>]
+    [-CleanRecycleBin <Bool>]
+    [-CleanCheck <Bool>]
     [-TestProjectFile <String>]
     [-TestExecutable <String>]
     [-TestDefines <String[]>]
@@ -166,11 +178,55 @@ Required: No
 Default:  (empty, or config file value)
 ```
 
-### -CleanIncludeFiles
+### -BuildVerbosity
 
-Additional file glob patterns forwarded to the Clean step as
-`-IncludeFiles`. Files matching these patterns are deleted in addition to
-the standard level set (e.g. `*.res`, `*.mab`).
+Controls the verbosity of the build tool output.
+
+```
+Type:     String
+Accepted: quiet, minimal, normal, detailed, diagnostic
+Required: No
+Default:  normal
+```
+
+### -BuildTarget
+
+MSBuild target to run. `Clean` is MSBuild-only; `DCCBuild` accepts
+`Build` and `Rebuild`. The CI `Clean` step (`delphi-clean.ps1`) is
+unrelated to MSBuild's `Clean` target.
+
+```
+Type:     String
+Accepted: Build, Clean, Rebuild
+Required: No
+Default:  Build
+```
+
+### -ExeOutputDir
+
+Output directory for the compiled executable or DLL. Passed to the build
+tool as `/p:DCC_ExeOutput` (MSBuild) or `-E` (DCCBuild).
+
+```
+Type:     String
+Required: No
+Default:  (project default)
+```
+
+### -DcuOutputDir
+
+Output directory for compiled DCU files. Passed to the build tool as
+`/p:DCC_DcuOutput` (MSBuild) or `-N0` (DCCBuild).
+
+```
+Type:     String
+Required: No
+Default:  (project default)
+```
+
+### -UnitSearchPath
+
+Additional unit search paths. Appended to the project's existing paths.
 
 ```
 Type:     String[]
@@ -178,9 +234,65 @@ Required: No
 Default:  (empty, or config file value)
 ```
 
-### -CleanExcludeDirectories
+### -IncludePath
 
-Directory glob patterns forwarded to the Clean step as `-ExcludeDirectories`.
+Additional include file search paths (DCC `-I` flag). DCCBuild-only.
+Rejected with a clear error when `BuildEngine` is `MSBuild`.
+
+```
+Type:     String[]
+Required: No
+Default:  (empty, or config file value)
+```
+
+### -Namespace
+
+Unit scope names for resolving unqualified unit names (DCC `-NS` flag).
+DCCBuild-only. Rejected with a clear error when `BuildEngine` is `MSBuild`.
+
+```
+Type:     String[]
+Required: No
+Default:  (empty, or config file value)
+```
+
+### -CleanLevel
+
+Cleanup intensity level for the Clean step.
+
+```
+Type:     String
+Accepted: basic, standard, deep
+Required: No
+Default:  basic
+```
+
+### -CleanOutputLevel
+
+Controls the amount of plain-text output produced by the Clean step.
+
+```
+Type:     String
+Accepted: detailed, summary, quiet
+Required: No
+Default:  detailed
+```
+
+### -CleanIncludeFilePattern
+
+Additional file glob patterns forwarded to the Clean step as
+`-IncludeFilePattern`. Files matching these patterns are deleted in addition
+to the standard level set (e.g. `*.res`, `*.mab`).
+
+```
+Type:     String[]
+Required: No
+Default:  (empty, or config file value)
+```
+
+### -CleanExcludeDirectoryPattern
+
+Directory glob patterns forwarded to the Clean step as `-ExcludeDirectoryPattern`.
 Directories whose names match are skipped entirely during cleanup
 (e.g. `vendor`, `assets`).
 
@@ -188,6 +300,39 @@ Directories whose names match are skipped entirely during cleanup
 Type:     String[]
 Required: No
 Default:  (empty, or config file value)
+```
+
+### -CleanConfigFile
+
+Path to an explicit `delphi-clean` JSON configuration file. See
+`Invoke-DelphiClean` for details.
+
+```
+Type:     String
+Required: No
+Default:  (empty)
+```
+
+### -CleanRecycleBin
+
+When `$true`, sends removed items to the platform recycle bin / trash
+instead of deleting them permanently.
+
+```
+Type:     Bool
+Required: No
+Default:  $false
+```
+
+### -CleanCheck
+
+When `$true`, runs the Clean step in audit-only mode. Scans for artifacts
+but never deletes. Returns a failing exit code when artifacts are present.
+
+```
+Type:     Bool
+Required: No
+Default:  $false
 ```
 
 ### -TestProjectFile
@@ -287,17 +432,33 @@ Returns a `PSCustomObject` with the following fields.
 Execution stops at the first failing step. Steps that did not run are not
 included in the `Steps` array.
 
-Each Clean or Build entry in `Steps`:
+Each Clean entry in `Steps`:
 
 | Field         | Type    | Notes |
 |--------------|---------|-------|
-| `StepName`   | String  | `Clean` or `Build` |
+| `StepName`   | String  | `Clean` |
+| `Success`    | Boolean | |
+| `Duration`   | TimeSpan | |
+| `ExitCode`   | Int     | |
+| `Tool`       | String  | |
+| `Message`    | String  | |
+| `ProjectFile`| String  | Always `$null` for Clean |
+
+Each Build entry in `Steps`:
+
+| Field         | Type    | Notes |
+|--------------|---------|-------|
+| `StepName`   | String  | `Build` |
 | `Success`    | Boolean | |
 | `Duration`   | TimeSpan | |
 | `ExitCode`   | Int     | |
 | `Tool`       | String  | |
 | `Message`    | String  | |
 | `ProjectFile`| String  | |
+| `Warnings`   | Int     | Warning count parsed from build output |
+| `Errors`     | Int     | Error count parsed from build output |
+| `ExeOutputDir`| String | Resolved output directory |
+| `Output`     | String  | Full build output text |
 
 Each Test entry in `Steps`:
 
@@ -342,8 +503,12 @@ A config file can supply any subset of these fields:
   "steps": ["Clean", "Build", "Test"],
   "clean": {
     "level": "basic",
-    "includeFiles": ["*.res"],
-    "excludeDirectories": ["vendor"]
+    "outputLevel": "detailed",
+    "includeFilePattern": ["*.res"],
+    "excludeDirectoryPattern": ["vendor"],
+    "configFile": "",
+    "recycleBin": false,
+    "check": false
   },
   "build": {
     "projectFile": "source/MyApp.dproj",
@@ -351,7 +516,14 @@ A config file can supply any subset of these fields:
     "toolchain": { "version": "Latest" },
     "platform": "Win32",
     "configuration": "Debug",
-    "defines": []
+    "defines": [],
+    "verbosity": "normal",
+    "target": "Build",
+    "exeOutputDir": "",
+    "dcuOutputDir": "",
+    "unitSearchPath": [],
+    "includePath": [],
+    "namespace": []
   },
   "test": {
     "testProjectFile": "tests/MyApp.Tests.dproj",
@@ -364,6 +536,8 @@ A config file can supply any subset of these fields:
   }
 }
 ```
+
+`includePath` and `namespace` apply only when `engine` is `DCCBuild`.
 
 CLI parameters always take precedence over config file values, which take
 precedence over built-in defaults.
@@ -414,36 +588,30 @@ Invoke-DelphiCi -Steps Clean,Build,Test `
 The `CI` define switches DUnitX from the TestInsight IDE runner to the
 headless console runner. It is not injected automatically.
 
-### Test step only
+### Rebuild with minimal verbosity
 
 ```powershell
-Invoke-DelphiCi -Steps Test `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
+Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj `
+    -BuildTarget Rebuild -BuildVerbosity minimal
 ```
 
-The Test step is self-contained and does not require Clean or Build to have
-run first.
-
-### Build-only test (verify compilation without running)
+### Redirect build output directories
 
 ```powershell
-Invoke-DelphiCi -Steps Test `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI `
-    -TestRun $false
+Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj `
+    -ExeOutputDir C:\Out\Bin -DcuOutputDir C:\Out\Dcu
+```
+
+### Clean audit -- verify a clean workspace without deleting
+
+```powershell
+Invoke-DelphiCi -Steps Clean -CleanCheck $true -CleanLevel standard
 ```
 
 ### Config-file-driven run
 
 ```powershell
 Invoke-DelphiCi -ConfigFile .\myapp-ci.json
-```
-
-### Clean only
-
-```powershell
-Invoke-DelphiCi -Steps Clean -ProjectFile .\source\MyApp.dproj
 ```
 
 ### Build only, pinned version, release config
@@ -490,6 +658,11 @@ exit [int](-not $run.Success)
   explicitly to use the same value for both.
 - The `CI` define is not injected automatically into the Test step. Include
   it in `-TestDefines` when the test project requires it.
+- `-IncludePath` and `-Namespace` apply only when `BuildEngine` is
+  `DCCBuild`. With `MSBuild`, these are rejected with a clear error.
+- `-CleanRecycleBin` and `-CleanCheck` are `[Bool]` (not `[Switch]`) so
+  that a CLI value of `$false` can override a config file that set them
+  to `true`.
 - The command always returns a structured result. In a CI wrapper script,
   check `$result.Success` and call `exit 1` (or `exit [int](-not $result.Success)`)
   to produce a non-zero process exit code on failure.

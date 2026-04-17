@@ -16,6 +16,13 @@ Invoke-DelphiBuild
     [-Toolchain <String>]
     [-BuildEngine <String>]
     [-Defines <String[]>]
+    [-BuildVerbosity <String>]
+    [-BuildTarget <String>]
+    [-ExeOutputDir <String>]
+    [-DcuOutputDir <String>]
+    [-UnitSearchPath <String[]>]
+    [-IncludePath <String[]>]
+    [-Namespace <String[]>]
     [-WhatIf]
     [<CommonParameters>]
 ```
@@ -30,8 +37,8 @@ Path to the project file to build.
 
 - MSBuild engine: expects a `.dproj` file.
 - DCCBuild engine: expects a `.dpr` file.
-- 
-(Some normalizaton is attempted if changing the BuildEngine and forget to
+
+(Some normalization is attempted if changing the BuildEngine and forget to
 change the project extension.)
 
 ```
@@ -105,6 +112,102 @@ Required: No
 Default:  (empty)
 ```
 
+### -BuildVerbosity
+
+Controls the verbosity of the build tool output.
+
+- MSBuild: maps to `/v:<level>`. All five levels are accepted.
+- DCCBuild: accepts `quiet` (adds `-Q` to suppress hints/warnings) and
+  `normal`. Other values are passed through and may be rejected by the tool.
+
+```
+Type:     String
+Accepted: quiet, minimal, normal, detailed, diagnostic
+Required: No
+Default:  normal
+```
+
+### -BuildTarget
+
+MSBuild target to run. The CI `Clean` step (`delphi-clean.ps1`) is
+unrelated to MSBuild's `Clean` target.
+
+- MSBuild: accepts `Build`, `Clean`, `Rebuild`.
+- DCCBuild: accepts `Build` and `Rebuild` only. `Clean` is rejected with
+  a clear error.
+
+```
+Type:     String
+Accepted: Build, Clean, Rebuild
+Required: No
+Default:  Build
+```
+
+### -ExeOutputDir
+
+Output directory for the compiled executable or DLL.
+
+- MSBuild: passed as `/p:DCC_ExeOutput`.
+- DCCBuild: passed as the `-E` flag.
+
+```
+Type:     String
+Required: No
+Default:  (project default)
+```
+
+### -DcuOutputDir
+
+Output directory for compiled DCU files.
+
+- MSBuild: passed as `/p:DCC_DcuOutput`.
+- DCCBuild: passed as the `-N0` flag.
+
+```
+Type:     String
+Required: No
+Default:  (project default)
+```
+
+### -UnitSearchPath
+
+Additional unit search paths appended to whatever the project already sets.
+
+- MSBuild: passed as `/p:DCC_UnitSearchPath`.
+- DCCBuild: passed as the `-U` flag.
+
+```
+Type:     String[]
+Required: No
+Default:  (empty)
+```
+
+### -IncludePath
+
+Additional include file search paths (DCC `-I` flag). **DCCBuild-only** --
+rejected with a clear error when `BuildEngine` is `MSBuild`. With MSBuild,
+configure include paths via the project's PropertyGroups.
+
+```
+Type:     String[]
+Required: No
+Default:  (empty)
+```
+
+### -Namespace
+
+Unit scope names searched when resolving unqualified unit names (DCC `-NS`
+flag). Required for modern Delphi projects that use namespaced RTL units
+(e.g. `System.SysUtils`) when building outside the IDE without a project
+`.cfg` file. **DCCBuild-only** -- rejected with a clear error when
+`BuildEngine` is `MSBuild`.
+
+```
+Type:     String[]
+Required: No
+Default:  (empty)
+```
+
 ### -WhatIf
 
 Shows what would be built without running the toolchain. Toolchain detection
@@ -131,6 +234,10 @@ Returns a `PSCustomObject` with the following fields.
 | `Tool`       | String   | `'delphi-msbuild.ps1'` or `'delphi-dccbuild.ps1'` |
 | `Message`    | String   | `'Build completed'` on success; `'Exit code N'` on failure |
 | `ProjectFile`| String   | The path passed via `-ProjectFile` |
+| `Warnings`   | Int32    | Warning count parsed from MSBuild/DCC output |
+| `Errors`     | Int32    | Error count parsed from MSBuild/DCC output |
+| `ExeOutputDir`| String  | Resolved output directory for the compiled executable |
+| `Output`     | String   | Full build output text |
 
 ---
 
@@ -146,10 +253,19 @@ used with `Get-DelphiCiConfig` or `Invoke-DelphiCi`.
     "toolchain": { "version": "Latest" },
     "platform": "Win32",
     "configuration": "Debug",
-    "defines": ["CI"]
+    "defines": ["CI"],
+    "verbosity": "normal",
+    "target": "Build",
+    "exeOutputDir": "",
+    "dcuOutputDir": "",
+    "unitSearchPath": [],
+    "includePath": [],
+    "namespace": []
   }
 }
 ```
+
+`includePath` and `namespace` apply only when `engine` is `DCCBuild`.
 
 To use DCCBuild, set `"engine": "DCCBuild"` and point `projectFile` at
 a `.dpr` file rather than a `.dproj`.
@@ -191,6 +307,33 @@ Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj -Toolchain VER370
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj -Defines @('CI', 'RELEASE_BUILD')
 ```
 
+### Rebuild with minimal output
+
+```powershell
+Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj -BuildTarget Rebuild -BuildVerbosity minimal
+```
+
+### Redirect output directories
+
+```powershell
+Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj `
+    -ExeOutputDir C:\Out\Bin -DcuOutputDir C:\Out\Dcu
+```
+
+### Additional unit search paths
+
+```powershell
+Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj `
+    -UnitSearchPath @('libs\Spring4D', 'libs\DUnitX')
+```
+
+### DCCBuild with namespace imports
+
+```powershell
+Invoke-DelphiBuild -ProjectFile .\source\MyApp.dpr -BuildEngine DCCBuild `
+    -Namespace @('System', 'Vcl', 'Winapi', 'Data')
+```
+
 ### Capture and inspect the result
 
 ```powershell
@@ -198,6 +341,7 @@ $build = Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj
 if (-not $build.Success) {
     Write-Error "Build failed with exit code $($build.ExitCode)"
 }
+Write-Host "Warnings: $($build.Warnings), Errors: $($build.Errors)"
 Write-Host "Build took $($build.Duration.TotalSeconds)s"
 ```
 
@@ -213,3 +357,8 @@ Write-Host "Build took $($build.Duration.TotalSeconds)s"
 - For DCCBuild, the `-Config` value is added as a conditional define
   (uppercased) alongside any `-Define` values. Existing defines in the
   project's `.cfg` file are not affected.
+- `-IncludePath` and `-Namespace` are rejected when `BuildEngine` is
+  `MSBuild`. Configure these via the project's PropertyGroups instead.
+- `-BuildTarget Clean` is rejected when `BuildEngine` is `DCCBuild`.
+  Use the CI `Clean` step (`delphi-clean.ps1`) or `BuildTarget Rebuild`
+  instead.

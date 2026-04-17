@@ -11,9 +11,12 @@ returns a structured step result.
 Invoke-DelphiClean
     [-CleanRoot <String>]
     [-CleanLevel <String>]
+    [-CleanOutputLevel <String>]
     [-CleanIncludeFilePattern <String[]>]
     [-CleanExcludeDirectoryPattern <String[]>]
     [-CleanConfigFile <String>]
+    [-CleanRecycleBin]
+    [-CleanCheck]
     [-WhatIf]
     [<CommonParameters>]
 ```
@@ -47,6 +50,46 @@ Cleanup intensity level passed to `delphi-clean.ps1`.
 Type:     String
 Required: No
 Default:  basic
+```
+
+### -CleanOutputLevel
+
+Controls the amount of plain-text output produced by `delphi-clean.ps1`.
+
+| Value      | Effect |
+|------------|--------|
+| `detailed` | Header, per-item lines, and summary. Default. |
+| `summary`  | Header and summary only; per-item lines are suppressed. |
+| `quiet`    | No output at all; use the exit code as the signal. |
+
+```
+Type:     String
+Accepted: detailed, summary, quiet
+Required: No
+Default:  detailed
+```
+
+### -CleanRecycleBin
+
+When set, sends removed items to the platform recycle bin / trash instead of
+deleting them permanently. On Windows, uses the VisualBasic FileSystem API.
+On macOS, uses the user trash folder. Not supported on Linux.
+
+```
+Type:     SwitchParameter
+Required: No
+```
+
+### -CleanCheck
+
+Runs `delphi-clean.ps1` in audit-only mode. Scans for artifacts but never
+deletes anything. Returns a failing exit code (1) when artifacts are present,
+or success (0) when the workspace is clean. Useful for verifying a clean
+workspace in CI. Cannot be combined with `-WhatIf`.
+
+```
+Type:     SwitchParameter
+Required: No
 ```
 
 ### -CleanIncludeFilePattern
@@ -126,9 +169,12 @@ file used with `Get-DelphiCiConfig` or `Invoke-DelphiCi`.
 {
   "clean": {
     "level": "basic",
+    "outputLevel": "detailed",
     "includeFilePattern": ["*.res", "*.mab"],
     "excludeDirectoryPattern": ["vendor", "assets"],
-    "configFile": ""
+    "configFile": "",
+    "recycleBin": false,
+    "check": false
   }
 }
 ```
@@ -172,6 +218,27 @@ Skips any directory named `vendor` or `assets` when searching for files to remov
 
 ```powershell
 Invoke-DelphiClean -CleanRoot . -CleanLevel standard -CleanConfigFile C:\ci\delphi-clean-ci.json
+```
+
+### Audit-only mode (check for stale artifacts)
+
+```powershell
+Invoke-DelphiClean -CleanRoot . -CleanLevel standard -CleanCheck
+```
+
+Exit code 0 means no artifacts were found; exit code 1 means the workspace
+is dirty.
+
+### Send removed files to the recycle bin
+
+```powershell
+Invoke-DelphiClean -CleanRoot . -CleanLevel standard -CleanRecycleBin
+```
+
+### Quiet output (exit code only)
+
+```powershell
+Invoke-DelphiClean -CleanRoot . -CleanOutputLevel quiet
 ```
 
 ### Preview what would be removed
