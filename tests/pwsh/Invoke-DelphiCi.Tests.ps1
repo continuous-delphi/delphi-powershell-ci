@@ -252,6 +252,15 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 { Invoke-DelphiCi } | Should -Throw
             }
 
+            It 'does not require a project file when Steps is Clean only' {
+                Mock Resolve-DelphiCiConfig { script:New-MockConfig -ProjectFile '' -Steps @('Clean') }
+                Mock Find-DelphiProjects    { @() }
+                $result = Invoke-DelphiCi
+                $result.Success     | Should -Be $true
+                $result.ProjectFile | Should -BeNullOrEmpty
+                Should -Invoke Find-DelphiProjects -Times 0
+            }
+
         }
 
         Context 'parameter forwarding' {

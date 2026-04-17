@@ -160,31 +160,37 @@ function Invoke-DelphiCi {
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
-    # Resolve main project file -- explicit > config file > discovery
-    $resolvedProject = $config.ProjectFile
-    if ([string]::IsNullOrWhiteSpace($resolvedProject)) {
-        $candidates = @(Find-DelphiProjects -Root $config.Root)
-        if ($candidates.Count -eq 0) {
-            throw "No .dproj files found under '$($config.Root)'. Use -ProjectFile or -Root to point at the project."
+    # Resolve main project file and platform only when a Build or Test step
+    # needs them.  Clean-only runs work without a .dproj in the tree.
+    $needsProject          = @($config.Steps | Where-Object { $_ -in @('Build', 'Test') }).Count -gt 0
+    $resolvedProject       = $config.ProjectFile
+    $resolvedBuildPlatform = $config.Build.Platform
+
+    if ($needsProject) {
+        if ([string]::IsNullOrWhiteSpace($resolvedProject)) {
+            $candidates = @(Find-DelphiProjects -Root $config.Root)
+            if ($candidates.Count -eq 0) {
+                throw "No .dproj files found under '$($config.Root)'. Use -ProjectFile or -Root to point at the project."
+            }
+            if ($candidates.Count -gt 1) {
+                $list = ($candidates | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', '
+                throw "Multiple .dproj files found; use -ProjectFile to select one. Found: $list"
+            }
+            $resolvedProject = $candidates[0]
         }
-        if ($candidates.Count -gt 1) {
-            $list = ($candidates | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', '
-            throw "Multiple .dproj files found; use -ProjectFile to select one. Found: $list"
+
+        if ($null -eq $resolvedBuildPlatform) {
+            $resolvedBuildPlatform = if ($config.Build.Engine -ne 'DCCBuild') {
+                Resolve-DefaultPlatform -ProjectFile ([System.IO.Path]::ChangeExtension($resolvedProject, '.dproj'))
+            } else {
+                'Win32'
+            }
         }
-        $resolvedProject = $candidates[0]
     }
 
-    $resolvedBuildPlatform = if ($null -eq $config.Build.Platform) {
-        if ($config.Build.Engine -ne 'DCCBuild') {
-            Resolve-DefaultPlatform -ProjectFile ([System.IO.Path]::ChangeExtension($resolvedProject, '.dproj'))
-        } else {
-            'Win32'
-        }
-    } else {
-        $config.Build.Platform
+    if (-not [string]::IsNullOrWhiteSpace($resolvedProject)) {
+        Write-DelphiCiMessage -Level 'INFO' -Message "Project : $resolvedProject"
     }
-
-    Write-DelphiCiMessage -Level 'INFO' -Message "Project : $resolvedProject"
     Write-DelphiCiMessage -Level 'INFO' -Message "Steps   : $($config.Steps -join ', ')"
 
     $stepResults    = [System.Collections.Generic.List[object]]::new()
