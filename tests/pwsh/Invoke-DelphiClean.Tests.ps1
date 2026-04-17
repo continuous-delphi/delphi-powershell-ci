@@ -163,6 +163,34 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'does not pass -RecycleBin when CleanRecycleBin is omitted' {
+                Invoke-DelphiClean -CleanRoot 'C:\Fake'
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $Arguments -notcontains '-RecycleBin'
+                }
+            }
+
+            It 'passes -RecycleBin when CleanRecycleBin is set' {
+                Invoke-DelphiClean -CleanRoot 'C:\Fake' -CleanRecycleBin
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $Arguments -contains '-RecycleBin'
+                }
+            }
+
+            It 'does not pass -Check when CleanCheck is omitted' {
+                Invoke-DelphiClean -CleanRoot 'C:\Fake'
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $Arguments -notcontains '-Check'
+                }
+            }
+
+            It 'passes -Check when CleanCheck is set' {
+                Invoke-DelphiClean -CleanRoot 'C:\Fake' -CleanCheck
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $Arguments -contains '-Check'
+                }
+            }
+
         }
 
     }

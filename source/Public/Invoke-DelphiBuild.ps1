@@ -19,9 +19,40 @@ function Invoke-DelphiBuild {
 
         [string]$DcuOutputDir,
 
+        # Additional unit search paths (/p:DCC_UnitSearchPath for MSBuild,
+        # -U for DCCBuild). Each entry is forwarded as -UnitSearchPath to the
+        # bundled tool, which appends them to whatever the project already sets.
+        [string[]]$UnitSearchPath = @(),
+
+        # Additional include file search paths (DCC -I flag). DCCBuild-only --
+        # MSBuild handles these via project PropertyGroups, not CLI flags.
+        [string[]]$IncludePath = @(),
+
+        # Unit scope (namespace) names searched when resolving unqualified
+        # unit names (DCC -NS flag). Required for modern Delphi projects that
+        # use namespaced RTL units (e.g. System.SysUtils) when building
+        # outside the IDE without a project .cfg file. DCCBuild-only.
+        [string[]]$Namespace = @(),
+
         [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
-        [string]$BuildVerbosity = 'normal'
+        [string]$BuildVerbosity = 'normal',
+
+        # MSBuild target to run. 'Clean' is MSBuild-only -- the DCCBuild engine
+        # accepts only 'Build' and 'Rebuild'. The CI 'Clean' step (delphi-clean)
+        # is unrelated to MSBuild's clean target.
+        [ValidateSet('Build', 'Clean', 'Rebuild')]
+        [string]$BuildTarget = 'Build'
     )
+
+    if ($BuildEngine -eq 'DCCBuild' -and $BuildTarget -eq 'Clean') {
+        throw "BuildTarget 'Clean' is not supported by the DCCBuild engine. Use 'Build' or 'Rebuild', or run the CI 'Clean' step (delphi-clean) instead."
+    }
+    if ($BuildEngine -eq 'MSBuild' -and $IncludePath.Count -gt 0) {
+        throw "IncludePath is supported only by the DCCBuild engine. With MSBuild, configure include paths via the project's PropertyGroups."
+    }
+    if ($BuildEngine -eq 'MSBuild' -and $Namespace.Count -gt 0) {
+        throw "Namespace is supported only by the DCCBuild engine. With MSBuild, configure unit scope names via the project's PropertyGroups."
+    }
 
     # Normalise project file extension to what the engine expects.
     $expectedExt = if ($BuildEngine -eq 'DCCBuild') { '.dpr' } else { '.dproj' }
@@ -48,6 +79,7 @@ function Invoke-DelphiBuild {
         '-ProjectFile', $ProjectFile,
         '-Platform',    $Platform,
         '-Config',      $Configuration,
+        '-Target',      $BuildTarget,
         '-Verbosity',   $BuildVerbosity,
         '-ShowOutput'
     )
@@ -58,6 +90,18 @@ function Invoke-DelphiBuild {
     if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) {
         $buildArgs.Add('-DcuOutputDir')
         $buildArgs.Add($DcuOutputDir)
+    }
+    foreach ($p in $UnitSearchPath) {
+        $buildArgs.Add('-UnitSearchPath')
+        $buildArgs.Add($p)
+    }
+    foreach ($p in $IncludePath) {
+        $buildArgs.Add('-IncludePath')
+        $buildArgs.Add($p)
+    }
+    foreach ($n in $Namespace) {
+        $buildArgs.Add('-Namespace')
+        $buildArgs.Add($n)
     }
     foreach ($d in $Defines) {
         $buildArgs.Add('-Define')

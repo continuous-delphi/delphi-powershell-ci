@@ -24,14 +24,22 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 IncludeFilePattern      = @()
                 ExcludeDirectoryPattern = @()
                 ConfigFile              = ''
+                RecycleBin              = $false
+                Check                   = $false
             }
             Build       = [PSCustomObject]@{
-                Engine        = 'MSBuild'
-                Toolchain     = [PSCustomObject]@{ Version = 'Latest' }
-                Platform      = 'Win32'
-                Configuration = 'Debug'
-                Defines       = @()
-                Verbosity     = 'normal'
+                Engine         = 'MSBuild'
+                Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
+                Platform       = 'Win32'
+                Configuration  = 'Debug'
+                Defines        = @()
+                Verbosity      = 'normal'
+                Target         = 'Build'
+                ExeOutputDir   = ''
+                DcuOutputDir   = ''
+                UnitSearchPath = @()
+                IncludePath    = @()
+                Namespace      = @()
             }
             Test        = [PSCustomObject]@{
                 TestProjectFile  = 'C:\Fake\Tests\App.Tests.dproj'
@@ -251,7 +259,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanLevel from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'standard'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $false }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -261,7 +269,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanIncludeFilePattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @('*.res', '*.mab'); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $false }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -273,7 +281,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanExcludeDirectoryPattern from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = '' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @('vendor', 'assets'); ConfigFile = ''; RecycleBin = $false; Check = $false }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -285,7 +293,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'passes CleanConfigFile from config to Invoke-DelphiClean' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Clean')
-                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json' }
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = 'C:/ci/delphi-clean-ci.json'; RecycleBin = $false; Check = $false }
                     $cfg
                 }
                 Invoke-DelphiCi
@@ -294,12 +302,33 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes CleanRecycleBin true from config to Invoke-DelphiClean' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Clean')
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $true; Check = $false }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanRecycleBin -eq $true }
+            }
+
+            It 'passes CleanCheck true from config to Invoke-DelphiClean' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Clean')
+                    $cfg.Clean = [PSCustomObject]@{ Level = 'basic'; OutputLevel = 'detailed'; IncludeFilePattern = @(); ExcludeDirectoryPattern = @(); ConfigFile = ''; RecycleBin = $false; Check = $true }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiClean -ParameterFilter { $CleanCheck -eq $true }
+            }
+
             It 'passes Platform from config to Invoke-DelphiBuild' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = 'Win64'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }
@@ -313,6 +342,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = 'Win32'; Configuration = 'Release'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }
@@ -326,6 +356,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = 'Win32'; Configuration = 'Debug'; Defines = @('CI', 'RELEASE_BUILD'); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }
@@ -335,12 +366,106 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes BuildTarget from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Rebuild'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $BuildTarget -eq 'Rebuild' }
+            }
+
+            It 'passes ExeOutputDir from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = 'C:\Out\Bin'; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $ExeOutputDir -eq 'C:\Out\Bin' }
+            }
+
+            It 'passes DcuOutputDir from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = 'C:\Out\Dcu'; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $DcuOutputDir -eq 'C:\Out\Dcu' }
+            }
+
+            It 'passes UnitSearchPath from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''
+                        UnitSearchPath = @('C:\Libs\A', 'C:\Libs\B'); IncludePath = @(); Namespace = @()
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    $UnitSearchPath -contains 'C:\Libs\A' -and $UnitSearchPath -contains 'C:\Libs\B'
+                }
+            }
+
+            It 'passes IncludePath from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @()
+                        IncludePath = @('C:\Inc\A', 'C:\Inc\B'); Namespace = @()
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    $IncludePath -contains 'C:\Inc\A' -and $IncludePath -contains 'C:\Inc\B'
+                }
+            }
+
+            It 'passes Namespace from config to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    $cfg = script:New-MockConfig -Steps @('Build')
+                    $cfg.Build = [PSCustomObject]@{
+                        Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
+                        Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @()
+                        IncludePath = @(); Namespace = @('System', 'Vcl', 'Winapi')
+                    }
+                    $cfg
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    $Namespace -contains 'System' -and $Namespace -contains 'Vcl'
+                }
+            }
+
             It 'passes BuildVerbosity from config to Invoke-DelphiBuild' {
                 Mock Resolve-DelphiCiConfig {
                     $cfg = script:New-MockConfig -Steps @('Build')
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = 'Win32'; Configuration = 'Debug'; Defines = @(); Verbosity = 'minimal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }
@@ -446,6 +571,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'MSBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }
@@ -466,6 +592,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     $cfg.Build = [PSCustomObject]@{
                         Engine = 'DCCBuild'; Toolchain = [PSCustomObject]@{ Version = 'Latest' }
                         Platform = $null; Configuration = 'Debug'; Defines = @(); Verbosity = 'normal'
+                        Target = 'Build'; ExeOutputDir = ''; DcuOutputDir = ''; UnitSearchPath = @(); IncludePath = @(); Namespace = @()
                     }
                     $cfg
                 }

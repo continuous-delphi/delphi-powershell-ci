@@ -270,6 +270,107 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes -Target Build by default' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Target' -and $BuildArgs -contains 'Build'
+                }
+            }
+
+            It 'passes -Target Rebuild when specified' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -BuildTarget 'Rebuild'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Target' -and $BuildArgs -contains 'Rebuild'
+                }
+            }
+
+            It 'passes -Target Clean when specified for MSBuild' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -BuildTarget 'Clean'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Target' -and $BuildArgs -contains 'Clean'
+                }
+            }
+
+            It 'rejects -BuildTarget Clean for DCCBuild engine' {
+                { Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildTarget 'Clean' } |
+                    Should -Throw -ExpectedMessage '*Clean*DCCBuild*'
+            }
+
+            It 'does not pass -UnitSearchPath when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-UnitSearchPath'
+                }
+            }
+
+            It 'passes a single -UnitSearchPath' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -UnitSearchPath @('C:\Libs\A')
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-UnitSearchPath' -and $BuildArgs -contains 'C:\Libs\A'
+                }
+            }
+
+            It 'passes multiple -UnitSearchPath values' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -UnitSearchPath @('C:\Libs\A', 'C:\Libs\B')
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains 'C:\Libs\A' -and $BuildArgs -contains 'C:\Libs\B'
+                }
+            }
+
+            It 'passes -DcuOutputDir when specified' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -DcuOutputDir 'C:\Out\Dcu'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-DcuOutputDir' -and $BuildArgs -contains 'C:\Out\Dcu'
+                }
+            }
+
+            It 'does not pass -DcuOutputDir when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-DcuOutputDir'
+                }
+            }
+
+            It 'does not pass -IncludePath when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-IncludePath'
+                }
+            }
+
+            It 'passes -IncludePath for each entry (DCCBuild)' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -IncludePath @('C:\Inc\A', 'C:\Inc\B')
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-IncludePath' -and
+                    $BuildArgs -contains 'C:\Inc\A' -and $BuildArgs -contains 'C:\Inc\B'
+                }
+            }
+
+            It 'rejects -IncludePath for MSBuild engine' {
+                { Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -IncludePath @('C:\Inc\A') } |
+                    Should -Throw -ExpectedMessage '*IncludePath*DCCBuild*'
+            }
+
+            It 'does not pass -Namespace when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-Namespace'
+                }
+            }
+
+            It 'passes -Namespace for each entry (DCCBuild)' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -Namespace @('System', 'Vcl')
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Namespace' -and
+                    $BuildArgs -contains 'System' -and $BuildArgs -contains 'Vcl'
+                }
+            }
+
+            It 'rejects -Namespace for MSBuild engine' {
+                { Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -Namespace @('System') } |
+                    Should -Throw -ExpectedMessage '*Namespace*DCCBuild*'
+            }
+
         }
 
         Context 'engine routing' {

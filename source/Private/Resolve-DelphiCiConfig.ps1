@@ -14,12 +14,20 @@ function Resolve-DelphiCiConfig {
     $cleanExcludeDirectoryPattern = @()
     $cleanConfigFile             = ''
     $cleanOutputLevel            = 'detailed'
+    $cleanRecycleBin             = $false
+    $cleanCheck                  = $false
     $buildEngine   = 'MSBuild'
     $buildToolchainVersion = 'Latest'
     $buildPlatform = $null
     $buildConfig   = 'Debug'
     $buildDefines  = @()
     $buildVerbosity = 'normal'
+    $buildTarget        = 'Build'
+    $buildExeOutputDir  = ''
+    $buildDcuOutputDir  = ''
+    $buildUnitSearchPath = @()
+    $buildIncludePath    = @()
+    $buildNamespace      = @()
 
     $testProjectFile    = $null
     $testExecutable     = $null
@@ -64,6 +72,14 @@ function Resolve-DelphiCiConfig {
                 -not [string]::IsNullOrWhiteSpace($c.outputLevel)) {
                 $cleanOutputLevel = $c.outputLevel
             }
+            if ($c.PSObject.Properties['recycleBin'] -and
+                $null -ne $c.recycleBin) {
+                $cleanRecycleBin = [bool]$c.recycleBin
+            }
+            if ($c.PSObject.Properties['check'] -and
+                $null -ne $c.check) {
+                $cleanCheck = [bool]$c.check
+            }
         }
 
         if ($json.PSObject.Properties['build']) {
@@ -86,6 +102,15 @@ function Resolve-DelphiCiConfig {
             if ($b.PSObject.Properties['defines'])                   { $buildDefines  = @($b.defines) }
             if ($b.PSObject.Properties['verbosity'] -and
                 -not [string]::IsNullOrWhiteSpace($b.verbosity))    { $buildVerbosity = $b.verbosity }
+            if ($b.PSObject.Properties['target'] -and
+                -not [string]::IsNullOrWhiteSpace($b.target))       { $buildTarget = $b.target }
+            if ($b.PSObject.Properties['exeOutputDir'] -and
+                -not [string]::IsNullOrWhiteSpace($b.exeOutputDir)) { $buildExeOutputDir = $b.exeOutputDir }
+            if ($b.PSObject.Properties['dcuOutputDir'] -and
+                -not [string]::IsNullOrWhiteSpace($b.dcuOutputDir)) { $buildDcuOutputDir = $b.dcuOutputDir }
+            if ($b.PSObject.Properties['unitSearchPath'])           { $buildUnitSearchPath = @($b.unitSearchPath) }
+            if ($b.PSObject.Properties['includePath'])              { $buildIncludePath    = @($b.includePath) }
+            if ($b.PSObject.Properties['namespace'])                { $buildNamespace      = @($b.namespace) }
         }
 
         if ($json.PSObject.Properties['test']) {
@@ -136,6 +161,12 @@ function Resolve-DelphiCiConfig {
         -not [string]::IsNullOrWhiteSpace($Overrides['CleanOutputLevel'])) {
         $cleanOutputLevel = $Overrides['CleanOutputLevel']
     }
+    if ($Overrides.ContainsKey('CleanRecycleBin') -and $null -ne $Overrides['CleanRecycleBin']) {
+        $cleanRecycleBin = [bool]$Overrides['CleanRecycleBin']
+    }
+    if ($Overrides.ContainsKey('CleanCheck') -and $null -ne $Overrides['CleanCheck']) {
+        $cleanCheck = [bool]$Overrides['CleanCheck']
+    }
     if ($Overrides.ContainsKey('Platform') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['Platform'])) {
         $buildPlatform = $Overrides['Platform']
@@ -159,6 +190,27 @@ function Resolve-DelphiCiConfig {
     if ($Overrides.ContainsKey('BuildVerbosity') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['BuildVerbosity'])) {
         $buildVerbosity = $Overrides['BuildVerbosity']
+    }
+    if ($Overrides.ContainsKey('BuildTarget') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['BuildTarget'])) {
+        $buildTarget = $Overrides['BuildTarget']
+    }
+    if ($Overrides.ContainsKey('ExeOutputDir') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['ExeOutputDir'])) {
+        $buildExeOutputDir = $Overrides['ExeOutputDir']
+    }
+    if ($Overrides.ContainsKey('DcuOutputDir') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['DcuOutputDir'])) {
+        $buildDcuOutputDir = $Overrides['DcuOutputDir']
+    }
+    if ($Overrides.ContainsKey('UnitSearchPath') -and $null -ne $Overrides['UnitSearchPath']) {
+        $buildUnitSearchPath = @($Overrides['UnitSearchPath'])
+    }
+    if ($Overrides.ContainsKey('IncludePath') -and $null -ne $Overrides['IncludePath']) {
+        $buildIncludePath = @($Overrides['IncludePath'])
+    }
+    if ($Overrides.ContainsKey('Namespace') -and $null -ne $Overrides['Namespace']) {
+        $buildNamespace = @($Overrides['Namespace'])
     }
     if ($Overrides.ContainsKey('TestProjectFile') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['TestProjectFile'])) {
@@ -198,6 +250,7 @@ function Resolve-DelphiCiConfig {
     $validOutputLevels  = @('detailed', 'summary', 'quiet')
     $validEngines       = @('MSBuild', 'DCCBuild')
     $validVerbosities   = @('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')
+    $validTargets       = @('Build', 'Clean', 'Rebuild')
     $validSteps         = @('Clean', 'Build', 'Test')
 
     if ($cleanLevel -notin $validLevels) {
@@ -211,6 +264,9 @@ function Resolve-DelphiCiConfig {
     }
     if ($buildVerbosity -notin $validVerbosities) {
         throw "Invalid build verbosity '$buildVerbosity'. Valid values: $($validVerbosities -join ', ')"
+    }
+    if ($buildTarget -notin $validTargets) {
+        throw "Invalid build target '$buildTarget'. Valid values: $($validTargets -join ', ')"
     }
     foreach ($step in $steps) {
         if ($step -notin $validSteps) {
@@ -228,16 +284,24 @@ function Resolve-DelphiCiConfig {
             IncludeFilePattern      = $cleanIncludeFilePattern
             ExcludeDirectoryPattern = $cleanExcludeDirectoryPattern
             ConfigFile              = $cleanConfigFile
+            RecycleBin              = $cleanRecycleBin
+            Check                   = $cleanCheck
         }
         Build       = [PSCustomObject]@{
-            Engine        = $buildEngine
-            Toolchain     = [PSCustomObject]@{
+            Engine         = $buildEngine
+            Toolchain      = [PSCustomObject]@{
                 Version = $buildToolchainVersion
             }
-            Platform      = $buildPlatform
-            Configuration = $buildConfig
-            Defines       = $buildDefines
-            Verbosity     = $buildVerbosity
+            Platform       = $buildPlatform
+            Configuration  = $buildConfig
+            Defines        = $buildDefines
+            Verbosity      = $buildVerbosity
+            Target         = $buildTarget
+            ExeOutputDir   = $buildExeOutputDir
+            DcuOutputDir   = $buildDcuOutputDir
+            UnitSearchPath = $buildUnitSearchPath
+            IncludePath    = $buildIncludePath
+            Namespace      = $buildNamespace
         }
         Test        = [PSCustomObject]@{
             TestProjectFile  = $testProjectFile

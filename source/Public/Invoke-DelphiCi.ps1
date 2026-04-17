@@ -36,6 +36,25 @@ function Invoke-DelphiCi {
         [string]$BuildVerbosity,
 
         [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('Build', 'Clean', 'Rebuild')]
+        [string]$BuildTarget,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$ExeOutputDir,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$DcuOutputDir,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$UnitSearchPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$IncludePath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$Namespace,
+
+        [Parameter(ParameterSetName = 'Run')]
         [ValidateSet('basic', 'standard', 'deep')]
         [string]$CleanLevel,
 
@@ -51,6 +70,12 @@ function Invoke-DelphiCi {
 
         [Parameter(ParameterSetName = 'Run')]
         [string]$CleanConfigFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CleanRecycleBin,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CleanCheck,
 
         [Parameter(ParameterSetName = 'Run')]
         [string]$TestProjectFile,
@@ -112,11 +137,19 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('BuildEngine'))      { $overrides['BuildEngine']      = $BuildEngine }
     if ($PSBoundParameters.ContainsKey('Defines'))                      { $overrides['Defines']                      = $Defines }
     if ($PSBoundParameters.ContainsKey('BuildVerbosity'))               { $overrides['BuildVerbosity']               = $BuildVerbosity }
+    if ($PSBoundParameters.ContainsKey('BuildTarget'))                  { $overrides['BuildTarget']                  = $BuildTarget }
+    if ($PSBoundParameters.ContainsKey('ExeOutputDir'))                 { $overrides['ExeOutputDir']                 = $ExeOutputDir }
+    if ($PSBoundParameters.ContainsKey('DcuOutputDir'))                 { $overrides['DcuOutputDir']                 = $DcuOutputDir }
+    if ($PSBoundParameters.ContainsKey('UnitSearchPath'))               { $overrides['UnitSearchPath']               = $UnitSearchPath }
+    if ($PSBoundParameters.ContainsKey('IncludePath'))                  { $overrides['IncludePath']                  = $IncludePath }
+    if ($PSBoundParameters.ContainsKey('Namespace'))                    { $overrides['Namespace']                    = $Namespace }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                   { $overrides['CleanLevel']                   = $CleanLevel }
     if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))            { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))      { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
     if ($PSBoundParameters.ContainsKey('CleanExcludeDirectoryPattern')) { $overrides['CleanExcludeDirectoryPattern'] = $CleanExcludeDirectoryPattern }
     if ($PSBoundParameters.ContainsKey('CleanConfigFile'))              { $overrides['CleanConfigFile']              = $CleanConfigFile }
+    if ($PSBoundParameters.ContainsKey('CleanRecycleBin'))              { $overrides['CleanRecycleBin']              = $CleanRecycleBin }
+    if ($PSBoundParameters.ContainsKey('CleanCheck'))                   { $overrides['CleanCheck']                   = $CleanCheck }
     if ($PSBoundParameters.ContainsKey('TestProjectFile'))          { $overrides['TestProjectFile']          = $TestProjectFile }
     if ($PSBoundParameters.ContainsKey('TestExecutable'))       { $overrides['TestExecutable']       = $TestExecutable }
     if ($PSBoundParameters.ContainsKey('TestDefines'))          { $overrides['TestDefines']          = $TestDefines }
@@ -163,12 +196,14 @@ function Invoke-DelphiCi {
             switch ($step) {
                 'Clean' {
                     $result = Invoke-DelphiClean `
-                        -CleanRoot                   $config.Root `
-                        -CleanLevel                  $config.Clean.Level `
-                        -CleanOutputLevel            $config.Clean.OutputLevel `
-                        -CleanIncludeFilePattern     @($config.Clean.IncludeFilePattern) `
+                        -CleanRoot                    $config.Root `
+                        -CleanLevel                   $config.Clean.Level `
+                        -CleanOutputLevel             $config.Clean.OutputLevel `
+                        -CleanIncludeFilePattern      @($config.Clean.IncludeFilePattern) `
                         -CleanExcludeDirectoryPattern @($config.Clean.ExcludeDirectoryPattern) `
-                        -CleanConfigFile             $config.Clean.ConfigFile
+                        -CleanConfigFile              $config.Clean.ConfigFile `
+                        -CleanRecycleBin:             $config.Clean.RecycleBin `
+                        -CleanCheck:                  $config.Clean.Check
                 }
                 'Build' {
                     $result = Invoke-DelphiBuild `
@@ -178,7 +213,13 @@ function Invoke-DelphiCi {
                         -Toolchain      $config.Build.Toolchain.Version `
                         -BuildEngine    $config.Build.Engine `
                         -Defines        @($config.Build.Defines) `
-                        -BuildVerbosity $config.Build.Verbosity
+                        -BuildVerbosity $config.Build.Verbosity `
+                        -BuildTarget    $config.Build.Target `
+                        -ExeOutputDir   $config.Build.ExeOutputDir `
+                        -DcuOutputDir   $config.Build.DcuOutputDir `
+                        -UnitSearchPath @($config.Build.UnitSearchPath) `
+                        -IncludePath   @($config.Build.IncludePath) `
+                        -Namespace     @($config.Build.Namespace)
                 }
                 'Test' {
                     $result = Invoke-DelphiTest `
