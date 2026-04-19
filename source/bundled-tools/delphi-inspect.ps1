@@ -1,11 +1,23 @@
 <#
-delphi-inspect.ps1
+ -----------------------------------------------------------------------------
+ delphi-inspect
 
-Minimal V1:
-- Loads the Delphi compiler versions dataset JSON.
-- Prints tool version + dataset metadata.
+ A PowerShell utility for deterministic Delphi toolchain discovery and normalization.
 
-ASCII-only.
+ Part of Continuous-Delphi: Strengthening Delphi's continued success
+ https://github.com/continuous-delphi
+
+ Project repository:
+ https://github.com/continuous-delphi/delphi-inspect
+
+ Includes canonical compiler version data from:
+ https://github.com/continuous-delphi/delphi-compiler-versions
+
+ Copyright (c) 2026 Darian Miller
+ Licensed under the MIT License.
+ https://opensource.org/licenses/MIT
+ SPDX-License-Identifier: MIT
+ -----------------------------------------------------------------------------
 
 USAGE
   pwsh ./source/delphi-inspect.ps1
@@ -110,7 +122,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Tool version
-$ToolVersion = '0.6.0'
+$ToolVersion = '1.1.0'
 
 # Exit code constants -- single source of truth for the exit code contract.
 $ExitSuccess              = 0   # normal completion
@@ -142,10 +154,10 @@ $script:CompilerMap = @{
 # BEGIN-DELPHI-COMPILER-VERSIONS-JSON
 $EmbeddedData = @'
 {
-  "schemaVersion": "1.0.0",
-  "dataVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
+  "dataVersion": "1.1.0",
   "meta": {
-    "generatedUtcDate": "2026-03-05",
+    "generatedUtcDate": "2026-03-21",
     "scope": {
       "includeFromVer": "VER90",
       "excluded": [
@@ -162,7 +174,28 @@ $EmbeddedData = @'
       "See individual entry notes for platforms introduced in sub-version point releases.",
       "Tooling should check supportedBuildSystems and supportedPlatforms before assessing installation readiness.",
       "Return notApplicable readiness when the requested buildSystem or platform is absent from the supported arrays."
-    ]
+    ],
+    "project": {
+      "name": "delphi-compiler-versions",
+      "repository": "https://github.com/continuous-delphi/delphi-compiler-versions",
+      "organization": "https://github.com/continuous-delphi",
+      "maintainers": [
+        {
+          "name": "Darian Miller",
+          "role": "primary",
+          "url": "https://github.com/darianmiller"
+        }
+      ]
+    },
+    "description": {
+      "summary": "Canonical Delphi compiler version mapping based on official VER### symbols.",
+      "purpose": "Provides a single source of truth for Delphi compiler version detection across tooling, CI, and code generation."
+    },
+    "license": {
+      "name": "MIT",
+      "spdx": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
   },
   "versions": [
     {
@@ -490,10 +523,11 @@ $EmbeddedData = @'
       "packageVersion": "370",
       "regKeyRelativePath": "\\Software\\Embarcadero\\BDS\\37.0",
       "supportedBuildSystems": ["DCC", "MSBuild"],
-      "supportedPlatforms": ["Win32", "Win64", "macOS64", "macOSARM64", "iOS64", "iOSSimulator64", "Android32", "Android64", "Linux64"],
+      "supportedPlatforms": ["Win32", "Win64", "macOS64", "macOSARM64", "iOS64", "iOSSimulator64", "Android32", "Android64", "Linux64", "WinARM64EC"],
       "aliases": ["Delphi 13", "Florence", "13 Florence"],
       "notes": [
-        "RAD Studio 13 unifies internal version numbers to 37 (registry, RTL, packages)."
+        "RAD Studio 13 unifies internal version numbers to 37 (registry, RTL, packages).",
+        "Update 1 for RAD Studio 13 Florence added support for WinARM64EC"
       ]
     }
   ]
