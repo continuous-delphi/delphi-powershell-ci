@@ -5,16 +5,14 @@ pushd %~dp0
 set "_DCI=%~dp0..\..\tools\delphi-ci.ps1"
 
 echo.
-echo  use powershell or pwsh
-echo
 echo ============================================================
 echo  DELPHI-CI:  Step 1 of 2 -- Clean + Build: ConsoleProject
 echo ============================================================
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%_DCI%" ^
+pwsh -NoProfile -ExecutionPolicy Bypass -File "%_DCI%" ^
      -Steps Clean,Build ^
-     -CleanIncludeFiles *.res ^
+     -CleanIncludeFilePattern *.res ^
      -ProjectFile Source\ConsoleProject.dpr
 
 set "_EC=%ERRORLEVEL%"
@@ -26,16 +24,16 @@ if %_EC% neq 0 (
 
 echo.
 echo ============================================================
-echo  DELPHI-CI:  Step 2 of 2 -- Test: ConsoleProject.Tests  [-TestDefines CI]
+echo  DELPHI-CI:  Step 2 of 2 -- Build + Run: ConsoleProject.Tests
 echo ============================================================
 echo.
 
 pwsh -NoProfile -ExecutionPolicy Bypass -File "%_DCI%" ^
-     -Steps Clean,Test ^
-     -CleanIncludeFiles *.res ^
-     -TestProjectFile Tests\ConsoleProject.Tests.dpr ^
-     -TestDefines CI ^
-     -TestExecutable Tests\Win32\Debug\ConsoleProject.Tests.exe
+     -Steps Build,Run ^
+     -CleanIncludeFilePattern *.res ^
+     -ProjectFile Tests\ConsoleProject.Tests.dpr ^
+     -Defines CI ^
+     -Execute Tests\Win32\Debug\ConsoleProject.Tests.exe
 
 set "_EC=%ERRORLEVEL%"
 if %_EC% neq 0 (
