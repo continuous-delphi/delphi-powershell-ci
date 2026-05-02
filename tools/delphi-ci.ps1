@@ -27,10 +27,7 @@ VersionInfo mode: the structured version object is written to the pipeline
 .\tools\delphi-ci.ps1 -Steps Build -ProjectFile .\source\MyApp.dproj -Configuration Release
 
 .EXAMPLE
-.\tools\delphi-ci.ps1 -Steps Clean,Build,Test `
-    -ProjectFile .\source\MyApp.dproj `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
+.\tools\delphi-ci.ps1 -ConfigFile .\delphi-ci.json
 
 .EXAMPLE
 .\tools\delphi-ci.ps1 -VersionInfo
@@ -48,10 +45,10 @@ param(
     [string]$Root,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string]$ProjectFile,
+    [string[]]$Steps,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string[]]$Steps,
+    [string]$ProjectFile,
 
     [Parameter(ParameterSetName = 'Run')]
     [string]$Platform,
@@ -69,31 +66,59 @@ param(
     [string[]]$Defines,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string[]]$CleanIncludeFiles,
+    [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
+    [string]$BuildVerbosity,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string[]]$CleanExcludeDirectories,
+    [ValidateSet('Build', 'Clean', 'Rebuild')]
+    [string]$BuildTarget,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string]$TestProjectFile,
+    [string]$ExeOutputDir,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string]$TestExecutable,
+    [string]$DcuOutputDir,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string[]]$TestDefines,
+    [string[]]$UnitSearchPath,
 
     [Parameter(ParameterSetName = 'Run')]
-    [string[]]$TestArguments,
+    [string[]]$IncludePath,
 
     [Parameter(ParameterSetName = 'Run')]
-    [int]$TestTimeoutSeconds,
+    [string[]]$Namespace,
 
     [Parameter(ParameterSetName = 'Run')]
-    [bool]$TestBuild,
+    [ValidateSet('basic', 'standard', 'deep')]
+    [string]$CleanLevel,
 
     [Parameter(ParameterSetName = 'Run')]
-    [bool]$TestRun
+    [ValidateSet('detailed', 'summary', 'quiet')]
+    [string]$CleanOutputLevel,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$CleanIncludeFilePattern,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$CleanExcludeDirectoryPattern,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$CleanConfigFile,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [bool]$CleanRecycleBin,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [bool]$CleanCheck,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$Execute,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$RunArguments,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [int]$RunTimeoutSeconds
 )
 
 Set-StrictMode -Version Latest

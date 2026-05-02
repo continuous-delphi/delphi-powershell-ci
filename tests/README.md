@@ -12,9 +12,7 @@ tests/
    +- Smoke.Tests.ps1                    Infrastructure smoke test
    +- PSScriptAnalyzer.Tests.ps1         Lint gate
    +- Get-DelphiCiConfig.Tests.ps1       Config normalization tests
-   +- Find-DelphiProjects.Tests.ps1      Project discovery tests
    +- Resolve-DefaultPlatform.Tests.ps1  Platform resolution tests
-   +- Resolve-TestProject.Tests.ps1      Test project discovery tests
    +- Invoke-DelphiCi.Tests.ps1          Orchestration command tests
    +- Invoke-DelphiBuild.Tests.ps1       Build step tests
    +- Invoke-DelphiClean.Tests.ps1       Clean step tests
@@ -116,8 +114,6 @@ mocked step commands and private helpers for unit tests. Covers:
 - Halt-on-failure: Build does not run when Clean fails; Success reflects failure
 - PassThru result shape: Success, Duration, ProjectFile, Steps array with names
 - Steps array contains only executed steps when halted by failure
-- Project discovery: explicit config ProjectFile skips Find-DelphiProjects;
-  absent ProjectFile triggers discovery; no-project and multi-project errors
 - Parameter forwarding: Level to Invoke-DelphiClean; Platform, Configuration,
   and Defines to Invoke-DelphiBuild; Defines, Arguments, TimeoutSeconds, Build,
   and Run to Invoke-DelphiTest
@@ -152,21 +148,6 @@ the private `Invoke-BundledTool` helper. Uses `InModuleScope` with mocked
 - Argument passing: tool name, -Level default and explicit values, -RootPath
 - Integration test against the real `ConsoleProjectGroup/Source` with level `basic`
 
-### Resolve-TestProject.Tests.ps1
-
-Behaviour-contract tests for the private `Resolve-TestProject` function.
-Uses `InModuleScope` with per-test isolated directories under `$TestDrive`.
-Covers:
-
-- Explicit `TestProjectFile`: returns path when file exists; throws when absent
-- Discovery in `tests/` subfolder: single `.dproj`, single `.dpr`, `.dproj`
-  preferred when both exist for the same base name, throws on ambiguity
-- Discovery by name convention in root: `Tests*` and `*Tests` basenames,
-  `.dproj` preferred over `.dpr`, throws on ambiguity, ignores non-matching files
-- Precedence: `tests/` result returned when both `tests/` and root convention match
-- Nothing found: returns `$null`
-- Integration test against `ConsoleProjectGroup`
-
 ### Get-DelphiCiConfig.Tests.ps1
 
 Behaviour-contract tests for `Get-DelphiCiConfig` and its private
@@ -191,16 +172,12 @@ Uses `InModuleScope`. Covers:
   indicates build failure
 - Build/run phase control: `-Build $false` skips build; `-Run $false` skips run
 - WhatIf: neither build nor run phase executes
-- Project discovery: Root and TestProjectFile forwarded to Resolve-TestProject;
-  throws when Resolve-TestProject returns null
 - Platform auto-resolution: calls Resolve-DefaultPlatform when no platform
   given (MSBuild); uses Win32 for DCCBuild; explicit value bypasses resolution
 - Parameter forwarding to Invoke-TestBuild (Platform, Configuration, Defines,
   BuildEngine) and Invoke-TestRunner (TimeoutSeconds, Arguments)
 - Invoke-TestRunner unit tests with real `pwsh.exe`: timeout kill path,
   success (exit 0), failure (exit non-zero), missing executable
-- Resolve-TestExecutable unit tests: path formula, platform, configuration,
-  extension variants (`.dproj` and `.dpr`)
 - Integration test: real build and run of `ConsoleProject.Tests.dproj` with
   `-Defines CI`
 

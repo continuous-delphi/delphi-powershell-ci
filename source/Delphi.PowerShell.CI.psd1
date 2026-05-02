@@ -25,7 +25,7 @@
         'Invoke-DelphiCi'
         'Invoke-DelphiClean'
         'Invoke-DelphiBuild'
-        'Invoke-DelphiTest'
+        'Invoke-DelphiRun'
     )
 
     # Nothing else exported

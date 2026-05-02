@@ -5,13 +5,19 @@ All notable changes to this project will be documented in this file.
 ---
 
 ## [Unreleased]
-
+- Extended pipleine redesign v2: replacee the fixed `"steps"` 
+and named-section config layout with an ordered `"pipeline"` array
+of action objects. This enables repeatable and freely ordered actions
+(Clean, Build, Run, Copy, Compress, etc.) without schema changes.
 - Update `delphi-clean` to `0.10.0`. Clean settings (level, file patterns,
   directory exclusions) now live in `delphi-clean`'s own config file hierarchy
   (`delphi-clean.json` / `delphi-clean.local.json` / `$HOME/delphi-clean.json`)
   rather than in `delphi-ci.json`. `Invoke-DelphiClean` is now a thin wrapper
   that passes only `-RootPath` to `delphi-clean.ps1`.
-
+- Total revamp/redesign of pipeline to support multiple jobs per step with matrix expansion
+- Support more options in the external config file for delphi-clean, delphi-msbuild, delphi-dccbuild
+- Support -Verbosity for delphi-msbuild and outputLevel for delphi-clean
+- Add -ExeOutputDir+DcuOutputDir parameters to Invoke-DelphiBuild
 ---
 
 ## [0.1.0] - Unreleased
@@ -24,8 +30,7 @@ Initial commit of `delphi-powershell-ci`.
 ### Public commands
 
 - `Invoke-DelphiCi` -- primary orchestration command; runs Clean, Build,
-  and/or Test steps, supports convention-based project discovery and JSON
-  config files; `-VersionInfo` reports module and bundled tool versions
+  and/or Test steps, `-VersionInfo` reports module and bundled tool versions
 - `Invoke-DelphiClean` -- thin wrapper over `delphi-clean.ps1`; passes
   `-RootPath` and optional `-CleanConfigFile`; `-WhatIf` support;
   structured result object
@@ -57,9 +62,6 @@ Initial commit of `delphi-powershell-ci`.
 
 ### Other
 
-- Convention-based project discovery for both build and test projects;
-  test discovery searches `<root>\tests\` then `<root>` for a project
-  whose name starts or ends with `Tests`
 - JSON configuration file support with CLI override precedence; full
   `test` section support (`testProjectFile`, `testExecutable`, `defines`,
   `arguments`, `timeoutSeconds`, `build`, `run`)

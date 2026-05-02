@@ -1,44 +1,114 @@
 {
   "root": ".",
-  "clean": {
-    "level": "standard",
-    "includeFilePattern": [
-      "*.res"
-    ],
-    "excludeDirectoryPattern": [
-      "resources",
-      "branding"
-    ]
-  },
-  "build": {
-    "projectFile": "source/MyApp.dproj",
-    "engine": "MSBuild",
-    "toolchain": {
-      "version": "Latest"
+  "defaults": {
+    "clean": {
+      "level": "standard",
+      "outputLevel": "detailed",
+      "includeFilePattern": ["*.res"],
+      "excludeDirectoryPattern": ["resources", "branding"],
+      "configFile": "",
+      "recycleBin": false,
+      "check": false
     },
-    "platform": "Win32",
-    "configuration": "Debug",
-    "defines": [
-      "CUSTOM_BEHAVIOR"
-    ]
+    "build": {
+      "engine": "MSBuild",
+      "toolchain": { "version": "Latest" },
+      "platform": "Win32",
+      "configuration": "Debug",
+      "defines": ["CUSTOM_BEHAVIOR"],
+      "verbosity": "normal",
+      "target": "Build",
+      "exeOutputDir": "",
+      "dcuOutputDir": "",
+      "unitSearchPath": [],
+      "includePath": [],
+      "namespace": []
+    },
+    "run": {
+      "timeoutSeconds": 20,
+      "arguments": ["--no-banner"]
+    }
   },
-  "test": {
-    "testProjectFile": "tests/MyApp.Tests.dproj",
-    "testExecutable": null,
-    "build": true,
-    "run": true,
-    "defines": [
-      "CI",
-      "TESTING"
-    ],
-    "arguments": [
-      "--no-banner"
-    ],
-    "timeoutSeconds": 20
-  },
-  "steps": [
-    "Clean",
-    "Build",
-    "Test"
+  "pipeline": [
+    {
+      "action": "Clean",
+      "level": "deep",
+      "outputLevel": "quiet",
+      "includeFilePattern": ["*.local"],
+      "excludeDirectoryPattern": ["vendor"],
+      "configFile": "",
+      "recycleBin": false,
+      "check": false,
+      "jobs": [
+        {
+          "name": "Source clean",
+          "root": "./source",
+          "level": "standard",
+          "outputLevel": "summary",
+          "includeFilePattern": [],
+          "excludeDirectoryPattern": [],
+          "configFile": "",
+          "recycleBin": false,
+          "check": false
+        },
+        {
+          "name": "Test clean",
+          "root": "./tests"
+        }
+      ]
+    },
+    {
+      "action": "Build",
+      "engine": "MSBuild",
+      "toolchain": { "version": "Latest" },
+      "platform": "Win64",
+      "configuration": "Release",
+      "defines": ["RELEASE_MODE"],
+      "verbosity": "minimal",
+      "target": "Build",
+      "exeOutputDir": "",
+      "dcuOutputDir": "",
+      "unitSearchPath": ["lib/units"],
+      "includePath": ["lib/include"],
+      "namespace": ["System", "System.Classes"],
+      "jobs": [
+        {
+          "name": "Main App",
+          "projectFile": "source/MyApp.dproj",
+          "engine": "MSBuild",
+          "toolchain": { "version": "Latest" },
+          "platform": "Win64",
+          "configuration": "Release",
+          "defines": ["APP_SPECIFIC"],
+          "verbosity": "minimal",
+          "target": "Build",
+          "exeOutputDir": "bin/",
+          "dcuOutputDir": "dcu/",
+          "unitSearchPath": ["lib/extra"],
+          "includePath": [],
+          "namespace": []
+        },
+        {
+          "name": "Tests",
+          "projectFile": "tests/MyApp.Tests.dproj",
+          "platform": "Win32",
+          "configuration": "Debug",
+          "defines": ["CI", "TESTING"]
+        }
+      ]
+    },
+    {
+      "action": "Run",
+      "timeoutSeconds": 30,
+      "arguments": ["-b"],
+      "jobs": [
+        {
+          "name": "Unit tests",
+          "execute": "tests/Win32/Debug/MyApp.Tests.exe",
+          "timeoutSeconds": 60,
+          "arguments": ["-l:Warning", "-cm:Quiet"]
+        }
+      ]
+    }
   ]
 }

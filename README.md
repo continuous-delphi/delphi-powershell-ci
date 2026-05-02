@@ -3,7 +3,6 @@
 ![delphi-powershell-ci logo](https://continuous-delphi.github.io/assets/logos/delphi-powershell-ci-480x270.png)
 
 [![Delphi](https://img.shields.io/badge/delphi-red)](https://www.embarcadero.com/products/delphi)
-[![CI](https://github.com/continuous-delphi/delphi-powershell-ci/actions/workflows/ci.yml/badge.svg)](https://github.com/continuous-delphi/delphi-powershell-ci/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/continuous-delphi/delphi-powershell-ci)
 [![Continuous Delphi](https://img.shields.io/badge/org-continuous--delphi-red)](https://github.com/continuous-delphi)
@@ -30,14 +29,14 @@ The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
 public interface for day-to-day CI workflows.
 
+Additional functionlity include `Invoke-DelphiRun` for executing DUnitX test projects or other utilities as needed.
+
+
 ---
 
 ## v1 scope
 
-v1 supports **Clean**, **Build**, and **Test** steps.
-
-Not in v1: linting, coverage, SBOM, quality gates, GitHub Actions workflows,
-PowerShell Gallery publication.
+v1 supports **Clean**, **Build**, and **Run** steps.
 
 ---
 
@@ -64,18 +63,7 @@ Import the module, then call `Invoke-DelphiCi`.
 Import-Module .\source\Delphi.PowerShell.CI.psd1
 ```
 
-### Convention-based usage
-
-If your repository has a single `.dproj` under `source\`:
-
-```powershell
-Invoke-DelphiCi
-```
-
-This cleans with the `basic` level, detects the latest Delphi installation,
-and builds `Win32 Debug`.
-
-### Explicit project
+### Example project
 
 Clean + Build ConsoleProject:
 
@@ -94,16 +82,6 @@ Invoke-DelphiCi -Steps Clean -Root C:\MyRepo
 ```powershell
 Invoke-DelphiCi -Steps Build -ProjectFile .\source\MyApp.dproj
 ```
-
-### Full pipeline via config file
-
-```powershell
-Invoke-DelphiCi -ConfigFile .\delphi-ci.json
-```
-
-The config file defines clean jobs, build jobs (with matrix expansion for
-platform x configuration), and test jobs. See the Configuration section
-below for the full schema.
 
 ### Pin the Delphi version
 
@@ -140,9 +118,7 @@ Displays the module version and the version of each bundled tool.
 
 ---
 
-## Two ways to use this module
-
-### As a module function (scripted use)
+## Example use as a module function (scripted use)
 
 Import the module and call `Invoke-DelphiCi` directly. The function always
 returns a structured result object; your script decides what to do with it:
@@ -154,87 +130,75 @@ $run = Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
 if (-not $run.Success) { exit 1 }
 ```
 
-Use this when you want to inspect step details, branch on the result, or
-compose `Invoke-DelphiCi` into a larger script.
-
-### As a wrapper script (CI runner use)
-
-`tools\delphi-ci.ps1` imports the module and owns the process exit code.
-It exits 0 on success and 1 on failure. No result object is written to the
-pipeline in run mode -- the exit code is the signal.
-
-```powershell
-# Clean and build
-.\tools\delphi-ci.ps1 -ProjectFile .\source\MyApp.dproj
-
-# Full pipeline with test
-.\tools\delphi-ci.ps1 -Steps Clean,Build,Test `
-    -ProjectFile .\source\MyApp.dproj `
-    -TestProjectFile .\tests\MyApp.Tests.dproj `
-    -TestDefines CI
-```
-
-Use this when a CI runner (GitHub Actions, GitLab CI, Jenkins, etc.) needs
-to read a process exit code to determine pass or fail.
-
 ---
 
 ## Configuration
 
 ### Precedence (highest to lowest)
 
-1. Explicit CLI parameters
-2. JSON config file fields
-3. Built-in defaults
+1. Job-level properties in the pipeline
+2. Action-level properties in the pipeline
+3. CLI parameters (override defaults)
+4. JSON config file `defaults` section
+5. Built-in defaults
 
-For example, a `-Platform` supplied on the command line always wins over the same
-field in the config file.
+CLI parameters override the defaults layer. Action-level and job-level
+properties in the pipeline config sit above CLI overrides for that
+specific entry.
 
-### Supported config file schema
+### Config file format (pipeline)
 
-Each step type (Clean, Build, Test) has section-level defaults and a `jobs`
-array. Jobs inherit from the defaults and can override any field. Build jobs
-support **matrix expansion**: `platform` and `configuration` can be string
-or array, producing a cross product of builds.
+The config file defines an ordered **pipeline** of actions. A `defaults`
+section provides base values keyed by action type. Each pipeline entry can
+override defaults at the action level, and each job can override further.
+
+Configuration merges through three levels per job:
+
+    defaults.{action} > action-level properties > job-level properties
+
+- **Scalars** override (last writer wins).
+- **Arrays** append (child values concatenated after parent).
+- **`key!` suffix** forces array replacement instead of append.
+
+Build jobs support **matrix expansion**: `platform` and `configuration` can
+be string or array, producing a cross product of builds.
 
 ```json
 {
   "root": ".",
-  "steps": ["Clean", "Build", "Test"],
-  "clean": {
-    "level": "deep",
-    "outputLevel": "detailed",
-    "recycleBin": false,
-    "check": false,
-    "jobs": [
-      { "name": "Repo clean", "root": "./" }
-    ]
+  "defaults": {
+    "clean": { "level": "standard" },
+    "build": {
+      "engine": "MSBuild",
+      "toolchain": { "version": "Latest" },
+      "platform": "Win64",
+      "configuration": "Release",
+      "verbosity": "minimal"
+    },
+    "run": { "timeoutSeconds": 10 }
   },
-  "build": {
-    "engine": "MSBuild",
-    "toolchain": { "version": "Latest" },
-    "platform": "Win64",
-    "configuration": "Release",
-    "verbosity": "minimal",
-    "jobs": [
-      { "name": "Main App",
-        "projectFile": "source/MyApp.dproj" },
-      { "name": "Test project",
-        "projectFile": "tests/MyApp.Tests.dproj",
-        "platform": ["Win32", "Win64"],
-        "configuration": ["Debug", "Release"],
-        "defines": ["CI"] }
-    ]
-  },
-  "test": {
-    "timeoutSeconds": 10,
-    "jobs": [
-      { "name": "Tests Win32 Debug",
-        "testExeFile": "tests/Win32/Debug/MyApp.Tests.exe" },
-      { "name": "Tests Win64 Release",
-        "testExeFile": "tests/Win64/Release/MyApp.Tests.exe" }
-    ]
-  }
+  "pipeline": [
+    { "action": "Clean", "level": "deep" },
+    { "action": "Build",
+      "jobs": [
+        { "name": "Main App",
+          "projectFile": "source/MyApp.dproj" },
+        { "name": "Test project",
+          "projectFile": "tests/MyApp.Tests.dproj",
+          "platform": ["Win32", "Win64"],
+          "configuration": ["Debug", "Release"],
+          "defines": ["CI"] }
+      ]
+    },
+    { "action": "Run",
+      "jobs": [
+        { "name": "Tests Win32 Debug",
+          "execute": "tests/Win32/Debug/MyApp.Tests.exe" },
+        { "name": "Tests Win64 Release",
+          "execute": "tests/Win64/Release/MyApp.Tests.exe" }
+      ]
+    }
+  ]
 }
 ```
 
@@ -246,6 +210,9 @@ All fields are optional. Absent fields fall back to built-in defaults.
 `root` is resolved relative to the config file's directory when it is a
 relative path or `.`.
 
+The legacy format (with `"steps"` and named sections) is still supported and
+automatically converted internally.
+
 ### Clean levels
 
 | Level | What is removed |
@@ -255,20 +222,6 @@ relative path or `.`.
 | `deep` | Everything in `standard`, plus user-local IDE files (`.~*`, FireDAC project cache, etc.) |
 
 Default level is `basic`.
-
----
-
-## Project discovery
-
-When no `-ProjectFile` is given, discovery searches in order:
-
-1. `<root>` -- if exactly one `.dproj` is present here
-2. `<root>\source` -- fallback
-3. `<root>\..\source` -- tools-folder convention fallback
-
-Discovery stops at the first location that yields results. It fails with
-a clear error if no `.dproj` is found, or if more than one is found and
-no explicit file was given.
 
 ---
 
@@ -291,7 +244,7 @@ Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj `
     -Platform Win64 -Configuration Release -Toolchain VER370
 
 # Run a pre-built DUnitX test executable
-Invoke-DelphiTest -TestExeFile .\tests\Win32\Debug\MyApp.Tests.exe
+Invoke-DelphiRun -Execute .\tests\Win32\Debug\MyApp.Tests.exe
 ```
 
 ---
@@ -337,7 +290,7 @@ Result shape:
 
 Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
-`Errors`, `ExeOutputDir`, and `Output`. Test results have `TestExeFile`
+`Errors`, `ExeOutputDir`, and `Output`. Run results have `Execute`
 instead of `ProjectFile`.
 
 ---
@@ -362,7 +315,7 @@ docs/                   Per-command reference documentation
   Invoke-DelphiClean.md
   Invoke-DelphiBuild.md
   Invoke-DelphiCi.md
-  Invoke-DelphiTest.md
+  Invoke-DelphiRun.md
 tests/                  Pester test suite
   run-tests.ps1
   pwsh/
@@ -377,7 +330,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiCi` | Primary orchestration command |
 | `Invoke-DelphiClean` | Clean step |
 | `Invoke-DelphiBuild` | Build step |
-| `Invoke-DelphiTest` | Test step (build and run a DUnitX test project) |
+| `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |
 
 Full parameter reference and examples for each command are in `docs/`.

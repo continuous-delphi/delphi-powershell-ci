@@ -81,16 +81,16 @@ function Invoke-DelphiCi {
         [Parameter(ParameterSetName = 'Run')]
         [bool]$CleanCheck,
 
-        # --- Test defaults (CLI shorthand for single-job use) ---
+        # --- Run defaults (CLI shorthand for single-job use) ---
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$TestExeFile,
+        [string]$Execute,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string[]]$TestArguments,
+        [string[]]$RunArguments,
 
         [Parameter(ParameterSetName = 'Run')]
-        [int]$TestTimeoutSeconds
+        [int]$RunTimeoutSeconds
     )
 
     # ---------------------------------------------------------------------------
@@ -143,96 +143,94 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CleanConfigFile'))               { $overrides['CleanConfigFile']              = $CleanConfigFile }
     if ($PSBoundParameters.ContainsKey('CleanRecycleBin'))               { $overrides['CleanRecycleBin']              = $CleanRecycleBin }
     if ($PSBoundParameters.ContainsKey('CleanCheck'))                    { $overrides['CleanCheck']                   = $CleanCheck }
-    if ($PSBoundParameters.ContainsKey('TestExeFile'))                   { $overrides['TestExeFile']                  = $TestExeFile }
-    if ($PSBoundParameters.ContainsKey('TestArguments'))                 { $overrides['TestArguments']                = $TestArguments }
-    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds'))            { $overrides['TestTimeoutSeconds']           = $TestTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('Execute'))                        { $overrides['Execute']                      = $Execute }
+    if ($PSBoundParameters.ContainsKey('RunArguments'))                  { $overrides['RunArguments']                 = $RunArguments }
+    if ($PSBoundParameters.ContainsKey('RunTimeoutSeconds'))             { $overrides['RunTimeoutSeconds']            = $RunTimeoutSeconds }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
-    Write-DelphiCiMessage -Level 'INFO' -Message "Steps : $($config.Steps -join ', ')"
+    $actions = $config.Pipeline | ForEach-Object { $_.Action }
+    Write-DelphiCiMessage -Level 'INFO' -Message "Pipeline: $($actions -join ' > ')"
 
     $stepResults    = [System.Collections.Generic.List[object]]::new()
     $overallSuccess = $true
     $stopwatch      = [System.Diagnostics.Stopwatch]::StartNew()
 
     try {
-        foreach ($step in $config.Steps) {
-            switch ($step) {
+        :pipeline foreach ($entry in $config.Pipeline) {
+            switch ($entry.Action.ToLower()) {
 
-                'Clean' {
-                    $jobs = $config.Clean.Jobs
+                'clean' {
+                    $jobs = $entry.Jobs
                     # When no jobs are defined, create a default job from the
-                    # clean defaults + the resolved root.
+                    # action defaults + the resolved root.
                     if ($jobs.Count -eq 0) {
-                        $jobs = @([PSCustomObject]@{
-                            Name                    = ''
-                            Root                    = $config.Root
-                            Level                   = $config.Clean.Defaults.Level
-                            OutputLevel             = $config.Clean.Defaults.OutputLevel
-                            IncludeFilePattern      = $config.Clean.Defaults.IncludeFilePattern
-                            ExcludeDirectoryPattern = $config.Clean.Defaults.ExcludeDirectoryPattern
-                            ConfigFile              = $config.Clean.Defaults.ConfigFile
-                            RecycleBin              = $config.Clean.Defaults.RecycleBin
-                            Check                   = $config.Clean.Defaults.Check
-                        })
+                        $defaultJob = $entry.Defaults.Clone()
+                        if (-not $defaultJob.ContainsKey('root')) {
+                            $defaultJob['root'] = $config.Root
+                        }
+                        if (-not $defaultJob.ContainsKey('name')) {
+                            $defaultJob['name'] = ''
+                        }
+                        $jobs = @($defaultJob)
                     }
 
                     foreach ($job in $jobs) {
-                        if (-not [string]::IsNullOrWhiteSpace($job.Name)) {
-                            Write-DelphiCiMessage -Level 'INFO' -Message "Clean job: $($job.Name)"
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Clean job: $($job['name'])"
                         }
 
                         $result = Invoke-DelphiClean `
-                            -CleanRoot                    $job.Root `
-                            -CleanLevel                   $job.Level `
-                            -CleanOutputLevel             $job.OutputLevel `
-                            -CleanIncludeFilePattern      @($job.IncludeFilePattern) `
-                            -CleanExcludeDirectoryPattern @($job.ExcludeDirectoryPattern) `
-                            -CleanConfigFile              $job.ConfigFile `
-                            -CleanRecycleBin:             $job.RecycleBin `
-                            -CleanCheck:                  $job.Check
+                            -CleanRoot                    $job['root'] `
+                            -CleanLevel                   $job['level'] `
+                            -CleanOutputLevel             $job['outputLevel'] `
+                            -CleanIncludeFilePattern      @($job['includeFilePattern']) `
+                            -CleanExcludeDirectoryPattern @($job['excludeDirectoryPattern']) `
+                            -CleanConfigFile              $job['configFile'] `
+                            -CleanRecycleBin:             $job['recycleBin'] `
+                            -CleanCheck:                  $job['check']
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {
                             $overallSuccess = $false
-                            break
+                            break pipeline
                         }
                     }
                 }
 
-                'Build' {
-                    $jobs = $config.Build.Jobs
+                'build' {
+                    $jobs = $entry.Jobs
                     if ($jobs.Count -eq 0) {
-                        throw 'No build jobs defined. Use -ProjectFile or define build.jobs in the config file.'
+                        throw 'No build jobs defined. Use -ProjectFile or define build jobs in the config file.'
                     }
 
                     :buildJobs foreach ($job in $jobs) {
-                        if ([string]::IsNullOrWhiteSpace($job.ProjectFile)) {
-                            throw "Build job '$($job.Name)' has no projectFile."
+                        if ([string]::IsNullOrWhiteSpace($job['projectFile'])) {
+                            throw "Build job '$($job['name'])' has no projectFile."
                         }
 
                         # Expand platform x configuration matrix
-                        foreach ($plat in $job.Platform) {
-                            foreach ($cfg in $job.Configuration) {
-                                $label = "$($job.Name)"
+                        foreach ($plat in $job['platform']) {
+                            foreach ($cfg in $job['configuration']) {
+                                $label = "$($job['name'])"
                                 if ($label -ne '') { $label += ' ' }
                                 $label += "($plat|$cfg)"
                                 Write-DelphiCiMessage -Level 'INFO' -Message "Build job: $label"
 
                                 $result = Invoke-DelphiBuild `
-                                    -ProjectFile    $job.ProjectFile `
+                                    -ProjectFile    $job['projectFile'] `
                                     -Platform       $plat `
                                     -Configuration  $cfg `
-                                    -Toolchain      $job.Toolchain.Version `
-                                    -BuildEngine    $job.Engine `
-                                    -Defines        @($job.Defines) `
-                                    -BuildVerbosity $job.Verbosity `
-                                    -BuildTarget    $job.Target `
-                                    -ExeOutputDir   $job.ExeOutputDir `
-                                    -DcuOutputDir   $job.DcuOutputDir `
-                                    -UnitSearchPath @($job.UnitSearchPath) `
-                                    -IncludePath    @($job.IncludePath) `
-                                    -Namespace      @($job.Namespace)
+                                    -Toolchain      $job['toolchain']['version'] `
+                                    -BuildEngine    $job['engine'] `
+                                    -Defines        @($job['defines']) `
+                                    -BuildVerbosity $job['verbosity'] `
+                                    -BuildTarget    $job['target'] `
+                                    -ExeOutputDir   $job['exeOutputDir'] `
+                                    -DcuOutputDir   $job['dcuOutputDir'] `
+                                    -UnitSearchPath @($job['unitSearchPath']) `
+                                    -IncludePath    @($job['includePath']) `
+                                    -Namespace      @($job['namespace'])
 
                                 $stepResults.Add($result)
                                 if (-not $result.Success) {
@@ -244,40 +242,38 @@ function Invoke-DelphiCi {
                     }
                 }
 
-                'Test' {
-                    $jobs = $config.Test.Jobs
+                'run' {
+                    $jobs = $entry.Jobs
                     if ($jobs.Count -eq 0) {
-                        throw 'No test jobs defined. Use -TestExeFile or define test.jobs in the config file.'
+                        throw 'No run jobs defined. Use -Execute or define run jobs in the config file.'
                     }
 
                     foreach ($job in $jobs) {
-                        if ([string]::IsNullOrWhiteSpace($job.TestExeFile)) {
-                            throw "Test job '$($job.Name)' has no testExeFile."
+                        if ([string]::IsNullOrWhiteSpace($job['execute'])) {
+                            throw "Run job '$($job['name'])' has no execute target."
                         }
 
-                        if (-not [string]::IsNullOrWhiteSpace($job.Name)) {
-                            Write-DelphiCiMessage -Level 'INFO' -Message "Test job: $($job.Name)"
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Run job: $($job['name'])"
                         }
 
-                        $result = Invoke-DelphiTest `
-                            -TestExeFile    $job.TestExeFile `
-                            -Arguments      @($job.Arguments) `
-                            -TimeoutSeconds $job.TimeoutSeconds
+                        $result = Invoke-DelphiRun `
+                            -Execute        $job['execute'] `
+                            -Arguments      @($job['arguments']) `
+                            -TimeoutSeconds $job['timeoutSeconds']
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {
                             $overallSuccess = $false
-                            break
+                            break pipeline
                         }
                     }
                 }
 
                 default {
-                    throw "Unknown step: $step"
+                    throw "Unknown action: $($entry.Action)"
                 }
             }
-
-            if (-not $overallSuccess) { break }
         }
     }
     catch {

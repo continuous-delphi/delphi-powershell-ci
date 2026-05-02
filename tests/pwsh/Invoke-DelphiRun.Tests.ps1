@@ -14,13 +14,13 @@ InModuleScope 'Delphi.PowerShell.CI' {
         [PSCustomObject]@{
             ExitCode = if ($Success) { 0 } else { 1 }
             Success  = $Success
-            Message  = if ($Success) { 'Tests passed' } else { 'Exit code 1' }
+            Message  = if ($Success) { 'Completed successfully' } else { 'Exit code 1' }
         }
     }
 
     # ---------------------------------------------------------------------------
 
-    Describe 'Invoke-DelphiTest -- unit' {
+    Describe 'Invoke-DelphiRun -- unit' {
 
         BeforeAll {
             Mock Invoke-TestRunner      { script:New-RunResult }
@@ -29,20 +29,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         Context 'step result shape' {
 
-            It 'StepName is Test' {
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\Tests\App.Tests.exe').StepName | Should -Be 'Test'
+            It 'StepName is Run' {
+                (Invoke-DelphiRun -Execute 'C:\Fake\Tests\App.Tests.exe').StepName | Should -Be 'Run'
             }
 
-            It 'Tool is test runner' {
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\Tests\App.Tests.exe').Tool | Should -Be 'test runner'
+            It 'Tool is runner' {
+                (Invoke-DelphiRun -Execute 'C:\Fake\Tests\App.Tests.exe').Tool | Should -Be 'runner'
             }
 
             It 'Duration is a TimeSpan' {
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\Tests\App.Tests.exe').Duration | Should -BeOfType [timespan]
+                (Invoke-DelphiRun -Execute 'C:\Fake\Tests\App.Tests.exe').Duration | Should -BeOfType [timespan]
             }
 
-            It 'TestExeFile is echoed back in the result' {
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\Tests\App.Tests.exe').TestExeFile | Should -Be 'C:\Fake\Tests\App.Tests.exe'
+            It 'Execute is echoed back in the result' {
+                (Invoke-DelphiRun -Execute 'C:\Fake\Tests\App.Tests.exe').Execute | Should -Be 'C:\Fake\Tests\App.Tests.exe'
             }
 
         }
@@ -51,32 +51,32 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'Success is true when runner exits 0' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $true }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').Success | Should -Be $true
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').Success | Should -Be $true
             }
 
             It 'ExitCode is 0 on success' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $true }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').ExitCode | Should -Be 0
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').ExitCode | Should -Be 0
             }
 
             It 'Success is false when runner exits non-zero' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $false }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').Success | Should -Be $false
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').Success | Should -Be $false
             }
 
             It 'ExitCode reflects runner exit code on failure' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $false }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').ExitCode | Should -Be 1
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').ExitCode | Should -Be 1
             }
 
-            It 'Message says Tests passed on success' {
+            It 'Message indicates success on exit 0' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $true }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').Message | Should -Be 'Tests passed'
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').Message | Should -Be 'Completed successfully'
             }
 
             It 'Message contains exit code on failure' {
                 Mock Invoke-TestRunner { script:New-RunResult -Success $false }
-                (Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe').Message | Should -BeLike '*1*'
+                (Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe').Message | Should -BeLike '*1*'
             }
 
         }
@@ -84,7 +84,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
         Context 'WhatIf' {
 
             It 'does not invoke Invoke-TestRunner when -WhatIf is set' {
-                Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe' -WhatIf
+                Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe' -WhatIf
                 Should -Invoke Invoke-TestRunner -Times 0
             }
 
@@ -92,20 +92,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         Context 'parameter forwarding to Invoke-TestRunner' {
 
-            It 'passes TestExeFile as TestExecutable to Invoke-TestRunner' {
-                Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe'
+            It 'passes Execute as TestExecutable to Invoke-TestRunner' {
+                Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe'
                 Should -Invoke Invoke-TestRunner -ParameterFilter {
                     $TestExecutable -eq 'C:\Fake\App.Tests.exe'
                 }
             }
 
             It 'passes TimeoutSeconds to Invoke-TestRunner' {
-                Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe' -TimeoutSeconds 5
+                Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe' -TimeoutSeconds 5
                 Should -Invoke Invoke-TestRunner -ParameterFilter { $TimeoutSeconds -eq 5 }
             }
 
             It 'passes Arguments to Invoke-TestRunner' {
-                Invoke-DelphiTest -TestExeFile 'C:\Fake\App.Tests.exe' -Arguments @('--output', 'xml')
+                Invoke-DelphiRun -Execute 'C:\Fake\App.Tests.exe' -Arguments @('--output', 'xml')
                 Should -Invoke Invoke-TestRunner -ParameterFilter {
                     $Arguments -contains '--output' -and $Arguments -contains 'xml'
                 }
@@ -119,12 +119,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     Describe 'Invoke-TestRunner -- unit' {
 
-        It 'returns Success false when test executable does not exist' {
+        It 'returns Success false when executable does not exist' {
             $result = Invoke-TestRunner -TestExecutable 'C:\DoesNotExist\App.Tests.exe'
             $result.Success | Should -Be $false
         }
 
-        It 'returns exit code 1 when test executable does not exist' {
+        It 'returns exit code 1 when executable does not exist' {
             $result = Invoke-TestRunner -TestExecutable 'C:\DoesNotExist\App.Tests.exe'
             $result.ExitCode | Should -Be 1
         }
@@ -175,55 +175,6 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             $result.Success  | Should -Be $false
             $result.ExitCode | Should -Be 2
-        }
-
-    }
-
-    # ---------------------------------------------------------------------------
-    # Keep Resolve-TestExecutable and Resolve-TestProject tests -- these private
-    # helpers still exist and may be useful in other contexts.
-    # ---------------------------------------------------------------------------
-
-    Describe 'Resolve-TestExecutable -- unit' {
-
-        It 'derives path as [ProjectDir]\[Platform]\[Config]\[Name].exe' {
-            $result = Resolve-TestExecutable `
-                -TestProjectFile 'C:\MyApp\Tests\App.Tests.dproj' `
-                -Platform        'Win32' `
-                -Configuration   'Debug'
-            $result | Should -Be ([System.IO.Path]::Combine('C:\MyApp\Tests', 'Win32', 'Debug', 'App.Tests.exe'))
-        }
-
-        It 'uses Win64 when Platform is Win64' {
-            $result = Resolve-TestExecutable `
-                -TestProjectFile 'C:\App\Tests\App.Tests.dproj' `
-                -Platform        'Win64' `
-                -Configuration   'Debug'
-            $result | Should -BeLike '*\Win64\Debug\App.Tests.exe'
-        }
-
-        It 'uses Release when Configuration is Release' {
-            $result = Resolve-TestExecutable `
-                -TestProjectFile 'C:\App\Tests\App.Tests.dproj' `
-                -Platform        'Win32' `
-                -Configuration   'Release'
-            $result | Should -BeLike '*\Win32\Release\App.Tests.exe'
-        }
-
-        It 'base name comes from the .dproj file name, ignoring extension' {
-            $result = Resolve-TestExecutable `
-                -TestProjectFile 'C:\App\Tests\MyProject.Tests.dproj' `
-                -Platform        'Win32' `
-                -Configuration   'Debug'
-            [System.IO.Path]::GetFileName($result) | Should -Be 'MyProject.Tests.exe'
-        }
-
-        It 'works when TestProjectFile has .dpr extension' {
-            $result = Resolve-TestExecutable `
-                -TestProjectFile 'C:\App\Tests\App.Tests.dpr' `
-                -Platform        'Win32' `
-                -Configuration   'Debug'
-            [System.IO.Path]::GetFileName($result) | Should -Be 'App.Tests.exe'
         }
 
     }

@@ -11,50 +11,69 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     function script:New-MockConfig {
         param(
-            [string[]]$Steps = @('Clean', 'Build'),
-            [object[]]$BuildJobs = @(),
-            [object[]]$CleanJobs = @(),
-            [object[]]$TestJobs  = @()
+            [object[]]$Pipeline = @()
         )
+        if ($Pipeline.Count -eq 0) {
+            $Pipeline = @(
+                (script:New-PipelineEntry -Action 'Clean'),
+                (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+            )
+        }
         [PSCustomObject]@{
-            Root  = 'C:\Fake'
-            Steps = $Steps
-            Clean = [PSCustomObject]@{
-                Defaults = [PSCustomObject]@{
-                    Level                   = 'basic'
-                    OutputLevel             = 'detailed'
-                    IncludeFilePattern      = @()
-                    ExcludeDirectoryPattern = @()
-                    ConfigFile              = ''
-                    RecycleBin              = $false
-                    Check                   = $false
+            Root     = 'C:\Fake'
+            Pipeline = $Pipeline
+        }
+    }
+
+    function script:New-PipelineEntry {
+        param(
+            [string]$Action,
+            [object[]]$Jobs = @(),
+            [hashtable]$Defaults = $null
+        )
+        if ($null -eq $Defaults) {
+            $Defaults = switch ($Action.ToLower()) {
+                'clean' {
+                    @{
+                        root                    = 'C:\Fake'
+                        level                   = 'basic'
+                        outputLevel             = 'detailed'
+                        includeFilePattern      = @()
+                        excludeDirectoryPattern = @()
+                        configFile              = ''
+                        recycleBin              = $false
+                        check                   = $false
+                    }
                 }
-                Jobs = $CleanJobs
-            }
-            Build = [PSCustomObject]@{
-                Defaults = [PSCustomObject]@{
-                    Engine         = 'MSBuild'
-                    Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
-                    Platform       = 'Win32'
-                    Configuration  = 'Debug'
-                    Defines        = @()
-                    Verbosity      = 'normal'
-                    Target         = 'Build'
-                    ExeOutputDir   = ''
-                    DcuOutputDir   = ''
-                    UnitSearchPath = @()
-                    IncludePath    = @()
-                    Namespace      = @()
+                'build' {
+                    @{
+                        engine         = 'MSBuild'
+                        toolchain      = @{ version = 'Latest' }
+                        platform       = 'Win32'
+                        configuration  = 'Debug'
+                        defines        = @()
+                        verbosity      = 'normal'
+                        target         = 'Build'
+                        exeOutputDir   = ''
+                        dcuOutputDir   = ''
+                        unitSearchPath = @()
+                        includePath    = @()
+                        namespace      = @()
+                    }
                 }
-                Jobs = $BuildJobs
-            }
-            Test = [PSCustomObject]@{
-                Defaults = [PSCustomObject]@{
-                    TimeoutSeconds = 10
-                    Arguments      = @()
+                'run' {
+                    @{
+                        timeoutSeconds = 10
+                        arguments      = @()
+                    }
                 }
-                Jobs = $TestJobs
+                default { @{} }
             }
+        }
+        [PSCustomObject]@{
+            Action   = $Action
+            Defaults = $Defaults
+            Jobs     = $Jobs
         }
     }
 
@@ -65,34 +84,34 @@ InModuleScope 'Delphi.PowerShell.CI' {
             [string[]]$Platform = @('Win32'),
             [string[]]$Configuration = @('Debug')
         )
-        [PSCustomObject]@{
-            Name           = $Name
-            ProjectFile    = $ProjectFile
-            Engine         = 'MSBuild'
-            Toolchain      = [PSCustomObject]@{ Version = 'Latest' }
-            Platform       = $Platform
-            Configuration  = $Configuration
-            Defines        = @()
-            Verbosity      = 'normal'
-            Target         = 'Build'
-            ExeOutputDir   = ''
-            DcuOutputDir   = ''
-            UnitSearchPath = @()
-            IncludePath    = @()
-            Namespace      = @()
+        @{
+            name           = $Name
+            projectFile    = $ProjectFile
+            engine         = 'MSBuild'
+            toolchain      = @{ version = 'Latest' }
+            platform       = $Platform
+            configuration  = $Configuration
+            defines        = @()
+            verbosity      = 'normal'
+            target         = 'Build'
+            exeOutputDir   = ''
+            dcuOutputDir   = ''
+            unitSearchPath = @()
+            includePath    = @()
+            namespace      = @()
         }
     }
 
-    function script:New-TestJob {
+    function script:New-RunJob {
         param(
             [string]$Name = 'Unit tests',
-            [string]$TestExeFile = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
+            [string]$Execute = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
         )
-        [PSCustomObject]@{
-            Name           = $Name
-            TestExeFile    = $TestExeFile
-            Arguments      = @()
-            TimeoutSeconds = 10
+        @{
+            name           = $Name
+            execute        = $Execute
+            arguments      = @()
+            timeoutSeconds = 10
         }
     }
 
@@ -126,16 +145,16 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
-    function script:New-TestResult {
+    function script:New-RunResult {
         param([bool]$Success = $true)
         [PSCustomObject]@{
-            StepName    = 'Test'
+            StepName    = 'Run'
             Success     = $Success
             Duration    = [timespan]::Zero
             ExitCode    = if ($Success) { 0 } else { 1 }
-            Tool        = 'test runner'
-            Message     = if ($Success) { 'Tests passed' } else { 'Exit code 1' }
-            TestExeFile = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
+            Tool        = 'runner'
+            Message     = if ($Success) { 'Run completed' } else { 'Exit code 1' }
+            Execute     = 'C:\Fake\Tests\Win32\Debug\App.Tests.exe'
         }
     }
 
@@ -145,59 +164,75 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         BeforeAll {
             Mock Resolve-DelphiCiConfig  {
-                script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                script:New-MockConfig
             }
             Mock Invoke-DelphiClean      { script:New-CleanResult }
             Mock Invoke-DelphiBuild      { script:New-BuildResult }
-            Mock Invoke-DelphiTest       { script:New-TestResult }
+            Mock Invoke-DelphiRun        { script:New-RunResult }
             Mock Write-DelphiCiMessage   {}
         }
 
-        Context 'step routing' {
+        Context 'action routing' {
 
-            It 'runs Invoke-DelphiClean when Steps contains Clean' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean') }
+            It 'runs Invoke-DelphiClean when pipeline contains Clean' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Clean'
+                    )
+                }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -Times 1
             }
 
-            It 'runs Invoke-DelphiBuild when Steps contains Build' {
+            It 'runs Invoke-DelphiBuild when pipeline contains Build' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob)
+                    )
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 1
             }
 
-            It 'runs Invoke-DelphiTest when Steps contains Test' {
+            It 'runs Invoke-DelphiRun when pipeline contains Run' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Test') -TestJobs @(script:New-TestJob)
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Run' -Jobs @(script:New-RunJob)
+                    )
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -Times 1
+                Should -Invoke Invoke-DelphiRun -Times 1
             }
 
-            It 'runs all three steps when Steps is Clean,Build,Test' {
+            It 'runs all three actions when pipeline is Clean,Build,Test' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Clean', 'Build', 'Test') `
-                        -BuildJobs @(script:New-BuildJob) `
-                        -TestJobs  @(script:New-TestJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob)),
+                        (script:New-PipelineEntry -Action 'Run'  -Jobs @(script:New-RunJob))
+                    )
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -Times 1
                 Should -Invoke Invoke-DelphiBuild -Times 1
-                Should -Invoke Invoke-DelphiTest  -Times 1
+                Should -Invoke Invoke-DelphiRun   -Times 1
             }
 
-            It 'does not run Build when Steps is only Clean' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean') }
+            It 'does not run Build when pipeline is only Clean' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Clean'
+                    )
+                }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 0
             }
 
-            It 'does not run Clean when Steps is only Build' {
+            It 'does not run Clean when pipeline is only Build' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob)
+                    )
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiClean -Times 0
@@ -205,18 +240,21 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         }
 
-        Context 'step halt on failure' {
+        Context 'halt on failure' {
 
             It 'does not run Build when Clean fails' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 0
             }
 
-            It 'returns Success false when a step fails' {
+            It 'returns Success false when an action fails' {
                 Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $false
@@ -228,15 +266,21 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'always returns a result object' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 $result = Invoke-DelphiCi
                 $result | Should -Not -BeNullOrEmpty
             }
 
-            It 'result Success is true when all steps succeed' {
+            It 'result Success is true when all actions succeed' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $true
@@ -244,7 +288,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'result Duration is a TimeSpan' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 $result = Invoke-DelphiCi
                 $result.Duration | Should -BeOfType [timespan]
@@ -252,7 +299,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'result Steps array contains one entry per job run' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Clean', 'Build') -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 $result = Invoke-DelphiCi
                 $result.Steps.Count | Should -Be 2
@@ -260,7 +310,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'result Steps entries carry the step names' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Clean', 'Build') -BuildJobs @(script:New-BuildJob)
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Clean'),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
                 }
                 $result = Invoke-DelphiCi
                 $result.Steps[0].StepName | Should -Be 'Clean'
@@ -271,8 +324,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         Context 'clean-only without project file' {
 
-            It 'does not require a project file when Steps is Clean only' {
-                Mock Resolve-DelphiCiConfig { script:New-MockConfig -Steps @('Clean') }
+            It 'does not require a project file when pipeline is Clean only' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Clean'
+                    )
+                }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $true
             }
@@ -283,8 +340,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'expands platform x configuration matrix for a single build job' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
-                        script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                        )
                     )
                 }
                 Invoke-DelphiCi
@@ -293,8 +352,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'passes each platform/config combination to Invoke-DelphiBuild' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
-                        script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -Platform @('Win32', 'Win64') -Configuration @('Debug', 'Release')
+                        )
                     )
                 }
                 Invoke-DelphiCi
@@ -306,9 +367,11 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'runs multiple build jobs in sequence' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
-                        (script:New-BuildJob -Name 'App' -ProjectFile 'C:\Fake\App.dproj'),
-                        (script:New-BuildJob -Name 'Lib' -ProjectFile 'C:\Fake\Lib.dproj')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            (script:New-BuildJob -Name 'App' -ProjectFile 'C:\Fake\App.dproj'),
+                            (script:New-BuildJob -Name 'Lib' -ProjectFile 'C:\Fake\Lib.dproj')
+                        )
                     )
                 }
                 Invoke-DelphiCi
@@ -320,9 +383,11 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'halts on first build job failure' {
                 Mock Invoke-DelphiBuild { script:New-BuildResult -Success $false }
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @(
-                        (script:New-BuildJob -Name 'A' -ProjectFile 'C:\Fake\A.dproj'),
-                        (script:New-BuildJob -Name 'B' -ProjectFile 'C:\Fake\B.dproj')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            (script:New-BuildJob -Name 'A' -ProjectFile 'C:\Fake\A.dproj'),
+                            (script:New-BuildJob -Name 'B' -ProjectFile 'C:\Fake\B.dproj')
+                        )
                     )
                 }
                 $result = Invoke-DelphiCi
@@ -332,29 +397,33 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         }
 
-        Context 'multiple test jobs' {
+        Context 'multiple run jobs' {
 
-            It 'runs multiple test jobs in sequence' {
+            It 'runs multiple run jobs in sequence' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Test') -TestJobs @(
-                        (script:New-TestJob -Name 'Win32' -TestExeFile 'C:\Fake\Win32\App.Tests.exe'),
-                        (script:New-TestJob -Name 'Win64' -TestExeFile 'C:\Fake\Win64\App.Tests.exe')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Run' -Jobs @(
+                            (script:New-RunJob -Name 'Win32' -Execute 'C:\Fake\Win32\App.Tests.exe'),
+                            (script:New-RunJob -Name 'Win64' -Execute 'C:\Fake\Win64\App.Tests.exe')
+                        )
                     )
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -Times 2
+                Should -Invoke Invoke-DelphiRun -Times 2
             }
 
-            It 'passes testExeFile to Invoke-DelphiTest for each job' {
+            It 'passes execute target to Invoke-DelphiRun for each job' {
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Test') -TestJobs @(
-                        (script:New-TestJob -Name 'Win32' -TestExeFile 'C:\Fake\Win32\App.Tests.exe'),
-                        (script:New-TestJob -Name 'Win64' -TestExeFile 'C:\Fake\Win64\App.Tests.exe')
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Run' -Jobs @(
+                            (script:New-RunJob -Name 'Win32' -Execute 'C:\Fake\Win32\App.Tests.exe'),
+                            (script:New-RunJob -Name 'Win64' -Execute 'C:\Fake\Win64\App.Tests.exe')
+                        )
                     )
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $TestExeFile -eq 'C:\Fake\Win32\App.Tests.exe' }
-                Should -Invoke Invoke-DelphiTest -ParameterFilter { $TestExeFile -eq 'C:\Fake\Win64\App.Tests.exe' }
+                Should -Invoke Invoke-DelphiRun -ParameterFilter { $Execute -eq 'C:\Fake\Win32\App.Tests.exe' }
+                Should -Invoke Invoke-DelphiRun -ParameterFilter { $Execute -eq 'C:\Fake\Win64\App.Tests.exe' }
             }
 
         }
@@ -363,10 +432,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'passes build job fields to Invoke-DelphiBuild' {
                 $job = script:New-BuildJob
-                $job.Verbosity = 'minimal'
-                $job.Target = 'Rebuild'
+                $job['verbosity'] = 'minimal'
+                $job['target'] = 'Rebuild'
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Build') -BuildJobs @($job)
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @($job)
+                    )
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter {
@@ -374,15 +445,17 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
-            It 'passes test job fields to Invoke-DelphiTest' {
-                $job = script:New-TestJob
-                $job.TimeoutSeconds = 30
-                $job.Arguments = @('--verbose')
+            It 'passes run job fields to Invoke-DelphiRun' {
+                $job = script:New-RunJob
+                $job['timeoutSeconds'] = 30
+                $job['arguments'] = @('--verbose')
                 Mock Resolve-DelphiCiConfig {
-                    script:New-MockConfig -Steps @('Test') -TestJobs @($job)
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Run' -Jobs @($job)
+                    )
                 }
                 Invoke-DelphiCi
-                Should -Invoke Invoke-DelphiTest -ParameterFilter {
+                Should -Invoke Invoke-DelphiRun -ParameterFilter {
                     $TimeoutSeconds -eq 30
                 }
             }

@@ -33,10 +33,10 @@ function Get-DelphiCiConfig {
         [bool]$CleanRecycleBin,
         [bool]$CleanCheck,
 
-        # Test defaults
-        [string]$TestExeFile,
-        [string[]]$TestArguments,
-        [int]$TestTimeoutSeconds
+        # Run defaults
+        [string]$Execute,
+        [string[]]$RunArguments,
+        [int]$RunTimeoutSeconds
     )
 
     $overrides = @{}
@@ -62,9 +62,9 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CleanConfigFile'))               { $overrides['CleanConfigFile']              = $CleanConfigFile }
     if ($PSBoundParameters.ContainsKey('CleanRecycleBin'))               { $overrides['CleanRecycleBin']              = $CleanRecycleBin }
     if ($PSBoundParameters.ContainsKey('CleanCheck'))                    { $overrides['CleanCheck']                   = $CleanCheck }
-    if ($PSBoundParameters.ContainsKey('TestExeFile'))                   { $overrides['TestExeFile']                  = $TestExeFile }
-    if ($PSBoundParameters.ContainsKey('TestArguments'))                 { $overrides['TestArguments']                = $TestArguments }
-    if ($PSBoundParameters.ContainsKey('TestTimeoutSeconds'))            { $overrides['TestTimeoutSeconds']           = $TestTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('Execute'))                        { $overrides['Execute']                      = $Execute }
+    if ($PSBoundParameters.ContainsKey('RunArguments'))                  { $overrides['RunArguments']                 = $RunArguments }
+    if ($PSBoundParameters.ContainsKey('RunTimeoutSeconds'))             { $overrides['RunTimeoutSeconds']            = $RunTimeoutSeconds }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

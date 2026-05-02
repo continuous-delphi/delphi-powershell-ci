@@ -1,8 +1,8 @@
 # Invoke-DelphiCi
 
-Primary orchestration command. Loads configuration, then runs the requested
-step types (Clean, Build, and/or Test) in order. Each step type can have
-multiple jobs. Always returns a structured result object.
+Primary orchestration command. Loads configuration, then runs the pipeline
+of actions (Clean, Build, Run, and future action types) in order. Each
+action can have multiple jobs. Always returns a structured result object.
 
 ---
 
@@ -35,9 +35,9 @@ Invoke-DelphiCi
     [-CleanConfigFile <String>]
     [-CleanRecycleBin <Bool>]
     [-CleanCheck <Bool>]
-    [-TestExeFile <String>]
-    [-TestArguments <String[]>]
-    [-TestTimeoutSeconds <Int>]
+    [-Execute <String>]
+    [-RunArguments <String[]>]
+    [-RunTimeoutSeconds <Int>]
     [<CommonParameters>]
 ```
 
@@ -49,20 +49,78 @@ Invoke-DelphiCi -VersionInfo
 
 ---
 
-## Jobs model
+## Pipeline model
 
-Each step type (Clean, Build, Test) supports multiple **jobs** defined in
-the config file. Jobs within a step run sequentially. Build jobs support
-**matrix expansion** -- `platform` and `configuration` can be arrays,
-producing a cross product of builds.
+The configuration defines an ordered **pipeline** of actions. Each action
+(Clean, Build, Run) supports multiple **jobs** that run sequentially. Build
+jobs support **matrix expansion** -- `platform` and `configuration` can be
+arrays, producing a cross product of builds.
 
-When no jobs are defined:
-- **Clean** creates a default job from the clean defaults + root.
+When no jobs are defined for an action:
+- **Clean** creates a default job from the action defaults + root.
 - **Build** throws an error (a project file is required).
-- **Test** throws an error (a test executable is required).
+- **Run** throws an error (an execute target is required).
 
-For CLI shorthand, `-ProjectFile` creates a single build job and
-`-TestExeFile` creates a single test job.
+For CLI shorthand, `-ProjectFile` creates a single build job and `-Execute`
+creates a single run job.
+
+---
+
+## Configuration
+
+### New pipeline format
+
+```json
+{
+  "root": ".",
+  "defaults": {
+    "clean": { "level": "standard" },
+    "build": {
+      "engine": "MSBuild",
+      "toolchain": { "version": "Latest" },
+      "platform": "Win32",
+      "configuration": "Debug"
+    },
+    "run": { "timeoutSeconds": 10 }
+  },
+  "pipeline": [
+    { "action": "Clean", "level": "deep" },
+    { "action": "Build",
+      "platform": "Win64",
+      "jobs": [
+        { "name": "Main App", "projectFile": "source/MyApp.dproj" },
+        { "name": "Tests", "projectFile": "test/MyApp.Tests.dproj",
+          "platform": "Win32", "defines": ["CI"] }
+      ]
+    },
+    { "action": "Run",
+      "jobs": [
+        { "name": "Unit tests",
+          "execute": "test/Win32/Debug/MyApp.Tests.exe" }
+      ]
+    }
+  ]
+}
+```
+
+### Merge semantics
+
+Configuration resolves through three levels per job:
+
+    defaults.{action} > action-level properties > job-level properties
+
+- **Scalars**: child overrides parent (last writer wins).
+- **Arrays**: child appends to parent.
+- **`key!` suffix**: forces array replacement instead of append.
+- **Nested objects** (e.g., `toolchain`): shallow merge.
+
+CLI parameters override the defaults layer and always win over config file
+defaults.
+
+### Legacy format (still supported)
+
+The old format with `"steps"` and named sections (`clean`, `build`, `test`)
+is automatically converted to a pipeline internally.
 
 ---
 
@@ -70,41 +128,40 @@ For CLI shorthand, `-ProjectFile` creates a single build job and
 
 ### -ConfigFile
 
-Path to a JSON configuration file. See the JSON config section below.
+Path to a JSON configuration file.
 
 ### -Root
 
-Root directory used for project discovery and as the default clean root.
+Root directory used as the resolved absolute working directory and as the default clean root.
 
 ### -Steps
 
-Step types to run, in order. Valid values: `Clean`, `Build`, `Test`.
-Default: `Clean, Build`.
+Action types to include in the pipeline. Valid values: `Clean`, `Build`,
+`Run`. Default: `Clean, Build`. Used when no config file pipeline is
+present.
 
 ### -ProjectFile
 
-CLI shorthand: creates a single build job with this project file. Overrides
-any `build.jobs` in the config file.
+CLI shorthand: creates a single build job with this project file.
 
 ### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace
 
-Build defaults. Apply to all build jobs that do not override these fields.
+Build defaults. Apply to all build jobs through the merge chain.
 See `Invoke-DelphiBuild` for descriptions.
 
 ### -CleanLevel, -CleanOutputLevel, -CleanIncludeFilePattern, -CleanExcludeDirectoryPattern, -CleanConfigFile, -CleanRecycleBin, -CleanCheck
 
-Clean defaults. Apply to all clean jobs that do not override these fields.
+Clean defaults. Apply to all clean jobs through the merge chain.
 See `Invoke-DelphiClean` for descriptions.
 
-### -TestExeFile
+### -Execute
 
-CLI shorthand: creates a single test job with this executable path.
-Overrides any `test.jobs` in the config file.
+CLI shorthand: creates a single run job with this command path.
 
-### -TestArguments, -TestTimeoutSeconds
+### -RunArguments, -RunTimeoutSeconds
 
-Test defaults. Apply to all test jobs that do not override these fields.
-See `Invoke-DelphiTest` for descriptions.
+Run defaults. Apply to all run jobs through the merge chain.
+See `Invoke-DelphiRun` for descriptions.
 
 ---
 
@@ -130,61 +187,6 @@ included in the `Steps` array.
 
 ---
 
-## JSON config file
-
-```json
-{
-  "root": ".",
-  "steps": ["Clean", "Build", "Test"],
-  "clean": {
-    "level": "deep",
-    "outputLevel": "detailed",
-    "recycleBin": false,
-    "check": false,
-    "jobs": [
-      { "name": "Repo clean", "root": "./" }
-    ]
-  },
-  "build": {
-    "engine": "MSBuild",
-    "toolchain": { "version": "Latest" },
-    "platform": "Win64",
-    "configuration": "Release",
-    "verbosity": "minimal",
-    "jobs": [
-      { "name": "Main App",
-        "projectFile": "source/MyApp.dproj" },
-      { "name": "Test project",
-        "projectFile": "test/MyApp.Tests.dproj",
-        "platform": ["Win32", "Win64"],
-        "configuration": ["Debug", "Release"],
-        "defines": ["CI"] }
-    ]
-  },
-  "test": {
-    "timeoutSeconds": 10,
-    "jobs": [
-      { "name": "Tests Win32 Debug",
-        "testExeFile": "test/Win32/Debug/MyApp.Tests.exe" },
-      { "name": "Tests Win64 Release",
-        "testExeFile": "test/Win64/Release/MyApp.Tests.exe" }
-    ]
-  }
-}
-```
-
-### Key concepts
-
-- **Step defaults** (top-level fields in `clean`, `build`, `test`) are
-  inherited by every job in that section.
-- **Per-job overrides**: any field can be overridden in a job entry.
-- **Matrix expansion** (build only): `platform` and `configuration` can be
-  string or array. Arrays produce a cross product of builds.
-- `includePath` and `namespace` are DCCBuild-only and ignored for MSBuild.
-- CLI parameters override the corresponding defaults but not per-job values.
-
----
-
 ## Examples
 
 ### Simple single-project build
@@ -199,10 +201,16 @@ Invoke-DelphiCi -ProjectFile .\source\MyApp.dproj
 Invoke-DelphiCi -Steps Clean -Root C:\MyRepo
 ```
 
-### Config-file-driven multi-project build
+### Config-file-driven pipeline
 
 ```powershell
 Invoke-DelphiCi -ConfigFile .\delphi-ci.json
+```
+
+### Build and run a test
+
+```powershell
+Invoke-DelphiCi -Steps Build,Run -ProjectFile .\test\MyApp.Tests.dproj -Execute .\test\Win32\Debug\MyApp.Tests.exe
 ```
 
 ### Version info
@@ -215,9 +223,11 @@ Invoke-DelphiCi -VersionInfo
 
 ## Notes
 
-- Steps run in the order listed in `-Steps`. All jobs within a step complete
-  before the next step begins.
-- Execution halts on the first failing job in any step.
+- Actions run in pipeline order. All jobs within an action complete before
+  the next action begins.
+- Execution halts on the first failing job in any action.
 - Clean-only runs work without a project file on disk.
 - `-CleanRecycleBin` and `-CleanCheck` are `[Bool]` (not `[Switch]`) so a
   CLI value of `$false` can override a config file that set them to `true`.
+- The pipeline can contain the same action type multiple times (e.g.,
+  Build > Run > Build > Run).

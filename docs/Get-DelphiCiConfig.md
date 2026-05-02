@@ -2,11 +2,14 @@
 
 Loads and normalizes configuration for a Delphi CI run.
 
-Merges three sources in priority order (highest to lowest):
+Merges configuration through multiple levels:
 
-1. Explicit CLI parameters
-2. JSON config file
-3. Built-in defaults
+1. Built-in defaults
+2. JSON config file `defaults` section
+3. Legacy named sections (if old format)
+4. CLI parameters (highest priority for defaults)
+5. Action-level properties in the pipeline
+6. Job-level properties (highest priority per job)
 
 Returns a single `PSCustomObject` that all downstream commands consume.
 
@@ -37,107 +40,120 @@ Get-DelphiCiConfig
     [-CleanConfigFile <string>]
     [-CleanRecycleBin <bool>]
     [-CleanCheck <bool>]
-    [-TestExeFile <string>]
-    [-TestArguments <string[]>]
-    [-TestTimeoutSeconds <int>]
+    [-Execute <string>]
+    [-RunArguments <string[]>]
+    [-RunTimeoutSeconds <int>]
 ```
 
 ## Return value
 
 ```
-Root   string     Resolved absolute path to the working root
-Steps  string[]   Ordered list of steps to run
+Root       string     Resolved absolute path to the working root
+Pipeline   object[]   Ordered array of resolved action entries
 
-Clean
-  Defaults
-    Level                   string     basic | standard | deep
-    OutputLevel             string     detailed | summary | quiet
-    IncludeFilePattern      string[]   Additional file patterns to delete
-    ExcludeDirectoryPattern string[]   Directory patterns to skip
-    ConfigFile              string     Explicit delphi-clean config file
-    RecycleBin              bool       Send items to recycle bin
-    Check                   bool       Audit-only mode
-  Jobs                      object[]   Resolved clean job entries
-
-Build
-  Defaults
-    Engine          string     MSBuild | DCCBuild
-    Toolchain
-      Version       string     Toolchain selector or "Latest"
-    Platform        string     Default target platform
-    Configuration   string     Default MSBuild configuration
-    Defines         string[]   Default compiler defines
-    Verbosity       string     Build output verbosity
-    Target          string     Build | Clean | Rebuild
-    ExeOutputDir    string     Output dir for executables
-    DcuOutputDir    string     Output dir for DCU files
-    UnitSearchPath  string[]   Additional unit search paths
-    IncludePath     string[]   Include paths (DCCBuild-only)
-    Namespace       string[]   Unit scope names (DCCBuild-only)
-  Jobs              object[]   Resolved build job entries (platform/config as arrays)
-
-Test
-  Defaults
-    TimeoutSeconds  int        Kill timeout for the test process
-    Arguments       string[]   Runtime arguments forwarded to test EXE
-  Jobs              object[]   Resolved test job entries
+Each Pipeline entry:
+  Action     string      Action type (Clean, Build, Run, ...)
+  Defaults   hashtable   Merged defaults for this action (base + action-level)
+  Jobs       hashtable[] Fully resolved jobs (base + action-level + job-level)
 ```
 
+### Defaults keys by action type
+
+**Clean:**
+`level`, `outputLevel`, `includeFilePattern`, `excludeDirectoryPattern`,
+`configFile`, `recycleBin`, `check`, `root`
+
+**Build:**
+`engine`, `toolchain` (with nested `version`), `platform`, `configuration`,
+`defines`, `verbosity`, `target`, `exeOutputDir`, `dcuOutputDir`,
+`unitSearchPath`, `includePath`, `namespace`
+
+**Run:**
+`timeoutSeconds`, `arguments`
+
+### Job keys
+
+Jobs are hashtables containing all resolved keys from the merge chain plus
+`name` (metadata). Build jobs also have `platform` and `configuration`
+normalized to arrays for matrix expansion.
+
+## Merge semantics
+
+| Type | Behavior |
+|------|----------|
+| Scalar | Last writer wins (child overrides parent) |
+| Array | Append (child concatenated after parent) |
+| `key!` suffix | Replace array instead of appending |
+| Nested object | Shallow merge (child keys overwrite parent keys) |
+
 ## JSON config file format
+
+### New pipeline format (recommended)
 
 ```json
 {
   "root": ".",
-  "steps": ["Clean", "Build", "Test"],
-  "clean": {
-    "level": "basic",
-    "outputLevel": "detailed",
-    "recycleBin": false,
-    "check": false,
-    "jobs": [
-      { "name": "Repo clean", "root": "./" }
-    ]
+  "defaults": {
+    "clean": { "level": "standard", "includeFilePattern": ["*.res"] },
+    "build": {
+      "engine": "MSBuild",
+      "toolchain": { "version": "Latest" },
+      "platform": "Win32",
+      "configuration": "Debug"
+    },
+    "run": { "timeoutSeconds": 10, "arguments": [] }
   },
+  "pipeline": [
+    { "action": "Clean", "level": "deep" },
+    { "action": "Build",
+      "platform": "Win64",
+      "jobs": [
+        { "name": "App", "projectFile": "source/MyApp.dproj" },
+        { "name": "Tests", "projectFile": "test/MyApp.Tests.dproj",
+          "platform": "Win32", "defines": ["CI"] }
+      ]
+    },
+    { "action": "Run",
+      "jobs": [
+        { "name": "Unit tests",
+          "execute": "test/Win32/Debug/MyApp.Tests.exe" }
+      ]
+    }
+  ]
+}
+```
+
+### Legacy format (auto-converted)
+
+```json
+{
+  "root": ".",
+  "steps": ["Clean", "Build", "Run"],
+  "clean": { "level": "deep" },
   "build": {
-    "engine": "MSBuild",
-    "toolchain": { "version": "Latest" },
-    "platform": "Win32",
-    "configuration": "Debug",
-    "verbosity": "normal",
-    "target": "Build",
-    "jobs": [
-      { "name": "Main App",
-        "projectFile": "source/MyApp.dproj" },
-      { "name": "Test project",
-        "projectFile": "test/MyApp.Tests.dproj",
-        "platform": ["Win32", "Win64"],
-        "configuration": ["Debug", "Release"],
-        "defines": ["CI"] }
-    ]
+    "platform": "Win64",
+    "jobs": [{ "projectFile": "source/MyApp.dproj" }]
   },
-  "test": {
-    "timeoutSeconds": 10,
-    "jobs": [
-      { "name": "Unit tests",
-        "testExeFile": "test/Win32/Debug/MyApp.Tests.exe" }
-    ]
+  "run": {
+    "jobs": [{ "execute": "test/Win32/Debug/MyApp.Tests.exe" }]
   }
 }
 ```
 
-All fields are optional. Absent fields use built-in defaults.
-
-`root` is resolved relative to the config file's directory.
-
-Per-job fields inherit from the section defaults and can override any field.
-Build job `platform` and `configuration` can be string or array for matrix
-expansion.
+The legacy format is detected by the presence of a `"steps"` key (and
+absence of `"pipeline"`). Named section properties become defaults; jobs
+are placed into pipeline entries. CLI `-Steps` overrides which actions are
+included.
 
 ## Notes
 
-- CLI parameters override section defaults but not per-job values defined
-  in the config file.
+- All fields are optional. Absent fields use built-in defaults.
+- `root` is resolved relative to the config file's directory.
+- CLI parameters override defaults but not action-level or job-level values
+  in the pipeline config.
 - `-ProjectFile` creates a single-entry build jobs list.
-- `-TestExeFile` creates a single-entry test jobs list.
-- Validation errors (invalid step, level, engine, verbosity, target) throw
+- `-Execute` creates a single-entry run jobs list.
+- Validation errors (invalid level, engine, verbosity, target) throw
   immediately before any work begins.
+- Build job `platform` and `configuration` are always normalized to arrays
+  for matrix expansion.
