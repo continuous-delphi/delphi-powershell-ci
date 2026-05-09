@@ -360,25 +360,45 @@ function ConvertFrom-LegacyConfig {
         $steps = @($Json.steps)
     }
 
+    # Map legacy step/section names to current action types
+    $legacyActionMap  = @{ test = 'Run' }
+    $legacySectionMap = @{ test = 'run' }
+
+    # Map legacy job property names to current names
+    $legacyJobPropertyMap = @{ testExeFile = 'execute' }
+
     $pipeline        = [System.Collections.Generic.List[object]]::new()
     $sectionDefaults = @{}
 
     foreach ($stepName in $steps) {
         $sectionKey = $stepName.ToLower()
-        $entry = @{ action = $stepName }
-        $sectionDefaults[$sectionKey] = @{}
+        $actionName = if ($legacyActionMap.ContainsKey($sectionKey)) { $legacyActionMap[$sectionKey] } else { $stepName }
+        $defaultsKey = if ($legacySectionMap.ContainsKey($sectionKey)) { $legacySectionMap[$sectionKey] } else { $sectionKey }
+        $entry = @{ action = $actionName }
+        $sectionDefaults[$defaultsKey] = @{}
 
         if ($Json.PSObject.Properties[$sectionKey]) {
             $section = $Json.$sectionKey
             foreach ($prop in $section.PSObject.Properties) {
                 if ($prop.Name -eq 'jobs') {
-                    $entry['jobs'] = @($prop.Value)
+                    # Remap legacy job property names
+                    $entry['jobs'] = @($prop.Value | ForEach-Object {
+                        $job = $_
+                        foreach ($oldName in $legacyJobPropertyMap.Keys) {
+                            if ($job.PSObject.Properties[$oldName]) {
+                                $newName = $legacyJobPropertyMap[$oldName]
+                                $job | Add-Member -NotePropertyName $newName -NotePropertyValue $job.$oldName -Force
+                                $job.PSObject.Properties.Remove($oldName)
+                            }
+                        }
+                        $job
+                    })
                 } else {
                     $val = $prop.Value
                     if ($null -ne $val -and $val.GetType().Name -eq 'PSCustomObject') {
                         $val = ConvertTo-Hashtable $val
                     }
-                    $sectionDefaults[$sectionKey][$prop.Name] = $val
+                    $sectionDefaults[$defaultsKey][$prop.Name] = $val
                 }
             }
         }
