@@ -27,6 +27,13 @@
     "run": {
       "timeoutSeconds": 20,
       "arguments": ["--no-banner"]
+    },
+    "incver": {
+      "target": "",
+      "style": "",
+      "part": "",
+      "pattern": "",
+      "dateformat": "yyyy.mm.dd"
     }
   },
   "pipeline": [
@@ -54,6 +61,25 @@
         {
           "name": "Test clean",
           "root": "./tests"
+        }
+      ]
+    },
+    {
+      "action": "IncVer",
+      "jobs": [
+        {
+          "name": "RC version bump",
+          "file": "source/versioninfo.rc",
+          "target": "RC",
+          "style": "WinVer"
+        },
+        {
+          "name": "Script version bump",
+          "file": "source/tool.ps1",
+          "target": "Text",
+          "style": "SemVer",
+          "part": "patch",
+          "pattern": "\\$script:ToolVersion\\s*=\\s*'([^']+)'"
         }
       ]
     },

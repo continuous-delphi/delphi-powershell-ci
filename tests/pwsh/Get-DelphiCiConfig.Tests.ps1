@@ -579,6 +579,143 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
+    Context 'incver defaults and pipeline resolution' {
+
+        It 'incver action gets empty defaults for target, style, part, and pattern' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.rc' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['target']  | Should -Be ''
+            $job['style']   | Should -Be ''
+            $job['part']    | Should -Be ''
+            $job['pattern'] | Should -Be ''
+        }
+
+        It 'incver defaults dateformat to yyyy.mm.dd' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.rc' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['dateformat'] | Should -Be 'yyyy.mm.dd'
+        }
+
+        It 'incver defaults section merges into job' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ incver = @{ target = 'RC'; style = 'WinVer'; part = 'build' } }
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.rc' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['target'] | Should -Be 'RC'
+            $job['style']  | Should -Be 'WinVer'
+            $job['part']   | Should -Be 'build'
+        }
+
+        It 'job-level properties override defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ incver = @{ target = 'RC'; part = 'build' } }
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'tool.ps1'; target = 'Text'; style = 'SemVer'; part = 'minor' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['target'] | Should -Be 'Text'
+            $job['style']  | Should -Be 'SemVer'
+            $job['part']   | Should -Be 'minor'
+        }
+
+    }
+
+    Context 'incver CLI overrides' {
+
+        It '-IncverTarget overrides default' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.rc' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile -IncverTarget 'Text'
+            $config.Pipeline[0].Jobs[0]['target'] | Should -Be 'Text'
+        }
+
+        It '-IncverStyle overrides default' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.txt' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile -IncverStyle 'WinVer'
+            $config.Pipeline[0].Jobs[0]['style'] | Should -Be 'WinVer'
+        }
+
+        It '-IncverPart overrides default' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; jobs = @(@{ file = 'ver.rc' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile -IncverPart 'minor'
+            $config.Pipeline[0].Jobs[0]['part'] | Should -Be 'minor'
+        }
+
+        It '-IncverFile creates a single incver job' {
+            $config = Get-DelphiCiConfig -Steps 'IncVer' -IncverFile 'ver.rc'
+            $config.Pipeline[0].Action | Should -Be 'IncVer'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['file'] | Should -Be 'ver.rc'
+        }
+
+    }
+
+    Context 'incver validation' {
+
+        It 'throws on an invalid incver target' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; target = 'Binary' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid incver target*'
+        }
+
+        It 'throws on an invalid incver style' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; style = 'CalVer' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid incver style*'
+        }
+
+        It 'throws on RC target with SemVer style' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; target = 'RC'; style = 'SemVer' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*RC*SemVer*'
+        }
+
+        It 'throws on an invalid incver part' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'IncVer'; part = 'revision' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid incver part*'
+        }
+
+    }
+
     Context 'validation' {
 
         It 'throws on an invalid clean level in config file' {

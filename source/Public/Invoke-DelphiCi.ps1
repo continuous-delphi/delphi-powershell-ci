@@ -90,7 +90,27 @@ function Invoke-DelphiCi {
         [string[]]$RunArguments,
 
         [Parameter(ParameterSetName = 'Run')]
-        [int]$RunTimeoutSeconds
+        [int]$RunTimeoutSeconds,
+
+        # --- IncVer defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerTarget,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerStyle,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerPart,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerPattern,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$IncVerDateformat
     )
 
     # ---------------------------------------------------------------------------
@@ -146,6 +166,12 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('Execute'))                        { $overrides['Execute']                      = $Execute }
     if ($PSBoundParameters.ContainsKey('RunArguments'))                  { $overrides['RunArguments']                 = $RunArguments }
     if ($PSBoundParameters.ContainsKey('RunTimeoutSeconds'))             { $overrides['RunTimeoutSeconds']            = $RunTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('IncVerFile'))                    { $overrides['IncVerFile']                   = $IncVerFile }
+    if ($PSBoundParameters.ContainsKey('IncVerTarget'))                  { $overrides['IncVerTarget']                 = $IncVerTarget }
+    if ($PSBoundParameters.ContainsKey('IncVerStyle'))                   { $overrides['IncVerStyle']                  = $IncVerStyle }
+    if ($PSBoundParameters.ContainsKey('IncVerPart'))                    { $overrides['IncVerPart']                   = $IncVerPart }
+    if ($PSBoundParameters.ContainsKey('IncVerPattern'))                 { $overrides['IncVerPattern']                = $IncVerPattern }
+    if ($PSBoundParameters.ContainsKey('IncVerDateformat'))              { $overrides['IncVerDateformat']             = $IncVerDateformat }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
@@ -261,6 +287,42 @@ function Invoke-DelphiCi {
                             -Execute        $job['execute'] `
                             -Arguments      @($job['arguments']) `
                             -TimeoutSeconds $job['timeoutSeconds']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'incver' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No incver jobs defined. Use -IncVerFile or define incver jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job['file'])) {
+                            throw "IncVer job '$($job['name'])' has no file."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "IncVer job: $($job['name'])"
+                        }
+
+                        # Resolve file path relative to root
+                        $filePath = $job['file']
+                        if (-not [System.IO.Path]::IsPathRooted($filePath)) {
+                            $filePath = Join-Path $config.Root $filePath
+                        }
+
+                        $result = Invoke-DelphiIncVer `
+                            -File          $filePath `
+                            -IncVerTarget  $job['target'] `
+                            -IncVerStyle   $job['style'] `
+                            -IncVerPart    $job['part'] `
+                            -IncVerPattern $job['pattern']
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {

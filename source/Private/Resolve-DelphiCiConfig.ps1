@@ -36,6 +36,13 @@ function Resolve-DelphiCiConfig {
             timeoutSeconds = 10
             arguments      = @()
         }
+        incver = @{
+            target     = ''
+            style      = ''
+            part       = ''
+            pattern    = ''
+            dateformat = 'yyyy.mm.dd'
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -180,6 +187,22 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['run'] = Merge-ActionConfig -Base $effectiveDefaults['run'] -Layer $runCliLayer
     }
 
+    # IncVer CLI overrides
+    $incverCliLayer = @{}
+    if ($Overrides.ContainsKey('IncverTarget') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncverTarget']))     { $incverCliLayer['target']     = $Overrides['IncverTarget'] }
+    if ($Overrides.ContainsKey('IncverStyle') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncverStyle']))      { $incverCliLayer['style']      = $Overrides['IncverStyle'] }
+    if ($Overrides.ContainsKey('IncverPart') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncverPart']))       { $incverCliLayer['part']       = $Overrides['IncverPart'] }
+    if ($Overrides.ContainsKey('IncverPattern') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncverPattern']))    { $incverCliLayer['pattern']    = $Overrides['IncverPattern'] }
+    if ($Overrides.ContainsKey('IncverDateformat') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncverDateformat'])) { $incverCliLayer['dateformat'] = $Overrides['IncverDateformat'] }
+    if ($incverCliLayer.Count -gt 0) {
+        $effectiveDefaults['incver'] = Merge-ActionConfig -Base $effectiveDefaults['incver'] -Layer $incverCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params if no pipeline was loaded from JSON
     # -------------------------------------------------------------------------
@@ -223,8 +246,9 @@ function Resolve-DelphiCiConfig {
 
         # Validate action defaults for known action types
         switch ($actionType) {
-            'clean' { Assert-CleanConfig $actionDefaults }
-            'build' { Assert-BuildConfig $actionDefaults }
+            'clean'  { Assert-CleanConfig  $actionDefaults }
+            'build'  { Assert-BuildConfig  $actionDefaults }
+            'incver' { Assert-IncverConfig $actionDefaults }
         }
 
         # Resolve jobs
@@ -444,6 +468,12 @@ function Build-CliPipeline {
             $entry['jobs'] = @([PSCustomObject]@{ execute = $Overrides['Execute'] })
         }
 
+        # If CLI provides a version file, inject it as a single incver job
+        if ($stepName -eq 'IncVer' -and $Overrides.ContainsKey('IncverFile') -and
+            -not [string]::IsNullOrWhiteSpace($Overrides['IncverFile'])) {
+            $entry['jobs'] = @([PSCustomObject]@{ file = $Overrides['IncverFile'] })
+        }
+
         $pipeline.Add([PSCustomObject]$entry)
     }
 
@@ -487,5 +517,38 @@ function Assert-BuildConfig {
     }
     if ($Config.ContainsKey('target') -and $Config['target'] -notin $validTargets) {
         throw "Invalid build target '$($Config['target'])'. Valid values: $($validTargets -join ', ')"
+    }
+}
+
+function Assert-IncverConfig {
+    <#
+    .SYNOPSIS
+        Validates fields in a resolved incver configuration.
+    #>
+    param([hashtable]$Config)
+
+    $validTargets = @('', 'RC', 'Text')
+    $validStyles  = @('', 'WinVer', 'SemVer')
+    $validParts   = @('', 'major', 'minor', 'patch', 'build', 'pre-release')
+
+    if ($Config.ContainsKey('target') -and $Config['target'] -notin $validTargets) {
+        throw "Invalid incver target '$($Config['target'])'. Valid values: RC, Text"
+    }
+    if ($Config.ContainsKey('style') -and $Config['style'] -notin $validStyles) {
+        throw "Invalid incver style '$($Config['style'])'. Valid values: WinVer, SemVer"
+    }
+    if ($Config.ContainsKey('part') -and $Config['part'] -notin $validParts) {
+        throw "Invalid incver part '$($Config['part'])'. Valid values: major, minor, patch, build, pre-release"
+    }
+    # RC target cannot use SemVer style
+    $effectiveTarget = if ($Config.ContainsKey('target')) { $Config['target'] } else { '' }
+    $effectiveStyle  = if ($Config.ContainsKey('style'))  { $Config['style'] }  else { '' }
+    if ($effectiveTarget -eq 'RC' -and $effectiveStyle -eq 'SemVer') {
+        throw "Invalid incver combination: RC target does not support SemVer style."
+    }
+    # pre-release part only valid for SemVer
+    $effectivePart = if ($Config.ContainsKey('part')) { $Config['part'] } else { '' }
+    if ($effectivePart -eq 'pre-release' -and $effectiveStyle -ne '' -and $effectiveStyle -ne 'SemVer') {
+        throw "Invalid incver combination: part 'pre-release' is only valid with SemVer style."
     }
 }

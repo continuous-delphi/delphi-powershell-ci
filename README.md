@@ -24,19 +24,21 @@ a single opinionated command surface for local and CI use.
 | [delphi-clean](https://github.com/continuous-delphi/delphi-clean) | Removes Delphi build artifacts |
 | [delphi-msbuild](https://github.com/continuous-delphi/delphi-msbuild) | Drives MSBuild for Delphi projects |
 | [delphi-dccbuild](https://github.com/continuous-delphi/delphi-dccbuild) | Drives DCC builds for Delphi projects |
+| [delphi-incver](https://github.com/continuous-delphi/delphi-incver) | Increments version numbers in RC and text files |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
 public interface for day-to-day CI workflows.
 
-Additional functionlity include `Invoke-DelphiRun` for executing DUnitX test projects or other utilities as needed.
+Additional functionality includes `Invoke-DelphiRun` for executing DUnitX
+test projects or other utilities as needed.
 
 
 ---
 
 ## v1 scope
 
-v1 supports **Clean**, **Build**, and **Run** steps.
+v1 supports **Clean**, **IncVer**, **Build**, and **Run** steps.
 
 ---
 
@@ -175,10 +177,17 @@ be string or array, producing a cross product of builds.
       "configuration": "Release",
       "verbosity": "minimal"
     },
-    "run": { "timeoutSeconds": 10 }
+    "run": { "timeoutSeconds": 10 },
+    "incver": { "target": "", "style": "", "part": "" }
   },
   "pipeline": [
     { "action": "Clean", "level": "deep" },
+    { "action": "IncVer",
+      "jobs": [
+        { "name": "Bump RC version",
+          "file": "source/versioninfo.rc" }
+      ]
+    },
     { "action": "Build",
       "jobs": [
         { "name": "Main App",
@@ -243,6 +252,13 @@ Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj `
     -Platform Win64 -Configuration Release -Toolchain VER370
 
+# Increment a version number in an RC file (bumps last component)
+Invoke-DelphiIncVer -File .\source\versioninfo.rc
+
+# Increment a SemVer version in a PowerShell script
+Invoke-DelphiIncVer -File .\source\mytool.ps1 `
+    -IncverPattern '\$script:ToolVersion\s*=\s*''([^'']+)'''
+
 # Run a pre-built DUnitX test executable
 Invoke-DelphiRun -Execute .\tests\Win32\Debug\MyApp.Tests.exe
 ```
@@ -290,8 +306,9 @@ Result shape:
 
 Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
-`Errors`, `ExeOutputDir`, and `Output`. Run results have `Execute`
-instead of `ProjectFile`.
+`Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
+`OldVersion`, and `NewVersion`. Run results have `Execute` instead of
+`ProjectFile`.
 
 ---
 
@@ -303,6 +320,7 @@ tools (included, no install needed)
   delphi-inspect.ps1
   delphi-msbuild.ps1
   delphi-dccbuild.ps1
+  delphi-incver.ps1
 source/                 PowerShell module source
   Delphi.PowerShell.CI.psm1
   bundled-tools/        Packaged standalone
@@ -330,6 +348,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiCi` | Primary orchestration command |
 | `Invoke-DelphiClean` | Clean step |
 | `Invoke-DelphiBuild` | Build step |
+| `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |
 

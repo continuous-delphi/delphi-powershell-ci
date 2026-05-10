@@ -7,6 +7,7 @@ function Get-BundledToolInfo {
         [PSCustomObject]@{ FileName = 'delphi-clean.ps1';    SupportsVersionApi = $true }
         [PSCustomObject]@{ FileName = 'delphi-msbuild.ps1';  SupportsVersionApi = $false }
         [PSCustomObject]@{ FileName = 'delphi-dccbuild.ps1'; SupportsVersionApi = $false }
+        [PSCustomObject]@{ FileName = 'delphi-incver.ps1';  SupportsVersionApi = $false }
     )
 
     $results = [System.Collections.Generic.List[object]]::new()

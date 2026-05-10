@@ -36,7 +36,15 @@ function Get-DelphiCiConfig {
         # Run defaults
         [string]$Execute,
         [string[]]$RunArguments,
-        [int]$RunTimeoutSeconds
+        [int]$RunTimeoutSeconds,
+
+        # IncVer defaults
+        [string]$IncVerFile,
+        [string]$IncVerTarget,
+        [string]$IncVerStyle,
+        [string]$IncVerPart,
+        [string]$IncVerPattern,
+        [string]$IncVerDateformat
     )
 
     $overrides = @{}
@@ -65,6 +73,12 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('Execute'))                        { $overrides['Execute']                      = $Execute }
     if ($PSBoundParameters.ContainsKey('RunArguments'))                  { $overrides['RunArguments']                 = $RunArguments }
     if ($PSBoundParameters.ContainsKey('RunTimeoutSeconds'))             { $overrides['RunTimeoutSeconds']            = $RunTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('IncVerFile'))                    { $overrides['IncVerFile']                   = $IncVerFile }
+    if ($PSBoundParameters.ContainsKey('IncVerTarget'))                  { $overrides['IncVerTarget']                 = $IncVerTarget }
+    if ($PSBoundParameters.ContainsKey('IncVerStyle'))                   { $overrides['IncVerStyle']                  = $IncVerStyle }
+    if ($PSBoundParameters.ContainsKey('IncVerPart'))                    { $overrides['IncVerPart']                   = $IncVerPart }
+    if ($PSBoundParameters.ContainsKey('IncVerPattern'))                 { $overrides['IncVerPattern']                = $IncVerPattern }
+    if ($PSBoundParameters.ContainsKey('IncVerDateformat'))              { $overrides['IncVerDateformat']             = $IncVerDateformat }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

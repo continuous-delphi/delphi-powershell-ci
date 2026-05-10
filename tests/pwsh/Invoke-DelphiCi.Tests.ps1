@@ -158,6 +158,37 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
+    function script:New-IncVerJob {
+        param(
+            [string]$Name = 'Bump version',
+            [string]$File = 'C:\Fake\versioninfo.rc'
+        )
+        @{
+            name       = $Name
+            file       = $File
+            target     = ''
+            style      = ''
+            part       = ''
+            pattern    = ''
+            dateformat = 'yyyy.mm.dd'
+        }
+    }
+
+    function script:New-IncVerResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName   = 'IncVer'
+            Success    = $Success
+            Duration   = [timespan]::Zero
+            ExitCode   = if ($Success) { 0 } else { 4 }
+            Tool       = 'delphi-incver.ps1'
+            Message    = if ($Success) { '1.0.0.0 -> 1.0.0.1' } else { 'Exit code 4' }
+            File       = 'C:\Fake\versioninfo.rc'
+            OldVersion = if ($Success) { '1.0.0.0' } else { $null }
+            NewVersion = if ($Success) { '1.0.0.1' } else { $null }
+        }
+    }
+
     # ---------------------------------------------------------------------------
 
     Describe 'Invoke-DelphiCi -- unit' {
@@ -169,6 +200,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Mock Invoke-DelphiClean      { script:New-CleanResult }
             Mock Invoke-DelphiBuild      { script:New-BuildResult }
             Mock Invoke-DelphiRun        { script:New-RunResult }
+            Mock Invoke-DelphiIncVer     { script:New-IncVerResult }
             Mock Write-DelphiCiMessage   {}
         }
 
@@ -218,6 +250,29 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiRun   -Times 1
             }
 
+            It 'runs Invoke-DelphiIncVer when pipeline contains IncVer' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'IncVer' -Jobs @(script:New-IncVerJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiIncVer -Times 1
+            }
+
+            It 'resolves incver file path relative to root' {
+                $job = script:New-IncverJob -File 'src\versioninfo.rc'
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'IncVer' -Jobs @($job)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiIncVer -ParameterFilter {
+                    $File -like '*C:\Fake*versioninfo.rc*'
+                }
+            }
+
             It 'does not run Build when pipeline is only Clean' {
                 Mock Resolve-DelphiCiConfig {
                     script:New-MockConfig -Pipeline @(
@@ -258,6 +313,18 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $false
+            }
+
+            It 'does not run Build when IncVer fails' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'IncVer' -Jobs @(script:New-IncVerJob)),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
+                }
+                Mock Invoke-DelphiIncver { script:New-IncVerResult -Success $false }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -Times 0
             }
 
         }
