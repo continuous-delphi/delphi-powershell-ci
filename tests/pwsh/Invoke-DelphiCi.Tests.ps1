@@ -189,6 +189,70 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
+    function script:New-CopyJob {
+        param(
+            [string]$Name = 'Collect binaries',
+            [string]$Source = 'C:\Fake\src\*.exe',
+            [string]$Destination = 'C:\Fake\dist'
+        )
+        @{
+            name              = $Name
+            source            = $Source
+            destination       = $Destination
+            flatten           = $false
+            overwrite         = $true
+            createDestination = $true
+            checksum          = $false
+        }
+    }
+
+    function script:New-CompressJob {
+        param(
+            [string]$Name = 'Package release',
+            [string]$Source = 'C:\Fake\dist',
+            [string]$Destination = 'C:\Fake\release.zip'
+        )
+        @{
+            name        = $Name
+            source      = $Source
+            destination = $Destination
+            overwrite   = $true
+            checksum    = $false
+        }
+    }
+
+    function script:New-CopyResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName    = 'Copy'
+            Success     = $Success
+            Duration    = [timespan]::Zero
+            ExitCode    = if ($Success) { 0 } else { 1 }
+            Tool        = 'copy'
+            Message     = if ($Success) { 'Copied 3 file(s)' } else { 'No files matched' }
+            Source      = 'C:\Fake\src\*.exe'
+            Destination = 'C:\Fake\dist'
+            FileCount   = if ($Success) { 3 } else { 0 }
+            BytesCopied = if ($Success) { [long]1024 } else { [long]0 }
+        }
+    }
+
+    function script:New-CompressResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName    = 'Compress'
+            Success     = $Success
+            Duration    = [timespan]::Zero
+            ExitCode    = if ($Success) { 0 } else { 1 }
+            Tool        = 'compress'
+            Message     = if ($Success) { 'Archive created (2048 bytes)' } else { 'Source not found' }
+            Source      = 'C:\Fake\dist'
+            Destination = 'C:\Fake\release.zip'
+            ArchiveSize = if ($Success) { [long]2048 } else { [long]0 }
+            Checksum    = $null
+        }
+    }
+
     # ---------------------------------------------------------------------------
 
     Describe 'Invoke-DelphiCi -- unit' {
@@ -201,6 +265,8 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Mock Invoke-DelphiBuild      { script:New-BuildResult }
             Mock Invoke-DelphiRun        { script:New-RunResult }
             Mock Invoke-DelphiIncVer     { script:New-IncVerResult }
+            Mock Invoke-DelphiCopy       { script:New-CopyResult }
+            Mock Invoke-DelphiCompress   { script:New-CompressResult }
             Mock Write-DelphiCiMessage   {}
         }
 
@@ -283,6 +349,26 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -Times 0
             }
 
+            It 'runs Invoke-DelphiCopy when pipeline contains Copy' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Copy' -Jobs @(script:New-CopyJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiCopy -Times 1
+            }
+
+            It 'runs Invoke-DelphiCompress when pipeline contains Compress' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Compress' -Jobs @(script:New-CompressJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiCompress -Times 1
+            }
+
             It 'does not run Clean when pipeline is only Build' {
                 Mock Resolve-DelphiCiConfig {
                     script:New-MockConfig -Pipeline @(
@@ -313,6 +399,18 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Mock Invoke-DelphiClean { script:New-CleanResult -Success $false }
                 $result = Invoke-DelphiCi
                 $result.Success | Should -Be $false
+            }
+
+            It 'does not run Compress when Copy fails' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Copy' -Jobs @(script:New-CopyJob)),
+                        (script:New-PipelineEntry -Action 'Compress' -Jobs @(script:New-CompressJob))
+                    )
+                }
+                Mock Invoke-DelphiCopy { script:New-CopyResult -Success $false }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiCompress -Times 0
             }
 
             It 'does not run Build when IncVer fails' {

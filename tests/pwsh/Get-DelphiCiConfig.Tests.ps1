@@ -716,6 +716,54 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
+    Context 'copy defaults and pipeline resolution' {
+
+        It 'copy action gets correct defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Copy'; jobs = @(@{ source = 'src/*.exe'; destination = 'dist/' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['flatten']           | Should -Be $false
+            $job['overwrite']         | Should -Be $true
+            $job['createDestination'] | Should -Be $true
+            $job['checksum']          | Should -Be $false
+        }
+
+        It '-CopySource creates a single copy job' {
+            $config = Get-DelphiCiConfig -Steps 'Copy' -CopySource 'src/*.exe' -CopyDestination 'dist/'
+            $config.Pipeline[0].Action | Should -Be 'Copy'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['source'] | Should -Be 'src/*.exe'
+        }
+
+    }
+
+    Context 'compress defaults and pipeline resolution' {
+
+        It 'compress action gets correct defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Compress'; jobs = @(@{ source = 'dist/'; destination = 'out.zip' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['overwrite'] | Should -Be $true
+            $job['checksum']  | Should -Be $false
+        }
+
+        It '-CompressSource creates a single compress job' {
+            $config = Get-DelphiCiConfig -Steps 'Compress' -CompressSource 'dist/' -CompressDestination 'out.zip'
+            $config.Pipeline[0].Action | Should -Be 'Compress'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['source'] | Should -Be 'dist/'
+        }
+
+    }
+
     Context 'validation' {
 
         It 'throws on an invalid clean level in config file' {

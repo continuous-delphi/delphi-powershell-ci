@@ -43,6 +43,16 @@ function Resolve-DelphiCiConfig {
             pattern    = ''
             dateformat = 'yyyy.mm.dd'
         }
+        copy = @{
+            flatten           = $false
+            overwrite         = $true
+            createDestination = $true
+            checksum          = $false
+        }
+        compress = @{
+            overwrite = $true
+            checksum  = $false
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -203,6 +213,30 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['incver'] = Merge-ActionConfig -Base $effectiveDefaults['incver'] -Layer $incverCliLayer
     }
 
+    # Copy CLI overrides
+    $copyCliLayer = @{}
+    if ($Overrides.ContainsKey('CopyFlatten') -and
+        $null -ne $Overrides['CopyFlatten'])                             { $copyCliLayer['flatten']           = [bool]$Overrides['CopyFlatten'] }
+    if ($Overrides.ContainsKey('CopyOverwrite') -and
+        $null -ne $Overrides['CopyOverwrite'])                           { $copyCliLayer['overwrite']         = [bool]$Overrides['CopyOverwrite'] }
+    if ($Overrides.ContainsKey('CopyCreateDestination') -and
+        $null -ne $Overrides['CopyCreateDestination'])                   { $copyCliLayer['createDestination'] = [bool]$Overrides['CopyCreateDestination'] }
+    if ($Overrides.ContainsKey('CopyChecksum') -and
+        $null -ne $Overrides['CopyChecksum'])                            { $copyCliLayer['checksum']          = [bool]$Overrides['CopyChecksum'] }
+    if ($copyCliLayer.Count -gt 0) {
+        $effectiveDefaults['copy'] = Merge-ActionConfig -Base $effectiveDefaults['copy'] -Layer $copyCliLayer
+    }
+
+    # Compress CLI overrides
+    $compressCliLayer = @{}
+    if ($Overrides.ContainsKey('CompressOverwrite') -and
+        $null -ne $Overrides['CompressOverwrite'])                       { $compressCliLayer['overwrite'] = [bool]$Overrides['CompressOverwrite'] }
+    if ($Overrides.ContainsKey('CompressChecksum') -and
+        $null -ne $Overrides['CompressChecksum'])                        { $compressCliLayer['checksum']  = [bool]$Overrides['CompressChecksum'] }
+    if ($compressCliLayer.Count -gt 0) {
+        $effectiveDefaults['compress'] = Merge-ActionConfig -Base $effectiveDefaults['compress'] -Layer $compressCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params if no pipeline was loaded from JSON
     # -------------------------------------------------------------------------
@@ -246,9 +280,11 @@ function Resolve-DelphiCiConfig {
 
         # Validate action defaults for known action types
         switch ($actionType) {
-            'clean'  { Assert-CleanConfig  $actionDefaults }
-            'build'  { Assert-BuildConfig  $actionDefaults }
-            'incver' { Assert-IncverConfig $actionDefaults }
+            'clean'    { Assert-CleanConfig    $actionDefaults }
+            'build'    { Assert-BuildConfig    $actionDefaults }
+            'incver'   { Assert-IncverConfig   $actionDefaults }
+            'copy'     { Assert-CopyConfig     $actionDefaults }
+            'compress' { Assert-CompressConfig $actionDefaults }
         }
 
         # Resolve jobs
@@ -474,6 +510,28 @@ function Build-CliPipeline {
             $entry['jobs'] = @([PSCustomObject]@{ file = $Overrides['IncverFile'] })
         }
 
+        # If CLI provides copy source/destination, inject as a single copy job
+        if ($stepName -eq 'Copy' -and $Overrides.ContainsKey('CopySource') -and
+            -not [string]::IsNullOrWhiteSpace($Overrides['CopySource'])) {
+            $copyJob = @{ source = $Overrides['CopySource'] }
+            if ($Overrides.ContainsKey('CopyDestination') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CopyDestination'])) {
+                $copyJob['destination'] = $Overrides['CopyDestination']
+            }
+            $entry['jobs'] = @([PSCustomObject]$copyJob)
+        }
+
+        # If CLI provides compress source/destination, inject as a single compress job
+        if ($stepName -eq 'Compress' -and $Overrides.ContainsKey('CompressSource') -and
+            -not [string]::IsNullOrWhiteSpace($Overrides['CompressSource'])) {
+            $compressJob = @{ source = $Overrides['CompressSource'] }
+            if ($Overrides.ContainsKey('CompressDestination') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CompressDestination'])) {
+                $compressJob['destination'] = $Overrides['CompressDestination']
+            }
+            $entry['jobs'] = @([PSCustomObject]$compressJob)
+        }
+
         $pipeline.Add([PSCustomObject]$entry)
     }
 
@@ -551,4 +609,24 @@ function Assert-IncverConfig {
     if ($effectivePart -eq 'pre-release' -and $effectiveStyle -ne '' -and $effectiveStyle -ne 'SemVer') {
         throw "Invalid incver combination: part 'pre-release' is only valid with SemVer style."
     }
+}
+
+function Assert-CopyConfig {
+    <#
+    .SYNOPSIS
+        Validates fields in a resolved copy configuration.
+    #>
+    param([hashtable]$Config)
+    # No enum-like fields to validate. Boolean fields are type-coerced
+    # during merge. Required fields (source, destination) are validated
+    # by the pipeline orchestrator at dispatch time.
+}
+
+function Assert-CompressConfig {
+    <#
+    .SYNOPSIS
+        Validates fields in a resolved compress configuration.
+    #>
+    param([hashtable]$Config)
+    # No enum-like fields to validate.
 }

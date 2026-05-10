@@ -34,6 +34,16 @@
       "part": "",
       "pattern": "",
       "dateformat": "yyyy.mm.dd"
+    },
+    "copy": {
+      "flatten": false,
+      "overwrite": true,
+      "createDestination": true,
+      "checksum": false
+    },
+    "compress": {
+      "overwrite": true,
+      "checksum": false
     }
   },
   "pipeline": [
@@ -138,6 +148,29 @@
           "execute": "tests/Win32/Debug/MyApp.Tests.exe",
           "timeoutSeconds": 60,
           "arguments": ["-l:Warning", "-cm:Quiet"]
+        }
+      ]
+    },
+    {
+      "action": "Copy",
+      "jobs": [
+        {
+          "name": "Collect binaries",
+          "source": "source/*/Release/*.exe",
+          "destination": "dist/binaries",
+          "flatten": true,
+          "checksum": true
+        }
+      ]
+    },
+    {
+      "action": "Compress",
+      "jobs": [
+        {
+          "name": "Package release",
+          "source": "dist/binaries",
+          "destination": "dist/release.zip",
+          "checksum": true
         }
       ]
     }

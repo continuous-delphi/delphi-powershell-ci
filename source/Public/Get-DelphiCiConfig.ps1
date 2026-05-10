@@ -44,7 +44,21 @@ function Get-DelphiCiConfig {
         [string]$IncVerStyle,
         [string]$IncVerPart,
         [string]$IncVerPattern,
-        [string]$IncVerDateformat
+        [string]$IncVerDateformat,
+
+        # Copy defaults
+        [string]$CopySource,
+        [string]$CopyDestination,
+        [bool]$CopyFlatten,
+        [bool]$CopyOverwrite,
+        [bool]$CopyCreateDestination,
+        [bool]$CopyChecksum,
+
+        # Compress defaults
+        [string]$CompressSource,
+        [string]$CompressDestination,
+        [bool]$CompressOverwrite,
+        [bool]$CompressChecksum
     )
 
     $overrides = @{}
@@ -79,6 +93,16 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('IncVerPart'))                    { $overrides['IncVerPart']                   = $IncVerPart }
     if ($PSBoundParameters.ContainsKey('IncVerPattern'))                 { $overrides['IncVerPattern']                = $IncVerPattern }
     if ($PSBoundParameters.ContainsKey('IncVerDateformat'))              { $overrides['IncVerDateformat']             = $IncVerDateformat }
+    if ($PSBoundParameters.ContainsKey('CopySource'))                    { $overrides['CopySource']                   = $CopySource }
+    if ($PSBoundParameters.ContainsKey('CopyDestination'))               { $overrides['CopyDestination']              = $CopyDestination }
+    if ($PSBoundParameters.ContainsKey('CopyFlatten'))                   { $overrides['CopyFlatten']                  = $CopyFlatten }
+    if ($PSBoundParameters.ContainsKey('CopyOverwrite'))                 { $overrides['CopyOverwrite']                = $CopyOverwrite }
+    if ($PSBoundParameters.ContainsKey('CopyCreateDestination'))         { $overrides['CopyCreateDestination']        = $CopyCreateDestination }
+    if ($PSBoundParameters.ContainsKey('CopyChecksum'))                  { $overrides['CopyChecksum']                 = $CopyChecksum }
+    if ($PSBoundParameters.ContainsKey('CompressSource'))                { $overrides['CompressSource']               = $CompressSource }
+    if ($PSBoundParameters.ContainsKey('CompressDestination'))           { $overrides['CompressDestination']          = $CompressDestination }
+    if ($PSBoundParameters.ContainsKey('CompressOverwrite'))             { $overrides['CompressOverwrite']            = $CompressOverwrite }
+    if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

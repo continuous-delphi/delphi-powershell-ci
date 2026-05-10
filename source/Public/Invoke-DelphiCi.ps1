@@ -110,7 +110,41 @@ function Invoke-DelphiCi {
         [string]$IncVerPattern,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$IncVerDateformat
+        [string]$IncVerDateformat,
+
+        # --- Copy defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CopySource,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CopyDestination,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CopyFlatten,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CopyOverwrite,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CopyCreateDestination,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CopyChecksum,
+
+        # --- Compress defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CompressSource,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CompressDestination,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CompressOverwrite,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CompressChecksum
     )
 
     # ---------------------------------------------------------------------------
@@ -172,6 +206,16 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('IncVerPart'))                    { $overrides['IncVerPart']                   = $IncVerPart }
     if ($PSBoundParameters.ContainsKey('IncVerPattern'))                 { $overrides['IncVerPattern']                = $IncVerPattern }
     if ($PSBoundParameters.ContainsKey('IncVerDateformat'))              { $overrides['IncVerDateformat']             = $IncVerDateformat }
+    if ($PSBoundParameters.ContainsKey('CopySource'))                    { $overrides['CopySource']                   = $CopySource }
+    if ($PSBoundParameters.ContainsKey('CopyDestination'))               { $overrides['CopyDestination']              = $CopyDestination }
+    if ($PSBoundParameters.ContainsKey('CopyFlatten'))                   { $overrides['CopyFlatten']                  = $CopyFlatten }
+    if ($PSBoundParameters.ContainsKey('CopyOverwrite'))                 { $overrides['CopyOverwrite']                = $CopyOverwrite }
+    if ($PSBoundParameters.ContainsKey('CopyCreateDestination'))         { $overrides['CopyCreateDestination']        = $CopyCreateDestination }
+    if ($PSBoundParameters.ContainsKey('CopyChecksum'))                  { $overrides['CopyChecksum']                 = $CopyChecksum }
+    if ($PSBoundParameters.ContainsKey('CompressSource'))                { $overrides['CompressSource']               = $CompressSource }
+    if ($PSBoundParameters.ContainsKey('CompressDestination'))           { $overrides['CompressDestination']          = $CompressDestination }
+    if ($PSBoundParameters.ContainsKey('CompressOverwrite'))             { $overrides['CompressOverwrite']            = $CompressOverwrite }
+    if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
@@ -323,6 +367,92 @@ function Invoke-DelphiCi {
                             -IncVerStyle   $job['style'] `
                             -IncVerPart    $job['part'] `
                             -IncVerPattern $job['pattern']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'copy' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No copy jobs defined. Use -CopySource/-CopyDestination or define copy jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job['source'])) {
+                            throw "Copy job '$($job['name'])' has no source."
+                        }
+                        if ([string]::IsNullOrWhiteSpace($job['destination'])) {
+                            throw "Copy job '$($job['name'])' has no destination."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Copy job: $($job['name'])"
+                        }
+
+                        # Resolve paths relative to root
+                        $sourcePath = $job['source']
+                        if (-not [System.IO.Path]::IsPathRooted($sourcePath)) {
+                            $sourcePath = Join-Path $config.Root $sourcePath
+                        }
+                        $destPath = $job['destination']
+                        if (-not [System.IO.Path]::IsPathRooted($destPath)) {
+                            $destPath = Join-Path $config.Root $destPath
+                        }
+
+                        $result = Invoke-DelphiCopy `
+                            -Source            $sourcePath `
+                            -Destination       $destPath `
+                            -Flatten           $job['flatten'] `
+                            -Overwrite         $job['overwrite'] `
+                            -CreateDestination $job['createDestination'] `
+                            -Checksum          $job['checksum']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'compress' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No compress jobs defined. Use -CompressSource/-CompressDestination or define compress jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job['source'])) {
+                            throw "Compress job '$($job['name'])' has no source."
+                        }
+                        if ([string]::IsNullOrWhiteSpace($job['destination'])) {
+                            throw "Compress job '$($job['name'])' has no destination."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Compress job: $($job['name'])"
+                        }
+
+                        # Resolve paths relative to root
+                        $sourcePath = $job['source']
+                        if (-not [System.IO.Path]::IsPathRooted($sourcePath)) {
+                            $sourcePath = Join-Path $config.Root $sourcePath
+                        }
+                        $destPath = $job['destination']
+                        if (-not [System.IO.Path]::IsPathRooted($destPath)) {
+                            $destPath = Join-Path $config.Root $destPath
+                        }
+
+                        $result = Invoke-DelphiCompress `
+                            -Source      $sourcePath `
+                            -Destination $destPath `
+                            -Overwrite   $job['overwrite'] `
+                            -Checksum    $job['checksum']
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {
