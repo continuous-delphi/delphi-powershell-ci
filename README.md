@@ -38,7 +38,7 @@ test projects or other utilities as needed.
 
 ## v1 scope
 
-v1 supports **Clean**, **IncVer**, **Build**, and **Run** steps.
+v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Copy**, and **Compress** steps.
 
 ---
 
@@ -261,6 +261,16 @@ Invoke-DelphiIncVer -File .\source\mytool.ps1 `
 
 # Run a pre-built DUnitX test executable
 Invoke-DelphiRun -Execute .\tests\Win32\Debug\MyApp.Tests.exe
+
+# Copy build outputs into a staging directory (flatten matrix outputs)
+Invoke-DelphiCopy -Source .\source\*\Release\*.exe -Destination .\dist -Flatten $true
+
+# Copy with SHA256 checksum manifest
+Invoke-DelphiCopy -Source .\source\*\Release\*.exe -Destination .\dist `
+    -Flatten $true -Checksum $true
+
+# Compress a directory into a release archive with checksum sidecar
+Invoke-DelphiCompress -Source .\dist -Destination .\release\app.zip -Checksum $true
 ```
 
 ---
@@ -308,7 +318,9 @@ Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
 `Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
-`ProjectFile`.
+`ProjectFile`. Copy results add `Source`, `Destination`, `FileCount`,
+and `BytesCopied`. Compress results add `Source`, `Destination`,
+`ArchiveSize`, and `Checksum`.
 
 ---
 
@@ -333,6 +345,9 @@ docs/                   Per-command reference documentation
   Invoke-DelphiClean.md
   Invoke-DelphiBuild.md
   Invoke-DelphiCi.md
+  Invoke-DelphiCompress.md
+  Invoke-DelphiCopy.md
+  Invoke-DelphiIncVer.md
   Invoke-DelphiRun.md
 tests/                  Pester test suite
   run-tests.ps1
@@ -348,7 +363,9 @@ tests/                  Pester test suite
 | `Invoke-DelphiCi` | Primary orchestration command |
 | `Invoke-DelphiClean` | Clean step |
 | `Invoke-DelphiBuild` | Build step |
-| `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC or text files) |
+| `Invoke-DelphiCompress` | Compress step (create .zip archives with optional SHA256 sidecar) |
+| `Invoke-DelphiCopy` | Copy step (collect build outputs with glob, flatten, and checksum) |
+| `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC, DProj, or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |
 
