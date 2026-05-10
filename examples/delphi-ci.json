@@ -74,6 +74,11 @@
           "style": "WinVer"
         },
         {
+          "name": "DProj version bump",
+          "file": "source/MyApp.dproj",
+          "target": "DProj"
+        },
+        {
           "name": "Script version bump",
           "file": "source/tool.ps1",
           "target": "Text",

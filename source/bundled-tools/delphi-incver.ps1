@@ -2,8 +2,9 @@
 # -----------------------------------------------------------------------------
 # delphi-incver
 #
-# Increment version numbers in RC (VERSIONINFO) or text source files.
-# Supports WinVer (numeric N.N.N.N) and SemVer (semver.org) styles.
+# Increment version numbers in RC (VERSIONINFO), Delphi .dproj, or text
+# source files. Supports WinVer (numeric N.N.N.N) and SemVer (semver.org)
+# styles.
 #
 # Part of Continuous-Delphi: Strengthening Delphi's continued success
 # https://github.com/continuous-delphi
@@ -22,7 +23,7 @@
 
 <#
 .SYNOPSIS
-Increments a version number in an RC or text file.
+Increments a version number in an RC, DProj, or text file.
 
 .DESCRIPTION
 Parses a version string from the target file, increments the specified
@@ -31,6 +32,9 @@ component, and writes the updated version back to the file.
 For RC files, all four VERSIONINFO locations are updated:
   FILEVERSION, PRODUCTVERSION (comma-separated)
   VALUE "FileVersion", VALUE "ProductVersion" (dot-separated strings)
+
+For DProj files, the FileVersion value inside every VerInfo_Keys element
+is updated across all PropertyGroups. ProductVersion is left unchanged.
 
 For text files, a regex pattern with a capture group identifies the
 version string to update.
@@ -50,6 +54,9 @@ pwsh -File delphi-incver.ps1 -File src/versioninfo.rc
 ./delphi-incver.ps1 -File src/tool.ps1 -Target Text -Pattern '\$script:ToolVersion\s*=\s*''([^'']+)'''
 
 .EXAMPLE
+pwsh -File delphi-incver.ps1 -File src/MyApp.dproj
+
+.EXAMPLE
 pwsh -File delphi-incver.ps1 -File src/versioninfo.rc -Part minor
 #>
 
@@ -59,13 +66,13 @@ pwsh -File delphi-incver.ps1 -File src/versioninfo.rc -Part minor
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'OutputFile',
   Justification='OutputFile is consumed inside the Write-Result helper function.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
-  Justification='Update-RcContent and Update-TextContent are pure string transforms; file I/O is in the main block.')]
+  Justification='Update-RcContent, Update-DProjContent, and Update-TextContent are pure transforms; file I/O is in the main block.')]
 param(
     [Parameter(ParameterSetName = 'IncVer', Mandatory)]
     [string]$File,
 
     [Parameter(ParameterSetName = 'IncVer')]
-    [ValidateSet('RC', 'Text')]
+    [ValidateSet('RC', 'DProj', 'Text')]
     [string]$Target,
 
     [Parameter(ParameterSetName = 'IncVer')]
@@ -422,6 +429,65 @@ function Update-TextContent {
     }
 }
 
+function Update-DProjContent {
+    <#
+    .SYNOPSIS
+        Updates FileVersion in all VerInfo_Keys elements of a .dproj XML file.
+        Returns a hashtable with XmlDocument, OldVersion, and NewVersion.
+    #>
+    param(
+        [string]$FilePath,
+        [string]$PartName
+    )
+
+    $xml = [xml](Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop)
+    $nsMgr = [System.Xml.XmlNamespaceManager]::new($xml.NameTable)
+    $nsMgr.AddNamespace('ms', 'http://schemas.microsoft.com/developer/msbuild/2003')
+
+    $nodes = $xml.SelectNodes('//ms:VerInfo_Keys', $nsMgr)
+    if ($null -eq $nodes -or $nodes.Count -eq 0) {
+        return $null
+    }
+
+    # Read current FileVersion from the first VerInfo_Keys node
+    $firstKeys = $nodes[0].InnerText
+    $oldVersionStr = $null
+    foreach ($pair in $firstKeys -split ';') {
+        $kv = $pair -split '=', 2
+        if ($kv[0] -eq 'FileVersion') {
+            $oldVersionStr = $kv[1]
+            break
+        }
+    }
+    if ([string]::IsNullOrEmpty($oldVersionStr)) {
+        return $null
+    }
+
+    # Parse and increment
+    $oldParts = ConvertFrom-WinVer $oldVersionStr
+    $newParts = Step-WinVer -Parts $oldParts -PartName $PartName
+    $newVersionStr = ConvertTo-WinVer -Parts $newParts -Separator '.'
+
+    # Update FileVersion in all VerInfo_Keys nodes
+    foreach ($node in $nodes) {
+        $keysStr = $node.InnerText
+        $keys = $keysStr -split ';'
+        for ($i = 0; $i -lt $keys.Count; $i++) {
+            $kv = $keys[$i] -split '=', 2
+            if ($kv[0] -eq 'FileVersion') {
+                $keys[$i] = "FileVersion=$newVersionStr"
+            }
+        }
+        $node.InnerText = $keys -join ';'
+    }
+
+    return @{
+        XmlDocument = $xml
+        OldVersion  = $oldVersionStr
+        NewVersion  = $newVersionStr
+    }
+}
+
 # -----------------------------------------------------------------------------
 # Auto-detection helpers
 # -----------------------------------------------------------------------------
@@ -431,13 +497,14 @@ function Resolve-Target {
     if (-not [string]::IsNullOrEmpty($ExplicitTarget)) { return $ExplicitTarget }
     $ext = [System.IO.Path]::GetExtension($FilePath).ToLower()
     if ($ext -eq '.rc') { return 'RC' }
+    if ($ext -eq '.dproj') { return 'DProj' }
     return 'Text'
 }
 
 function Resolve-Style {
     param([string]$Target, [string]$ExplicitStyle)
     if (-not [string]::IsNullOrEmpty($ExplicitStyle)) { return $ExplicitStyle }
-    if ($Target -eq 'RC') { return 'WinVer' }
+    if ($Target -eq 'RC' -or $Target -eq 'DProj') { return 'WinVer' }
     return 'SemVer'
 }
 
@@ -470,8 +537,8 @@ try {
     $resolvedStyle  = Resolve-Style  -Target $resolvedTarget -ExplicitStyle $Style
 
     # Validate combinations
-    if ($resolvedTarget -eq 'RC' -and $resolvedStyle -eq 'SemVer') {
-        Write-Error "RC target does not support SemVer style." -ErrorAction Continue
+    if ($resolvedTarget -in @('RC', 'DProj') -and $resolvedStyle -eq 'SemVer') {
+        Write-Error "$resolvedTarget target does not support SemVer style." -ErrorAction Continue
         exit $ExitInvalidArguments
     }
     if ($Part -eq 'pre-release' -and $resolvedStyle -ne 'SemVer') {
@@ -496,6 +563,28 @@ try {
         }
 
         Set-Content -LiteralPath $File -Value $updateResult.Content -NoNewline -Encoding UTF8
+        Write-Host "$($updateResult.OldVersion) -> $($updateResult.NewVersion)"
+
+        Write-Result @{
+            file       = $File
+            target     = $resolvedTarget
+            style      = $resolvedStyle
+            part       = if ([string]::IsNullOrEmpty($Part)) { 'last' } else { $Part }
+            oldVersion = $updateResult.OldVersion
+            newVersion = $updateResult.NewVersion
+        }
+        exit $ExitSuccess
+    }
+    elseif ($resolvedTarget -eq 'DProj') {
+        # DProj target -- update FileVersion in all VerInfo_Keys elements
+        $updateResult = Update-DProjContent -FilePath $File -PartName $Part
+        if ($null -eq $updateResult) {
+            Write-Error "No VerInfo_Keys with FileVersion found in $File" -ErrorAction Continue
+            Write-Result @{ file = $File; error = "VerInfo_Keys not found" }
+            exit $ExitPatternNotFound
+        }
+
+        $updateResult.XmlDocument.Save($File)
         Write-Host "$($updateResult.OldVersion) -> $($updateResult.NewVersion)"
 
         Write-Result @{

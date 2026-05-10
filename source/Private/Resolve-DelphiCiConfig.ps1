@@ -527,12 +527,12 @@ function Assert-IncverConfig {
     #>
     param([hashtable]$Config)
 
-    $validTargets = @('', 'RC', 'Text')
+    $validTargets = @('', 'RC', 'DProj', 'Text')
     $validStyles  = @('', 'WinVer', 'SemVer')
     $validParts   = @('', 'major', 'minor', 'patch', 'build', 'pre-release')
 
     if ($Config.ContainsKey('target') -and $Config['target'] -notin $validTargets) {
-        throw "Invalid incver target '$($Config['target'])'. Valid values: RC, Text"
+        throw "Invalid incver target '$($Config['target'])'. Valid values: RC, DProj, Text"
     }
     if ($Config.ContainsKey('style') -and $Config['style'] -notin $validStyles) {
         throw "Invalid incver style '$($Config['style'])'. Valid values: WinVer, SemVer"
@@ -543,8 +543,8 @@ function Assert-IncverConfig {
     # RC target cannot use SemVer style
     $effectiveTarget = if ($Config.ContainsKey('target')) { $Config['target'] } else { '' }
     $effectiveStyle  = if ($Config.ContainsKey('style'))  { $Config['style'] }  else { '' }
-    if ($effectiveTarget -eq 'RC' -and $effectiveStyle -eq 'SemVer') {
-        throw "Invalid incver combination: RC target does not support SemVer style."
+    if ($effectiveTarget -in @('RC', 'DProj') -and $effectiveStyle -eq 'SemVer') {
+        throw "Invalid incver combination: $effectiveTarget target does not support SemVer style."
     }
     # pre-release part only valid for SemVer
     $effectivePart = if ($Config.ContainsKey('part')) { $Config['part'] } else { '' }
