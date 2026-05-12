@@ -253,6 +253,49 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
+    function script:New-CoverageJob {
+        param(
+            [string]$Name = 'Unit test coverage',
+            [string]$Execute = 'C:\Fake\test\Win32\Debug\MyApp.Tests.exe',
+            [string]$MapFile = 'C:\Fake\test\Win32\Debug\MyApp.Tests.map'
+        )
+        @{
+            name           = $Name
+            execute        = $Execute
+            mapFile        = $MapFile
+            engine         = 'DelphiCodeCoverage'
+            enginePath     = ''
+            sourceDir      = ''
+            units          = @()
+            excludeUnits   = @()
+            outputDir      = 'coverage'
+            formats        = @('html')
+            threshold      = 0
+            arguments      = @()
+            timeoutSeconds = 300
+            badge          = ''
+        }
+    }
+
+    function script:New-CoverageResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName        = 'Coverage'
+            Success         = $Success
+            Duration        = [timespan]::Zero
+            ExitCode        = if ($Success) { 0 } else { 5 }
+            Tool            = 'delphi-coverage.ps1'
+            Message         = if ($Success) { '73.4% (1842/2510 lines)' } else { 'Exit code 5' }
+            Execute         = 'C:\Fake\test\Win32\Debug\MyApp.Tests.exe'
+            CoveragePercent = if ($Success) { 73.4 } else { 0 }
+            LinesCovered    = if ($Success) { 1842 } else { 0 }
+            LinesTotal      = if ($Success) { 2510 } else { 0 }
+            ThresholdMet    = $Success
+            OutputDir       = 'coverage'
+            Badge           = $null
+        }
+    }
+
     # ---------------------------------------------------------------------------
 
     Describe 'Invoke-DelphiCi -- unit' {
@@ -267,6 +310,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Mock Invoke-DelphiIncVer     { script:New-IncVerResult }
             Mock Invoke-DelphiCopy       { script:New-CopyResult }
             Mock Invoke-DelphiCompress   { script:New-CompressResult }
+            Mock Invoke-DelphiCoverage   { script:New-CoverageResult }
             Mock Write-DelphiCiMessage   {}
         }
 
@@ -367,6 +411,16 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiCompress -Times 1
+            }
+
+            It 'runs Invoke-DelphiCoverage when pipeline contains Coverage' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Coverage' -Jobs @(script:New-CoverageJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiCoverage -Times 1
             }
 
             It 'does not run Clean when pipeline is only Build' {

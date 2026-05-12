@@ -25,6 +25,7 @@ a single opinionated command surface for local and CI use.
 | [delphi-msbuild](https://github.com/continuous-delphi/delphi-msbuild) | Drives MSBuild for Delphi projects |
 | [delphi-dccbuild](https://github.com/continuous-delphi/delphi-dccbuild) | Drives DCC builds for Delphi projects |
 | [delphi-incver](https://github.com/continuous-delphi/delphi-incver) | Increments version numbers in RC and text files |
+| [delphi-coverage](https://github.com/continuous-delphi/delphi-coverage) | Code coverage orchestrator for Delphi projects |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
@@ -38,7 +39,7 @@ test projects or other utilities as needed.
 
 ## v1 scope
 
-v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Copy**, and **Compress** steps.
+v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Coverage**, **Copy**, and **Compress** steps.
 
 ---
 
@@ -262,6 +263,11 @@ Invoke-DelphiIncVer -File .\source\mytool.ps1 `
 # Run a pre-built DUnitX test executable
 Invoke-DelphiRun -Execute .\tests\Win32\Debug\MyApp.Tests.exe
 
+# Run code coverage analysis with threshold
+Invoke-DelphiCoverage -Execute .\test\Win32\Debug\MyApp.Tests.exe `
+    -MapFile .\test\Win32\Debug\MyApp.Tests.map `
+    -CoverageSourceDir .\source -CoverageThreshold 60
+
 # Copy build outputs into a staging directory (flatten matrix outputs)
 Invoke-DelphiCopy -Source .\source\*\Release\*.exe -Destination .\dist -Flatten $true
 
@@ -318,7 +324,8 @@ Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
 `Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
-`ProjectFile`. Copy results add `Source`, `Destination`, `FileCount`,
+`ProjectFile`. Coverage results add `Execute`, `CoveragePercent`,
+`LinesCovered`, `LinesTotal`, `ThresholdMet`, `OutputDir`, and `Badge`. Copy results add `Source`, `Destination`, `FileCount`,
 and `BytesCopied`. Compress results add `Source`, `Destination`,
 `ArchiveSize`, and `Checksum`.
 
@@ -333,6 +340,7 @@ tools (included, no install needed)
   delphi-msbuild.ps1
   delphi-dccbuild.ps1
   delphi-incver.ps1
+  delphi-coverage.ps1
 source/                 PowerShell module source
   Delphi.PowerShell.CI.psm1
   bundled-tools/        Packaged standalone
@@ -347,6 +355,7 @@ docs/                   Per-command reference documentation
   Invoke-DelphiCi.md
   Invoke-DelphiCompress.md
   Invoke-DelphiCopy.md
+  Invoke-DelphiCoverage.md
   Invoke-DelphiIncVer.md
   Invoke-DelphiRun.md
 tests/                  Pester test suite
@@ -365,6 +374,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiBuild` | Build step |
 | `Invoke-DelphiCompress` | Compress step (create .zip archives with optional SHA256 sidecar) |
 | `Invoke-DelphiCopy` | Copy step (collect build outputs with glob, flatten, and checksum) |
+| `Invoke-DelphiCoverage` | Coverage step (code coverage with threshold and badge generation) |
 | `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC, DProj, or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |

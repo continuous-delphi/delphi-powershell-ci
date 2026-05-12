@@ -58,7 +58,21 @@ function Get-DelphiCiConfig {
         [string]$CompressSource,
         [string]$CompressDestination,
         [bool]$CompressOverwrite,
-        [bool]$CompressChecksum
+        [bool]$CompressChecksum,
+
+        # Coverage defaults
+        [string]$CoverageExecute,
+        [string]$CoverageMapFile,
+        [string]$CoverageEngine,
+        [string]$CoverageEnginePath,
+        [string[]]$CoverageSourceDir,
+        [string[]]$CoverageUnits,
+        [string[]]$CoverageExcludeUnits,
+        [string]$CoverageOutputDir,
+        [string[]]$CoverageFormats,
+        [int]$CoverageThreshold,
+        [int]$CoverageTimeoutSeconds,
+        [string]$CoverageBadge
     )
 
     $overrides = @{}
@@ -103,6 +117,18 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CompressDestination'))           { $overrides['CompressDestination']          = $CompressDestination }
     if ($PSBoundParameters.ContainsKey('CompressOverwrite'))             { $overrides['CompressOverwrite']            = $CompressOverwrite }
     if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
+    if ($PSBoundParameters.ContainsKey('CoverageExecute'))               { $overrides['CoverageExecute']              = $CoverageExecute }
+    if ($PSBoundParameters.ContainsKey('CoverageMapFile'))               { $overrides['CoverageMapFile']              = $CoverageMapFile }
+    if ($PSBoundParameters.ContainsKey('CoverageEngine'))                { $overrides['CoverageEngine']               = $CoverageEngine }
+    if ($PSBoundParameters.ContainsKey('CoverageEnginePath'))            { $overrides['CoverageEnginePath']           = $CoverageEnginePath }
+    if ($PSBoundParameters.ContainsKey('CoverageSourceDir'))             { $overrides['CoverageSourceDir']            = $CoverageSourceDir }
+    if ($PSBoundParameters.ContainsKey('CoverageUnits'))                 { $overrides['CoverageUnits']                = $CoverageUnits }
+    if ($PSBoundParameters.ContainsKey('CoverageExcludeUnits'))          { $overrides['CoverageExcludeUnits']         = $CoverageExcludeUnits }
+    if ($PSBoundParameters.ContainsKey('CoverageOutputDir'))             { $overrides['CoverageOutputDir']            = $CoverageOutputDir }
+    if ($PSBoundParameters.ContainsKey('CoverageFormats'))               { $overrides['CoverageFormats']              = $CoverageFormats }
+    if ($PSBoundParameters.ContainsKey('CoverageThreshold'))             { $overrides['CoverageThreshold']            = $CoverageThreshold }
+    if ($PSBoundParameters.ContainsKey('CoverageTimeoutSeconds'))        { $overrides['CoverageTimeoutSeconds']       = $CoverageTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('CoverageBadge'))                 { $overrides['CoverageBadge']                = $CoverageBadge }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

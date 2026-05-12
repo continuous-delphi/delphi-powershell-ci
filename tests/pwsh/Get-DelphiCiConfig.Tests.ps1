@@ -764,6 +764,53 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
+    Context 'coverage defaults and pipeline resolution' {
+
+        It 'coverage action gets correct defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Coverage'; jobs = @(@{ execute = 'test.exe'; mapFile = 'test.map' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['engine']    | Should -Be 'DelphiCodeCoverage'
+            $job['outputDir'] | Should -Be 'coverage'
+            $job['threshold'] | Should -Be 0
+            $job['formats']   | Should -Contain 'html'
+        }
+
+        It '-CoverageExecute creates a single coverage job' {
+            $config = Get-DelphiCiConfig -Steps 'Coverage' -CoverageExecute 'test.exe' -CoverageMapFile 'test.map'
+            $config.Pipeline[0].Action | Should -Be 'Coverage'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['execute'] | Should -Be 'test.exe'
+        }
+
+    }
+
+    Context 'coverage validation' {
+
+        It 'throws on an invalid coverage engine' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Coverage'; engine = 'FakeEngine' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid coverage engine*'
+        }
+
+        It 'throws on an invalid coverage format' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Coverage'; formats = @('pdf') })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid coverage format*'
+        }
+
+    }
+
     Context 'validation' {
 
         It 'throws on an invalid clean level in config file' {

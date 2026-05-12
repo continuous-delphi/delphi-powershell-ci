@@ -53,6 +53,19 @@ function Resolve-DelphiCiConfig {
             overwrite = $true
             checksum  = $false
         }
+        coverage = @{
+            engine         = 'DelphiCodeCoverage'
+            enginePath     = ''
+            sourceDir      = @()
+            units          = @()
+            excludeUnits   = @()
+            outputDir      = 'coverage'
+            formats        = @('html')
+            threshold      = 0
+            arguments      = @()
+            timeoutSeconds = 300
+            badge          = ''
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -237,6 +250,32 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['compress'] = Merge-ActionConfig -Base $effectiveDefaults['compress'] -Layer $compressCliLayer
     }
 
+    # Coverage CLI overrides
+    $coverageCliLayer = @{}
+    if ($Overrides.ContainsKey('CoverageEngine') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CoverageEngine']))           { $coverageCliLayer['engine']         = $Overrides['CoverageEngine'] }
+    if ($Overrides.ContainsKey('CoverageEnginePath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CoverageEnginePath']))       { $coverageCliLayer['enginePath']     = $Overrides['CoverageEnginePath'] }
+    if ($Overrides.ContainsKey('CoverageSourceDir') -and
+        $null -ne $Overrides['CoverageSourceDir'])                                 { $coverageCliLayer['sourceDir!']     = @($Overrides['CoverageSourceDir']) }
+    if ($Overrides.ContainsKey('CoverageUnits') -and
+        $null -ne $Overrides['CoverageUnits'])                                     { $coverageCliLayer['units!']         = @($Overrides['CoverageUnits']) }
+    if ($Overrides.ContainsKey('CoverageExcludeUnits') -and
+        $null -ne $Overrides['CoverageExcludeUnits'])                              { $coverageCliLayer['excludeUnits!']  = @($Overrides['CoverageExcludeUnits']) }
+    if ($Overrides.ContainsKey('CoverageOutputDir') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CoverageOutputDir']))        { $coverageCliLayer['outputDir']      = $Overrides['CoverageOutputDir'] }
+    if ($Overrides.ContainsKey('CoverageFormats') -and
+        $null -ne $Overrides['CoverageFormats'])                                   { $coverageCliLayer['formats!']       = @($Overrides['CoverageFormats']) }
+    if ($Overrides.ContainsKey('CoverageThreshold') -and
+        $null -ne $Overrides['CoverageThreshold'])                                 { $coverageCliLayer['threshold']      = [int]$Overrides['CoverageThreshold'] }
+    if ($Overrides.ContainsKey('CoverageTimeoutSeconds') -and
+        $null -ne $Overrides['CoverageTimeoutSeconds'])                            { $coverageCliLayer['timeoutSeconds'] = [int]$Overrides['CoverageTimeoutSeconds'] }
+    if ($Overrides.ContainsKey('CoverageBadge') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CoverageBadge']))            { $coverageCliLayer['badge']          = $Overrides['CoverageBadge'] }
+    if ($coverageCliLayer.Count -gt 0) {
+        $effectiveDefaults['coverage'] = Merge-ActionConfig -Base $effectiveDefaults['coverage'] -Layer $coverageCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params if no pipeline was loaded from JSON
     # -------------------------------------------------------------------------
@@ -285,6 +324,7 @@ function Resolve-DelphiCiConfig {
             'incver'   { Assert-IncverConfig   $actionDefaults }
             'copy'     { Assert-CopyConfig     $actionDefaults }
             'compress' { Assert-CompressConfig $actionDefaults }
+            'coverage' { Assert-CoverageConfig $actionDefaults }
         }
 
         # Resolve jobs
@@ -532,6 +572,17 @@ function Build-CliPipeline {
             $entry['jobs'] = @([PSCustomObject]$compressJob)
         }
 
+        # If CLI provides coverage execute/mapfile, inject as a single coverage job
+        if ($stepName -eq 'Coverage' -and $Overrides.ContainsKey('CoverageExecute') -and
+            -not [string]::IsNullOrWhiteSpace($Overrides['CoverageExecute'])) {
+            $coverageJob = @{ execute = $Overrides['CoverageExecute'] }
+            if ($Overrides.ContainsKey('CoverageMapFile') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CoverageMapFile'])) {
+                $coverageJob['mapFile'] = $Overrides['CoverageMapFile']
+            }
+            $entry['jobs'] = @([PSCustomObject]$coverageJob)
+        }
+
         $pipeline.Add([PSCustomObject]$entry)
     }
 
@@ -629,4 +680,26 @@ function Assert-CompressConfig {
     #>
     param([hashtable]$Config)
     # No enum-like fields to validate.
+}
+
+function Assert-CoverageConfig {
+    <#
+    .SYNOPSIS
+        Validates enum-like fields in a resolved coverage configuration.
+    #>
+    param([hashtable]$Config)
+
+    $validEngines = @('DelphiCodeCoverage', 'radCodeCoverage')
+    $validFormats = @('html', 'xml', 'emma', 'cobertura', 'md')
+
+    if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
+        throw "Invalid coverage engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
+    }
+    if ($Config.ContainsKey('formats')) {
+        foreach ($fmt in $Config['formats']) {
+            if ($fmt.ToLower() -notin $validFormats) {
+                throw "Invalid coverage format '$fmt'. Valid values: $($validFormats -join ', ')"
+            }
+        }
+    }
 }

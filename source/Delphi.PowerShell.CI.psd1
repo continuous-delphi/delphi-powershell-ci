@@ -27,6 +27,7 @@
         'Invoke-DelphiBuild'
         'Invoke-DelphiCompress'
         'Invoke-DelphiCopy'
+        'Invoke-DelphiCoverage'
         'Invoke-DelphiIncVer'
         'Invoke-DelphiRun'
     )

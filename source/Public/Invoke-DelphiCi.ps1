@@ -144,7 +144,45 @@ function Invoke-DelphiCi {
         [bool]$CompressOverwrite,
 
         [Parameter(ParameterSetName = 'Run')]
-        [bool]$CompressChecksum
+        [bool]$CompressChecksum,
+
+        # --- Coverage defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageExecute,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageMapFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageEngine,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageEnginePath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CoverageSourceDir,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CoverageUnits,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CoverageExcludeUnits,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageOutputDir,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CoverageFormats,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [int]$CoverageThreshold,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [int]$CoverageTimeoutSeconds,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageBadge
     )
 
     # ---------------------------------------------------------------------------
@@ -216,6 +254,18 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CompressDestination'))           { $overrides['CompressDestination']          = $CompressDestination }
     if ($PSBoundParameters.ContainsKey('CompressOverwrite'))             { $overrides['CompressOverwrite']            = $CompressOverwrite }
     if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
+    if ($PSBoundParameters.ContainsKey('CoverageExecute'))               { $overrides['CoverageExecute']              = $CoverageExecute }
+    if ($PSBoundParameters.ContainsKey('CoverageMapFile'))               { $overrides['CoverageMapFile']              = $CoverageMapFile }
+    if ($PSBoundParameters.ContainsKey('CoverageEngine'))                { $overrides['CoverageEngine']               = $CoverageEngine }
+    if ($PSBoundParameters.ContainsKey('CoverageEnginePath'))            { $overrides['CoverageEnginePath']           = $CoverageEnginePath }
+    if ($PSBoundParameters.ContainsKey('CoverageSourceDir'))             { $overrides['CoverageSourceDir']            = $CoverageSourceDir }
+    if ($PSBoundParameters.ContainsKey('CoverageUnits'))                 { $overrides['CoverageUnits']                = $CoverageUnits }
+    if ($PSBoundParameters.ContainsKey('CoverageExcludeUnits'))          { $overrides['CoverageExcludeUnits']         = $CoverageExcludeUnits }
+    if ($PSBoundParameters.ContainsKey('CoverageOutputDir'))             { $overrides['CoverageOutputDir']            = $CoverageOutputDir }
+    if ($PSBoundParameters.ContainsKey('CoverageFormats'))               { $overrides['CoverageFormats']              = $CoverageFormats }
+    if ($PSBoundParameters.ContainsKey('CoverageThreshold'))             { $overrides['CoverageThreshold']            = $CoverageThreshold }
+    if ($PSBoundParameters.ContainsKey('CoverageTimeoutSeconds'))        { $overrides['CoverageTimeoutSeconds']       = $CoverageTimeoutSeconds }
+    if ($PSBoundParameters.ContainsKey('CoverageBadge'))                 { $overrides['CoverageBadge']                = $CoverageBadge }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
@@ -453,6 +503,70 @@ function Invoke-DelphiCi {
                             -Destination $destPath `
                             -Overwrite   $job['overwrite'] `
                             -Checksum    $job['checksum']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'coverage' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No coverage jobs defined. Use -CoverageExecute/-CoverageMapFile or define coverage jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        if ([string]::IsNullOrWhiteSpace($job['execute'])) {
+                            throw "Coverage job '$($job['name'])' has no execute target."
+                        }
+                        if ([string]::IsNullOrWhiteSpace($job['mapFile'])) {
+                            throw "Coverage job '$($job['name'])' has no mapFile."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Coverage job: $($job['name'])"
+                        }
+
+                        # Resolve paths relative to root
+                        $exePath = $job['execute']
+                        if (-not [System.IO.Path]::IsPathRooted($exePath)) {
+                            $exePath = Join-Path $config.Root $exePath
+                        }
+                        $mapPath = $job['mapFile']
+                        if (-not [System.IO.Path]::IsPathRooted($mapPath)) {
+                            $mapPath = Join-Path $config.Root $mapPath
+                        }
+                        $srcDirs = @($job['sourceDir']) | Where-Object { -not [string]::IsNullOrEmpty($_) } | ForEach-Object {
+                            $p = $_
+                            if ($p[0] -eq '/' -or ($p[0] -eq '\' -and $p.Length -gt 1 -and $p[1] -ne '\')) { $p = ".$p" }
+                            if (-not [System.IO.Path]::IsPathRooted($p)) { Join-Path $config.Root $p } else { $p }
+                        }
+                        $outDir = $job['outputDir']
+                        if (-not [string]::IsNullOrEmpty($outDir) -and -not [System.IO.Path]::IsPathRooted($outDir)) {
+                            $outDir = Join-Path $config.Root $outDir
+                        }
+                        $badgePath = $job['badge']
+                        if (-not [string]::IsNullOrEmpty($badgePath) -and -not [System.IO.Path]::IsPathRooted($badgePath)) {
+                            $badgePath = Join-Path $config.Root $badgePath
+                        }
+
+                        $result = Invoke-DelphiCoverage `
+                            -Execute                $exePath `
+                            -MapFile                $mapPath `
+                            -CoverageEngine         $job['engine'] `
+                            -CoverageEnginePath     $job['enginePath'] `
+                            -CoverageSourceDir      $srcDirs `
+                            -CoverageUnits          @($job['units']) `
+                            -CoverageExcludeUnits   @($job['excludeUnits']) `
+                            -CoverageOutputDir      $outDir `
+                            -CoverageFormats        @($job['formats']) `
+                            -CoverageThreshold      $job['threshold'] `
+                            -CoverageArguments      @($job['arguments']) `
+                            -CoverageTimeoutSeconds $job['timeoutSeconds'] `
+                            -CoverageBadge          $badgePath
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {
