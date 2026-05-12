@@ -63,6 +63,7 @@ function Get-DelphiCiConfig {
         # Coverage defaults
         [string]$CoverageExecute,
         [string]$CoverageMapFile,
+        [string]$CoverageDproj,
         [string]$CoverageEngine,
         [string]$CoverageEnginePath,
         [string[]]$CoverageSourceDir,
@@ -119,6 +120,7 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
     if ($PSBoundParameters.ContainsKey('CoverageExecute'))               { $overrides['CoverageExecute']              = $CoverageExecute }
     if ($PSBoundParameters.ContainsKey('CoverageMapFile'))               { $overrides['CoverageMapFile']              = $CoverageMapFile }
+    if ($PSBoundParameters.ContainsKey('CoverageDproj'))                 { $overrides['CoverageDproj']                = $CoverageDproj }
     if ($PSBoundParameters.ContainsKey('CoverageEngine'))                { $overrides['CoverageEngine']               = $CoverageEngine }
     if ($PSBoundParameters.ContainsKey('CoverageEnginePath'))            { $overrides['CoverageEnginePath']           = $CoverageEnginePath }
     if ($PSBoundParameters.ContainsKey('CoverageSourceDir'))             { $overrides['CoverageSourceDir']            = $CoverageSourceDir }

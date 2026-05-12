@@ -155,6 +155,9 @@ function Invoke-DelphiCi {
         [string]$CoverageMapFile,
 
         [Parameter(ParameterSetName = 'Run')]
+        [string]$CoverageDproj,
+
+        [Parameter(ParameterSetName = 'Run')]
         [string]$CoverageEngine,
 
         [Parameter(ParameterSetName = 'Run')]
@@ -256,6 +259,7 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CompressChecksum'))              { $overrides['CompressChecksum']             = $CompressChecksum }
     if ($PSBoundParameters.ContainsKey('CoverageExecute'))               { $overrides['CoverageExecute']              = $CoverageExecute }
     if ($PSBoundParameters.ContainsKey('CoverageMapFile'))               { $overrides['CoverageMapFile']              = $CoverageMapFile }
+    if ($PSBoundParameters.ContainsKey('CoverageDproj'))                 { $overrides['CoverageDproj']                = $CoverageDproj }
     if ($PSBoundParameters.ContainsKey('CoverageEngine'))                { $overrides['CoverageEngine']               = $CoverageEngine }
     if ($PSBoundParameters.ContainsKey('CoverageEnginePath'))            { $overrides['CoverageEnginePath']           = $CoverageEnginePath }
     if ($PSBoundParameters.ContainsKey('CoverageSourceDir'))             { $overrides['CoverageSourceDir']            = $CoverageSourceDir }
@@ -519,11 +523,14 @@ function Invoke-DelphiCi {
                     }
 
                     foreach ($job in $jobs) {
-                        if ([string]::IsNullOrWhiteSpace($job['execute'])) {
-                            throw "Coverage job '$($job['name'])' has no execute target."
-                        }
-                        if ([string]::IsNullOrWhiteSpace($job['mapFile'])) {
-                            throw "Coverage job '$($job['name'])' has no mapFile."
+                        $hasDproj = -not [string]::IsNullOrWhiteSpace($job['dproj'])
+                        if (-not $hasDproj) {
+                            if ([string]::IsNullOrWhiteSpace($job['execute'])) {
+                                throw "Coverage job '$($job['name'])' has no execute target or dproj."
+                            }
+                            if ([string]::IsNullOrWhiteSpace($job['mapFile'])) {
+                                throw "Coverage job '$($job['name'])' has no mapFile."
+                            }
                         }
 
                         if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
@@ -531,12 +538,16 @@ function Invoke-DelphiCi {
                         }
 
                         # Resolve paths relative to root
+                        $dprojPath = $job['dproj']
+                        if (-not [string]::IsNullOrEmpty($dprojPath) -and -not [System.IO.Path]::IsPathRooted($dprojPath)) {
+                            $dprojPath = Join-Path $config.Root $dprojPath
+                        }
                         $exePath = $job['execute']
-                        if (-not [System.IO.Path]::IsPathRooted($exePath)) {
+                        if (-not [string]::IsNullOrEmpty($exePath) -and -not [System.IO.Path]::IsPathRooted($exePath)) {
                             $exePath = Join-Path $config.Root $exePath
                         }
                         $mapPath = $job['mapFile']
-                        if (-not [System.IO.Path]::IsPathRooted($mapPath)) {
+                        if (-not [string]::IsNullOrEmpty($mapPath) -and -not [System.IO.Path]::IsPathRooted($mapPath)) {
                             $mapPath = Join-Path $config.Root $mapPath
                         }
                         $srcDirs = @($job['sourceDir']) | Where-Object { -not [string]::IsNullOrEmpty($_) } | ForEach-Object {
@@ -553,20 +564,27 @@ function Invoke-DelphiCi {
                             $badgePath = Join-Path $config.Root $badgePath
                         }
 
-                        $result = Invoke-DelphiCoverage `
-                            -Execute                $exePath `
-                            -MapFile                $mapPath `
-                            -CoverageEngine         $job['engine'] `
-                            -CoverageEnginePath     $job['enginePath'] `
-                            -CoverageSourceDir      $srcDirs `
-                            -CoverageUnits          @($job['units']) `
-                            -CoverageExcludeUnits   @($job['excludeUnits']) `
-                            -CoverageOutputDir      $outDir `
-                            -CoverageFormats        @($job['formats']) `
-                            -CoverageThreshold      $job['threshold'] `
-                            -CoverageArguments      @($job['arguments']) `
-                            -CoverageTimeoutSeconds $job['timeoutSeconds'] `
-                            -CoverageBadge          $badgePath
+                        $covParams = @{
+                            CoverageEngine         = $job['engine']
+                            CoverageEnginePath     = $job['enginePath']
+                            CoverageSourceDir      = $srcDirs
+                            CoverageUnits          = @($job['units'])
+                            CoverageExcludeUnits   = @($job['excludeUnits'])
+                            CoverageOutputDir      = $outDir
+                            CoverageFormats        = @($job['formats'])
+                            CoverageThreshold      = $job['threshold']
+                            CoverageArguments      = @($job['arguments'])
+                            CoverageTimeoutSeconds = $job['timeoutSeconds']
+                            CoverageBadge          = $badgePath
+                        }
+                        if ($hasDproj) {
+                            $covParams['CoverageDproj'] = $dprojPath
+                        } else {
+                            $covParams['Execute'] = $exePath
+                            $covParams['MapFile'] = $mapPath
+                        }
+
+                        $result = Invoke-DelphiCoverage @covParams
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {

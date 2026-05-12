@@ -74,29 +74,40 @@ param(
     [Parameter(ParameterSetName = 'Coverage', Mandatory)]
     [string]$MapFile,
 
+    [Parameter(ParameterSetName = 'Dproj', Mandatory)]
+    [string]$Dproj,
+
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [ValidateSet('DelphiCodeCoverage', 'radCodeCoverage')]
     [string]$Engine = 'DelphiCodeCoverage',
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$EnginePath,
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$SourceDir = '',
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string[]]$Units = @(),
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string[]]$ExcludeUnits = @(),
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$OutputDir = 'coverage',
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string[]]$Formats = @('html'),
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [int]$Threshold = 0,
 
     # Test arguments can be passed via this parameter (comma-separated)
@@ -104,15 +115,19 @@ param(
     # CI module wrapper to avoid -File mode parsing issues with values
     # that start with '-').
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$Arguments = '',
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [int]$TimeoutSeconds = 300,
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$Badge,
 
     [Parameter(ParameterSetName = 'Coverage')]
+    [Parameter(ParameterSetName = 'Dproj')]
     [string]$OutputFile
 )
 
@@ -253,6 +268,7 @@ function Invoke-DelphiCodeCoverageEngine {
             'html'      { $engineArgs.Add('-html') }
             'xml'       { $engineArgs.Add('-xml'); $xmlRequested = $true }
             'emma'      { $engineArgs.Add('-emma') }
+            'lcov'      { $engineArgs.Add('-lcov') }
             'cobertura' { $engineArgs.Add('-xml'); $engineArgs.Add('-xmllines'); $xmlRequested = $true }
             'md'        { $engineArgs.Add('-md') }
         }
@@ -280,6 +296,98 @@ function Invoke-DelphiCodeCoverageEngine {
     Write-Host "Args: $argsString"
 
     $workDir = [System.IO.Path]::GetDirectoryName($TestExecutable)
+    $proc = Start-Process -FilePath $EngineBinary `
+        -ArgumentList $argsString `
+        -WorkingDirectory $workDir `
+        -NoNewWindow -PassThru -Wait:$false
+    $exited = $proc.WaitForExit($CoverageTimeout * 1000)
+    if (-not $exited) {
+        try { $proc.Kill() } catch { Write-Verbose "Process already exited: $_" }
+        return @{
+            Success  = $false
+            ExitCode = -1
+            Message  = "Coverage engine timed out after ${CoverageTimeout}s"
+        }
+    }
+
+    return @{
+        Success  = ($proc.ExitCode -eq 0)
+        ExitCode = $proc.ExitCode
+        Message  = if ($proc.ExitCode -eq 0) { 'Coverage engine completed' } else { "Engine exited with code $($proc.ExitCode)" }
+    }
+}
+
+function Invoke-CoverageEngineDproj {
+    <#
+    .SYNOPSIS
+        Invokes a coverage engine using -dproj mode (radCodeCoverage).
+        The engine auto-discovers exe, map, units, and source paths.
+    #>
+    param(
+        [string]$EngineBinary,
+        [string]$DprojFile,
+        [string[]]$CoverageSourceDir = @(),
+        [string[]]$CoverageUnits,
+        [string[]]$CoverageExcludeUnits,
+        [string]$CoverageOutputDir,
+        [string[]]$CoverageFormats,
+        [string[]]$TestArguments,
+        [int]$CoverageTimeout
+    )
+
+    $engineArgs = [System.Collections.Generic.List[string]]::new()
+    $engineArgs.Add('-dproj')
+    $engineArgs.Add($DprojFile)
+
+    foreach ($sp in $CoverageSourceDir) {
+        if (-not [string]::IsNullOrEmpty($sp)) {
+            $engineArgs.Add('-sp')
+            $engineArgs.Add($sp)
+        }
+    }
+
+    foreach ($u in $CoverageUnits) {
+        $engineArgs.Add('-u')
+        $engineArgs.Add($u)
+    }
+    foreach ($eu in $CoverageExcludeUnits) {
+        $engineArgs.Add('-uf')
+        $engineArgs.Add($eu)
+    }
+
+    $engineArgs.Add('-od')
+    $engineArgs.Add($CoverageOutputDir)
+
+    # Always produce XML for internal stats parsing
+    $xmlRequested = $false
+    foreach ($fmt in $CoverageFormats) {
+        switch ($fmt.ToLower()) {
+            'html'      { $engineArgs.Add('-html') }
+            'xml'       { $engineArgs.Add('-xml'); $xmlRequested = $true }
+            'emma'      { $engineArgs.Add('-emma') }
+            'lcov'      { $engineArgs.Add('-lcov') }
+            'cobertura' { $engineArgs.Add('-xml'); $engineArgs.Add('-xmllines'); $xmlRequested = $true }
+            'md'        { $engineArgs.Add('-md') }
+        }
+    }
+    if (-not $xmlRequested) {
+        $engineArgs.Add('-xml')
+    }
+
+    if ($TestArguments.Count -gt 0) {
+        $engineArgs.Add("-a `"$($TestArguments -join ' ')`"")
+    }
+
+    # Ensure output directory exists
+    if (-not (Test-Path -LiteralPath $CoverageOutputDir -PathType Container)) {
+        New-Item -Path $CoverageOutputDir -ItemType Directory -Force | Out-Null
+    }
+
+    Write-Host "Engine: $EngineBinary"
+    $argsString = $engineArgs -join ' '
+    Write-Host "Args: $argsString"
+
+    $workDir = [System.IO.Path]::GetDirectoryName($DprojFile)
     $proc = Start-Process -FilePath $EngineBinary `
         -ArgumentList $argsString `
         -WorkingDirectory $workDir `
@@ -505,31 +613,42 @@ function Test-DetailedMapFile {
 # -----------------------------------------------------------------------------
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$useDproj = $PSCmdlet.ParameterSetName -eq 'Dproj'
+$displayTarget = if ($useDproj) { $Dproj } else { $Execute }
 
 try {
-    # Validate test executable
-    if (-not (Test-Path -LiteralPath $Execute -PathType Leaf)) {
-        Write-Error "Test executable not found: $Execute" -ErrorAction Continue
-        Write-Result @{ execute = $Execute; error = "Test executable not found" }
-        exit $ExitFileNotFound
-    }
+    if ($useDproj) {
+        # Validate .dproj file
+        if (-not (Test-Path -LiteralPath $Dproj -PathType Leaf)) {
+            Write-Error "Dproj file not found: $Dproj" -ErrorAction Continue
+            Write-Result @{ dproj = $Dproj; error = "Dproj file not found" }
+            exit $ExitFileNotFound
+        }
+    } else {
+        # Validate test executable
+        if (-not (Test-Path -LiteralPath $Execute -PathType Leaf)) {
+            Write-Error "Test executable not found: $Execute" -ErrorAction Continue
+            Write-Result @{ execute = $Execute; error = "Test executable not found" }
+            exit $ExitFileNotFound
+        }
 
-    # Validate MAP file
-    if (-not (Test-Path -LiteralPath $MapFile -PathType Leaf)) {
-        Write-Error "MAP file not found: $MapFile" -ErrorAction Continue
-        Write-Result @{ execute = $Execute; error = "MAP file not found" }
-        exit $ExitFileNotFound
-    }
+        # Validate MAP file
+        if (-not (Test-Path -LiteralPath $MapFile -PathType Leaf)) {
+            Write-Error "MAP file not found: $MapFile" -ErrorAction Continue
+            Write-Result @{ execute = $Execute; error = "MAP file not found" }
+            exit $ExitFileNotFound
+        }
 
-    # Validate MAP file is detailed
-    if (-not (Test-DetailedMapFile -Path $MapFile)) {
-        Write-Error "MAP file does not contain line number information. Enable 'Detailed' map file in the project linker settings." -ErrorAction Continue
-        Write-Result @{ execute = $Execute; error = "MAP file is not detailed" }
-        exit $ExitInvalidArguments
+        # Validate MAP file is detailed
+        if (-not (Test-DetailedMapFile -Path $MapFile)) {
+            Write-Error "MAP file does not contain line number information. Enable 'Detailed' map file in the project linker settings." -ErrorAction Continue
+            Write-Result @{ execute = $Execute; error = "MAP file is not detailed" }
+            exit $ExitInvalidArguments
+        }
     }
 
     # Validate formats
-    $validFormats = @('html', 'xml', 'emma', 'cobertura', 'md')
+    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md')
     foreach ($fmt in $Formats) {
         if ($fmt.ToLower() -notin $validFormats) {
             Write-Error "Invalid format '$fmt'. Valid values: $($validFormats -join ', ')" -ErrorAction Continue
@@ -549,42 +668,54 @@ try {
     }
     if ($null -eq $engineBinary) {
         Write-Error "Coverage engine '$Engine' not found. Provide -EnginePath or add it to PATH." -ErrorAction Continue
-        Write-Result @{ execute = $Execute; engine = $Engine; error = "Engine not found" }
+        Write-Result @{ execute = $displayTarget; engine = $Engine; error = "Engine not found" }
         exit $ExitEngineNotFound
     }
 
-    Write-Host "Running coverage: $Execute"
+    Write-Host "Running coverage: $displayTarget"
     Write-Host "Engine: $Engine ($engineBinary)"
+
+    # Resolve test arguments
+    $resolvedTestArgs = @($(
+        $resolvedArgs = if (-not [string]::IsNullOrEmpty($Arguments)) { $Arguments }
+                        elseif (-not [string]::IsNullOrEmpty($env:DELPHI_COVERAGE_ARGS)) { $env:DELPHI_COVERAGE_ARGS }
+                        else { '' }
+        if (-not [string]::IsNullOrEmpty($resolvedArgs)) { $resolvedArgs -split ',' } else { @() }
+    ))
+    $resolvedSourceDirs = @(if (-not [string]::IsNullOrEmpty($SourceDir)) { $SourceDir -split ',' } else { @() })
 
     # Run the coverage engine
     $engineResult = $null
-    # radCodeCoverage shares DelphiCodeCoverage's CLI conventions
-    switch ($Engine) {
-        { $_ -in @('DelphiCodeCoverage', 'radCodeCoverage') } {
-            $engineResult = Invoke-DelphiCodeCoverageEngine `
-                -EngineBinary       $engineBinary `
-                -TestExecutable     $Execute `
-                -TestMapFile        $MapFile `
-                -CoverageSourceDir  @(if (-not [string]::IsNullOrEmpty($SourceDir)) { $SourceDir -split ',' } else { @() }) `
-                -CoverageUnits      $Units `
-                -CoverageExcludeUnits $ExcludeUnits `
-                -CoverageOutputDir  $OutputDir `
-                -CoverageFormats    $Formats `
-                -TestArguments      @($(
-                    $resolvedArgs = if (-not [string]::IsNullOrEmpty($Arguments)) { $Arguments }
-                                    elseif (-not [string]::IsNullOrEmpty($env:DELPHI_COVERAGE_ARGS)) { $env:DELPHI_COVERAGE_ARGS }
-                                    else { '' }
-                    if (-not [string]::IsNullOrEmpty($resolvedArgs)) { $resolvedArgs -split ',' } else { @() }
-                )) `
-                -CoverageTimeout    $TimeoutSeconds
-        }
+    if ($useDproj) {
+        $engineResult = Invoke-CoverageEngineDproj `
+            -EngineBinary       $engineBinary `
+            -DprojFile          $Dproj `
+            -CoverageSourceDir  $resolvedSourceDirs `
+            -CoverageUnits      $Units `
+            -CoverageExcludeUnits $ExcludeUnits `
+            -CoverageOutputDir  $OutputDir `
+            -CoverageFormats    $Formats `
+            -TestArguments      $resolvedTestArgs `
+            -CoverageTimeout    $TimeoutSeconds
+    } else {
+        $engineResult = Invoke-DelphiCodeCoverageEngine `
+            -EngineBinary       $engineBinary `
+            -TestExecutable     $Execute `
+            -TestMapFile        $MapFile `
+            -CoverageSourceDir  $resolvedSourceDirs `
+            -CoverageUnits      $Units `
+            -CoverageExcludeUnits $ExcludeUnits `
+            -CoverageOutputDir  $OutputDir `
+            -CoverageFormats    $Formats `
+            -TestArguments      $resolvedTestArgs `
+            -CoverageTimeout    $TimeoutSeconds
     }
 
     if (-not $engineResult.Success) {
         Write-Error "Coverage engine failed: $($engineResult.Message)" -ErrorAction Continue
         Write-Result @{
             engine   = $Engine
-            execute  = $Execute
+            execute  = $displayTarget
             exitCode = $engineResult.ExitCode
             success  = $false
             error    = $engineResult.Message
@@ -629,7 +760,7 @@ try {
     # Write result
     $result = @{
         engine          = $Engine
-        execute         = $Execute
+        execute         = $displayTarget
         exitCode        = 0
         success         = $thresholdMet
         coveragePercent = $coveragePercent
@@ -654,6 +785,6 @@ try {
 catch {
     $stopwatch.Stop()
     Write-Error $_.Exception.Message -ErrorAction Continue
-    Write-Result @{ execute = $Execute; error = $_.Exception.Message }
+    Write-Result @{ execute = $displayTarget; error = $_.Exception.Message }
     exit $ExitUnexpectedError
 }

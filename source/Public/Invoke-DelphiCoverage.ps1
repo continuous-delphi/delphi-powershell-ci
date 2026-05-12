@@ -7,15 +7,18 @@ function Invoke-DelphiCoverage {
         Invokes the delphi-coverage bundled tool to run a test executable
         with coverage instrumentation. Returns a structured step result
         with coverage percentage, line counts, and threshold status.
+
+        When -CoverageDproj is provided the engine auto-discovers the
+        executable, MAP file, units, and source paths from the .dproj,
+        so -Execute and -MapFile are not required.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory)]
-        [string]$Execute,
+        [string]$Execute = '',
 
-        [Parameter(Mandatory)]
-        [string]$MapFile,
+        [string]$MapFile = '',
 
+        [string]$CoverageDproj = '',
         [string]$CoverageEngine = 'DelphiCodeCoverage',
         [string]$CoverageEnginePath = '',
         [string[]]$CoverageSourceDir = @(),
@@ -29,19 +32,37 @@ function Invoke-DelphiCoverage {
         [string]$CoverageBadge = ''
     )
 
+    $hasDproj = -not [string]::IsNullOrEmpty($CoverageDproj)
+    if (-not $hasDproj) {
+        if ([string]::IsNullOrEmpty($Execute)) { throw 'Either -Execute or -CoverageDproj must be provided.' }
+        if ([string]::IsNullOrEmpty($MapFile))  { throw 'Either -MapFile or -CoverageDproj must be provided.' }
+    }
+
     $tool      = 'delphi-coverage.ps1'
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
-    Write-DelphiCiMessage -Level 'STEP' -Message "Coverage -- $Execute"
+    $displayTarget = if ($hasDproj) { $CoverageDproj } else { $Execute }
+    Write-DelphiCiMessage -Level 'STEP' -Message "Coverage -- $displayTarget"
 
-    $toolArgs = [System.Collections.Generic.List[string]]@(
-        '-Execute', $Execute,
-        '-MapFile', $MapFile,
-        '-Engine', $CoverageEngine,
-        '-OutputDir', $CoverageOutputDir,
-        '-Threshold', $CoverageThreshold.ToString(),
-        '-TimeoutSeconds', $CoverageTimeoutSeconds.ToString()
-    )
+    $toolArgs = [System.Collections.Generic.List[string]]::new()
+    if ($hasDproj) {
+        $toolArgs.Add('-Dproj')
+        $toolArgs.Add($CoverageDproj)
+    } else {
+        $toolArgs.Add('-Execute')
+        $toolArgs.Add($Execute)
+        $toolArgs.Add('-MapFile')
+        $toolArgs.Add($MapFile)
+    }
+    $toolArgs.Add('-Engine')
+    $toolArgs.Add($CoverageEngine)
+    $toolArgs.Add('-OutputDir')
+    $toolArgs.Add($CoverageOutputDir)
+    $toolArgs.Add('-Threshold')
+    $toolArgs.Add($CoverageThreshold.ToString())
+    $toolArgs.Add('-TimeoutSeconds')
+    $toolArgs.Add($CoverageTimeoutSeconds.ToString())
+
     if (-not [string]::IsNullOrEmpty($CoverageEnginePath))  { $toolArgs.Add('-EnginePath');  $toolArgs.Add($CoverageEnginePath) }
     if ($CoverageSourceDir.Count -gt 0)   { $toolArgs.Add('-SourceDir'); $toolArgs.Add(($CoverageSourceDir -join ',')) }
     if ($CoverageUnits.Count -gt 0)        { $toolArgs.Add('-Units');        foreach ($u in $CoverageUnits) { $toolArgs.Add($u) } }
@@ -67,7 +88,7 @@ function Invoke-DelphiCoverage {
     $thresholdMet    = $true
 
     try {
-        if ($PSCmdlet.ShouldProcess($Execute, "Coverage")) {
+        if ($PSCmdlet.ShouldProcess($displayTarget, "Coverage")) {
             $toolResult = Invoke-BundledTool -ToolName $tool -Arguments $toolArgs.ToArray()
 
             try {
@@ -103,7 +124,7 @@ function Invoke-DelphiCoverage {
         ExitCode        = $toolResult.ExitCode
         Tool            = $tool
         Message         = if ($toolResult.Success) { "$coveragePercent% ($linesCovered/$linesTotal lines)" } else { "Exit code $($toolResult.ExitCode)" }
-        Execute         = $Execute
+        Execute         = $displayTarget
         CoveragePercent = $coveragePercent
         LinesCovered    = $linesCovered
         LinesTotal      = $linesTotal

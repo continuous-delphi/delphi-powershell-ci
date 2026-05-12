@@ -56,6 +56,7 @@ function Resolve-DelphiCiConfig {
         coverage = @{
             engine         = 'DelphiCodeCoverage'
             enginePath     = ''
+            dproj          = ''
             sourceDir      = @()
             units          = @()
             excludeUnits   = @()
@@ -256,6 +257,8 @@ function Resolve-DelphiCiConfig {
         -not [string]::IsNullOrWhiteSpace($Overrides['CoverageEngine']))           { $coverageCliLayer['engine']         = $Overrides['CoverageEngine'] }
     if ($Overrides.ContainsKey('CoverageEnginePath') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['CoverageEnginePath']))       { $coverageCliLayer['enginePath']     = $Overrides['CoverageEnginePath'] }
+    if ($Overrides.ContainsKey('CoverageDproj') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CoverageDproj']))            { $coverageCliLayer['dproj']          = $Overrides['CoverageDproj'] }
     if ($Overrides.ContainsKey('CoverageSourceDir') -and
         $null -ne $Overrides['CoverageSourceDir'])                                 { $coverageCliLayer['sourceDir!']     = @($Overrides['CoverageSourceDir']) }
     if ($Overrides.ContainsKey('CoverageUnits') -and
@@ -572,15 +575,22 @@ function Build-CliPipeline {
             $entry['jobs'] = @([PSCustomObject]$compressJob)
         }
 
-        # If CLI provides coverage execute/mapfile, inject as a single coverage job
-        if ($stepName -eq 'Coverage' -and $Overrides.ContainsKey('CoverageExecute') -and
-            -not [string]::IsNullOrWhiteSpace($Overrides['CoverageExecute'])) {
-            $coverageJob = @{ execute = $Overrides['CoverageExecute'] }
-            if ($Overrides.ContainsKey('CoverageMapFile') -and
-                -not [string]::IsNullOrWhiteSpace($Overrides['CoverageMapFile'])) {
-                $coverageJob['mapFile'] = $Overrides['CoverageMapFile']
+        # If CLI provides coverage dproj or execute/mapfile, inject as a single coverage job
+        if ($stepName -eq 'Coverage') {
+            if ($Overrides.ContainsKey('CoverageDproj') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CoverageDproj'])) {
+                $coverageJob = @{ dproj = $Overrides['CoverageDproj'] }
+                $entry['jobs'] = @([PSCustomObject]$coverageJob)
             }
-            $entry['jobs'] = @([PSCustomObject]$coverageJob)
+            elseif ($Overrides.ContainsKey('CoverageExecute') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CoverageExecute'])) {
+                $coverageJob = @{ execute = $Overrides['CoverageExecute'] }
+                if ($Overrides.ContainsKey('CoverageMapFile') -and
+                    -not [string]::IsNullOrWhiteSpace($Overrides['CoverageMapFile'])) {
+                    $coverageJob['mapFile'] = $Overrides['CoverageMapFile']
+                }
+                $entry['jobs'] = @([PSCustomObject]$coverageJob)
+            }
         }
 
         $pipeline.Add([PSCustomObject]$entry)
@@ -690,7 +700,7 @@ function Assert-CoverageConfig {
     param([hashtable]$Config)
 
     $validEngines = @('DelphiCodeCoverage', 'radCodeCoverage')
-    $validFormats = @('html', 'xml', 'emma', 'cobertura', 'md')
+    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md')
 
     if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
         throw "Invalid coverage engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
