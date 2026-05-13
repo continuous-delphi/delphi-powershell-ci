@@ -65,9 +65,9 @@ function Invoke-DelphiCoverage {
 
     if (-not [string]::IsNullOrEmpty($CoverageEnginePath))  { $toolArgs.Add('-EnginePath');  $toolArgs.Add($CoverageEnginePath) }
     if ($CoverageSourceDir.Count -gt 0)   { $toolArgs.Add('-SourceDir'); $toolArgs.Add(($CoverageSourceDir -join ',')) }
-    if ($CoverageUnits.Count -gt 0)        { $toolArgs.Add('-Units');        foreach ($u in $CoverageUnits) { $toolArgs.Add($u) } }
-    if ($CoverageExcludeUnits.Count -gt 0) { $toolArgs.Add('-ExcludeUnits'); foreach ($eu in $CoverageExcludeUnits) { $toolArgs.Add($eu) } }
-    if ($CoverageFormats.Count -gt 0)     { $toolArgs.Add('-Formats');      foreach ($fmt in $CoverageFormats) { $toolArgs.Add($fmt) } }
+    if ($CoverageUnits.Count -gt 0)        { $toolArgs.Add('-Units');        $toolArgs.Add(($CoverageUnits -join ',')) }
+    if ($CoverageExcludeUnits.Count -gt 0) { $toolArgs.Add('-ExcludeUnits'); $toolArgs.Add(($CoverageExcludeUnits -join ',')) }
+    if ($CoverageFormats.Count -gt 0)     { $toolArgs.Add('-Formats');      $toolArgs.Add(($CoverageFormats -join ',')) }
     if (-not [string]::IsNullOrEmpty($CoverageBadge))       { $toolArgs.Add('-Badge');       $toolArgs.Add($CoverageBadge) }
 
     $resultFile = [System.IO.Path]::GetTempFileName()
@@ -89,6 +89,8 @@ function Invoke-DelphiCoverage {
 
     try {
         if ($PSCmdlet.ShouldProcess($displayTarget, "Coverage")) {
+            Write-Verbose "Tool: $tool"
+            Write-Verbose "Args: $($toolArgs.ToArray() -join ' ')"
             $toolResult = Invoke-BundledTool -ToolName $tool -Arguments $toolArgs.ToArray()
 
             try {

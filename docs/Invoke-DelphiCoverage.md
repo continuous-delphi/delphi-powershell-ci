@@ -8,8 +8,9 @@ percentage, line counts, threshold status, and optional badge output.
 
 ```powershell
 Invoke-DelphiCoverage
-    -Execute <string>
-    -MapFile <string>
+    [-Execute <string>]
+    [-MapFile <string>]
+    [-CoverageDproj <string>]
     [-CoverageEngine <string>]
     [-CoverageEnginePath <string>]
     [-CoverageSourceDir <string[]>]
@@ -28,15 +29,16 @@ Invoke-DelphiCoverage
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `-Execute` | string | (required) | Path to the test executable to run with coverage. |
-| `-MapFile` | string | (required) | Path to the detailed MAP file. |
+| `-Execute` | string | | Path to the test executable. Required unless `-CoverageDproj` is used. |
+| `-MapFile` | string | | Path to the detailed MAP file. Required unless `-CoverageDproj` is used. |
+| `-CoverageDproj` | string | | Path to a `.dproj` file. The engine auto-discovers exe, map, units, and source paths. |
 | `-CoverageEngine` | string | `DelphiCodeCoverage` | Which coverage engine to use. |
 | `-CoverageEnginePath` | string | auto-detect | Explicit path to the engine executable. |
 | `-CoverageSourceDir` | string[] | `@()` | Directories containing Delphi source files. Each path gets a separate `-sp` flag. |
 | `-CoverageUnits` | string[] | `@()` | Unit name patterns to include (supports wildcards). |
 | `-CoverageExcludeUnits` | string[] | `@()` | Unit name patterns to exclude. |
 | `-CoverageOutputDir` | string | `coverage` | Directory for coverage reports. |
-| `-CoverageFormats` | string[] | `@('html')` | Output formats: `html`, `xml`, `emma`, `cobertura`, `md`. |
+| `-CoverageFormats` | string[] | `@('html')` | Output formats: `html`, `xml`, `emma`, `lcov`, `cobertura`, `md`. |
 | `-CoverageThreshold` | int | `0` | Minimum coverage %. Fails if below. 0 = disabled. |
 | `-CoverageArguments` | string[] | `@()` | Extra arguments passed to the test executable. |
 | `-CoverageTimeoutSeconds` | int | `300` | Maximum time before the engine process is killed. |
@@ -50,9 +52,10 @@ Invoke-DelphiCoverage
 | `DelphiCodeCoverage` | `CodeCoverage.exe` | Open source, MAP-file based, Win32/Win64 |
 | `radCodeCoverage` | `radCodeCoverage.exe` | Shares DelphiCodeCoverage CLI conventions, adds markdown report |
 
-Both engines share the same CLI parameter conventions.
-`radCodeCoverage` additionally supports the `md` output format for
-markdown coverage reports.
+Both engines share the same CLI parameter conventions and both support
+`-dproj` for auto-discovery from a project file. `radCodeCoverage`
+additionally supports the `md` and `lcov` output formats for markdown
+and LCOV coverage reports.
 
 The engine must be on PATH or specified via `-CoverageEnginePath`.
 Use `-CoverageEnginePath` for platform-specific variants (e.g.,
