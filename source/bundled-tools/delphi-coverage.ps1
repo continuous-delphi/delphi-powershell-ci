@@ -60,6 +60,8 @@ Exit codes:
   Justification='OutputFile is consumed inside the Write-Result helper function.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
   Justification='New-CoverageBadge* are file-writing helpers; state change is intentional and controlled by the caller.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-CoverageStats',
+  Justification='Stats is a conventional abbreviation for statistics, not a plural noun.')]
 param(
     [Parameter(ParameterSetName = 'Version', Mandatory)]
     [switch]$Version,
@@ -92,11 +94,11 @@ param(
 
     [Parameter(ParameterSetName = 'Coverage')]
     [Parameter(ParameterSetName = 'Dproj')]
-    [string[]]$Units = @(),
+    [string]$Units = '',
 
     [Parameter(ParameterSetName = 'Coverage')]
     [Parameter(ParameterSetName = 'Dproj')]
-    [string[]]$ExcludeUnits = @(),
+    [string]$ExcludeUnits = '',
 
     [Parameter(ParameterSetName = 'Coverage')]
     [Parameter(ParameterSetName = 'Dproj')]
@@ -104,7 +106,7 @@ param(
 
     [Parameter(ParameterSetName = 'Coverage')]
     [Parameter(ParameterSetName = 'Dproj')]
-    [string[]]$Formats = @('html'),
+    [string]$Formats = 'html',
 
     [Parameter(ParameterSetName = 'Coverage')]
     [Parameter(ParameterSetName = 'Dproj')]
@@ -142,7 +144,7 @@ $ExitFileNotFound     = 4
 $ExitCoverageFailed   = 5
 $ExitThresholdNotMet  = 6
 
-$script:ToolVersion = '0.1.0'
+$script:ToolVersion = '1.0.0'
 
 # -----------------------------------------------------------------------------
 # Version info
@@ -413,15 +415,47 @@ function Invoke-CoverageEngineDproj {
 # Coverage report parsing
 # -----------------------------------------------------------------------------
 
-function Get-CoverageFromXml {
+function Get-CoverageFromLcov {
     <#
     .SYNOPSIS
-        Parses coverage statistics from an XML report in the output directory.
-        Supports both Cobertura and DelphiCodeCoverage XML formats.
+        Parses coverage statistics from an LCOV file.
+        Counts DA: lines to determine covered vs total.
+    #>
+    param([string]$FilePath)
+
+    $total   = 0
+    $covered = 0
+    foreach ($line in (Get-Content -LiteralPath $FilePath)) {
+        if ($line -match '^DA:\d+,(\d+)') {
+            $total++
+            if ([int]$Matches[1] -gt 0) { $covered++ }
+        }
+    }
+
+    if ($total -eq 0) { return $null }
+    return @{
+        CoveragePercent = [math]::Round(($covered / $total) * 100, 1)
+        LinesCovered    = $covered
+        LinesTotal      = $total
+    }
+}
+
+function Get-CoverageStats {
+    <#
+    .SYNOPSIS
+        Parses coverage statistics from report files in the output directory.
+        Supports LCOV, Cobertura, and DelphiCodeCoverage XML formats.
     #>
     param([string]$CoverageOutputDir)
 
-    # Try Cobertura format first (coverage.xml with line-rate attribute)
+    # Try LCOV format (*.lcov or *.info)
+    $lcovFiles = @(Get-ChildItem -Path $CoverageOutputDir -Include '*.lcov','*.info' -File -ErrorAction SilentlyContinue)
+    foreach ($lf in $lcovFiles) {
+        $result = Get-CoverageFromLcov -FilePath $lf.FullName
+        if ($null -ne $result) { return $result }
+    }
+
+    # Try Cobertura format (coverage.xml with line-rate attribute)
     $coberturaFile = Join-Path $CoverageOutputDir 'coverage.xml'
     if (Test-Path -LiteralPath $coberturaFile -PathType Leaf) {
         $xml = [xml](Get-Content -LiteralPath $coberturaFile -Raw)
@@ -647,9 +681,12 @@ try {
         }
     }
 
+    # Resolve comma-separated params into arrays early (needed for validation)
+    $resolvedFormats = @(if (-not [string]::IsNullOrEmpty($Formats)) { $Formats -split ',' } else { @('html') })
+
     # Validate formats
     $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md')
-    foreach ($fmt in $Formats) {
+    foreach ($fmt in $resolvedFormats) {
         if ($fmt.ToLower() -notin $validFormats) {
             Write-Error "Invalid format '$fmt'. Valid values: $($validFormats -join ', ')" -ErrorAction Continue
             exit $ExitInvalidArguments
@@ -682,7 +719,9 @@ try {
                         else { '' }
         if (-not [string]::IsNullOrEmpty($resolvedArgs)) { $resolvedArgs -split ',' } else { @() }
     ))
-    $resolvedSourceDirs = @(if (-not [string]::IsNullOrEmpty($SourceDir)) { $SourceDir -split ',' } else { @() })
+    $resolvedSourceDirs  = @(if (-not [string]::IsNullOrEmpty($SourceDir))    { $SourceDir -split ',' }    else { @() })
+    $resolvedUnits       = @(if (-not [string]::IsNullOrEmpty($Units))        { $Units -split ',' }        else { @() })
+    $resolvedExclude     = @(if (-not [string]::IsNullOrEmpty($ExcludeUnits)) { $ExcludeUnits -split ',' } else { @() })
 
     # Run the coverage engine
     $engineResult = $null
@@ -691,10 +730,10 @@ try {
             -EngineBinary       $engineBinary `
             -DprojFile          $Dproj `
             -CoverageSourceDir  $resolvedSourceDirs `
-            -CoverageUnits      $Units `
-            -CoverageExcludeUnits $ExcludeUnits `
+            -CoverageUnits      $resolvedUnits `
+            -CoverageExcludeUnits $resolvedExclude `
             -CoverageOutputDir  $OutputDir `
-            -CoverageFormats    $Formats `
+            -CoverageFormats    $resolvedFormats `
             -TestArguments      $resolvedTestArgs `
             -CoverageTimeout    $TimeoutSeconds
     } else {
@@ -703,10 +742,10 @@ try {
             -TestExecutable     $Execute `
             -TestMapFile        $MapFile `
             -CoverageSourceDir  $resolvedSourceDirs `
-            -CoverageUnits      $Units `
-            -CoverageExcludeUnits $ExcludeUnits `
+            -CoverageUnits      $resolvedUnits `
+            -CoverageExcludeUnits $resolvedExclude `
             -CoverageOutputDir  $OutputDir `
-            -CoverageFormats    $Formats `
+            -CoverageFormats    $resolvedFormats `
             -TestArguments      $resolvedTestArgs `
             -CoverageTimeout    $TimeoutSeconds
     }
@@ -724,7 +763,7 @@ try {
     }
 
     # Parse coverage results
-    $coverageData = Get-CoverageFromXml -CoverageOutputDir $OutputDir
+    $coverageData = Get-CoverageStats -CoverageOutputDir $OutputDir
     $coveragePercent = 0.0
     $linesCovered    = 0
     $linesTotal      = 0
@@ -769,7 +808,7 @@ try {
         threshold       = $Threshold
         thresholdMet    = $thresholdMet
         outputDir       = $OutputDir
-        formats         = $Formats
+        formats         = $resolvedFormats
         badge           = if ([string]::IsNullOrEmpty($Badge)) { $null } else { $Badge }
         duration        = [math]::Round($duration, 1)
     }
