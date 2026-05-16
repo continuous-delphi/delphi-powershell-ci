@@ -5,7 +5,7 @@
 # A PowerShell utility to remove Delphi build artifacts, intermediate files,
 # and IDE-generated clutter, with support for preview, validation, and CI workflows.
 #
-# Part of Continuous-Delphi: Strengthening Delphi's continued success
+# Part of Continuous-Delphi: Focused on strengthening Delphi's continued success
 # https://github.com/continuous-delphi
 #
 # Project repository:
@@ -35,55 +35,55 @@ Supports three cleanup levels:
 Use -Check to audit without deleting. Use -OutputLevel to control verbosity.
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1
+powershell.exe -File .\source\delphi-clean.ps1
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level deep -Verbose
+powershell.exe -File .\source\delphi-clean.ps1 -Level deep -Verbose
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level deep -WhatIf
+powershell.exe -File .\source\delphi-clean.ps1 -Level deep -WhatIf
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -PassThru
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -PassThru
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -Json
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -Json
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res'
+powershell.exe -File .\source\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res'
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res','*.mab' -ExcludeDirectoryPattern 'assets','vendor*'
+powershell.exe -File .\source\delphi-clean.ps1 -Level basic -IncludeFilePattern '*.res','*.mab' -ExcludeDirectoryPattern 'assets','vendor*'
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Version
+powershell.exe -File .\source\delphi-clean.ps1 -Version
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Version -Format json
+powershell.exe -File .\source\delphi-clean.ps1 -Version -Format json
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -RecycleBin
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -RecycleBin
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -Check
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -Check
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -Check -OutputLevel quiet
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -Check -OutputLevel quiet
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -Level standard -OutputLevel summary
+powershell.exe -File .\source\delphi-clean.ps1 -Level standard -OutputLevel summary
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -ShowConfig
+powershell.exe -File .\source\delphi-clean.ps1 -ShowConfig
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -ShowConfig -Json
+powershell.exe -File .\source\delphi-clean.ps1 -ShowConfig -Json
 
 .EXAMPLE
-powershell.exe -File .\delphi-clean.ps1 -ConfigFile C:/ci/delphi-clean-ci.json -Level standard
+powershell.exe -File .\source\delphi-clean.ps1 -ConfigFile C:/ci/delphi-clean-ci.json -Level standard
 
 .PARAMETER Level
 Cleanup level to apply. One of: basic, standard, deep. Levels are cumulative --
@@ -117,7 +117,8 @@ CI pipelines and tooling integrations.
 .PARAMETER RecycleBin
 Send items to the platform recycle bin / trash instead of deleting them
 permanently. On Windows, uses Microsoft.VisualBasic.FileIO.FileSystem. On
-macOS, uses the 'trash' shell command. Not supported on Linux.
+macOS, moves items into `~/.Trash/`. On Linux, uses the FreeDesktop trash
+location under `~/.local/share/Trash/`.
 
 .PARAMETER Check
 Audit-only mode. Scans for artifacts but does not delete anything. Exits with
@@ -205,25 +206,116 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:ToolVersion        = '0.10.0'
+$script:ToolVersion        = '1.0.0'
+
+# BEGIN-CD-HOSTLOG
+# -----------------------------------------------------------------------------
+# Write-CDHostLog v0.1.0
+# Source: https://github.com/continuous-delphi/delphi-logger
+#
+# Universal output function for Continuous-Delphi PowerShell tooling.
+# Opt-in structured logging via ContinuousDelphi.Logger module.
+# See: https://github.com/continuous-delphi/delphi-logger/docs/output-modes.md
+# -----------------------------------------------------------------------------
+
+# Logger detection -- check once at load time whether the caller has loaded
+# ContinuousDelphi.Logger. If so, structured events are emitted alongside
+# native PowerShell stream output. If not, Write-CDHostLog routes to native
+# Write-Output / Write-Verbose / Write-Host / Write-Warning / Write-Error only.
+$script:LoggerAvailable = [bool](Get-Module -Name 'ContinuousDelphi.Logger')
+$script:LoggerCaptureOutput = if ($script:LoggerAvailable) {
+  $script:CDLoggerState = (Get-Module -Name 'ContinuousDelphi.Logger').SessionState.PSVariable.GetValue('CDLoggerState')
+  if ($null -ne $script:CDLoggerState) { $script:CDLoggerState.CaptureOutput } else { $false }
+} else { $false }
+
+function Write-CDHostLog {
+  [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+    Justification='Write-Host is used intentionally for Info/Success level output to stream 6 without polluting the pipeline')]
+  param(
+    [Parameter(Mandatory)]
+    $Message,
+
+    [ValidateSet('Output','Trace','Debug','Verbose','Info','Success','Warning','Error','Fatal')]
+    [string]$Level = 'Info',
+
+    [string]$EventId,
+    [hashtable]$Data,
+
+    [switch]$LogOnly
+  )
+
+  # Write to native PowerShell stream (unless LogOnly)
+  if (-not $LogOnly) {
+    switch ($Level) {
+      'Output' {
+        Write-Output $Message
+      }
+      { $_ -in 'Trace','Debug','Verbose' } {
+        Write-Verbose $Message
+      }
+      { $_ -in 'Info','Success' } {
+        Write-Host $Message
+      }
+      'Warning' {
+        Write-Warning $Message
+      }
+      { $_ -in 'Error','Fatal' } {
+        Write-Error $Message -ErrorAction Continue
+      }
+    }
+  }
+
+  # Also emit structured log event if logger available
+  if ($script:LoggerAvailable) {
+    $msgStr = [string]$Message
+    if ([string]::IsNullOrWhiteSpace($msgStr)) { return }
+    if ($Level -eq 'Output') {
+      if (-not $script:LoggerCaptureOutput) { return }
+      $logLevel = 'Info'
+    } else {
+      $logLevel = $Level
+    }
+    $params = @{ Level = $logLevel; Message = $msgStr }
+    if ($EventId) { $params.EventId = $EventId }
+    if ($Data)    { $params.Data = $Data }
+    Write-CDLogEvent @params
+  }
+}
+
+function Complete-CDActivity {
+  param(
+    [int]$ExitCode,
+    [string]$Command,
+    [string]$Message
+  )
+  if (-not $script:LoggerAvailable) { return }
+  $result = New-CDActivityResult `
+    -ToolVersion $ToolVersion `
+    -Activity $Command `
+    -ExitCode $ExitCode `
+    -Message $Message
+  Write-Information -MessageData $result -Tags @('CDLog', 'ActivityResult')
+}
+# END-CD-HOSTLOG
 
 $script:OutputLevel        = $OutputLevel
 $script:BuiltInExcludeDirs = @('.git', '.vs', '.claude')
 
 if ($Version) {
     if ($Format -eq 'json') {
-        [PSCustomObject]@{
+        Write-CDHostLog -Level Output -Message ([PSCustomObject]@{
             ok      = $true
             command = 'version'
             tool    = [PSCustomObject]@{
                 name    = 'delphi-clean'
                 version = $script:ToolVersion
             }
-        } | ConvertTo-Json -Depth 3 -Compress
+        } | ConvertTo-Json -Depth 3 -Compress)
     }
     else {
-        Write-Output "delphi-clean $script:ToolVersion"
+        Write-CDHostLog -Level Output -Message "delphi-clean $script:ToolVersion"
     }
+    Complete-CDActivity -ExitCode 0 -Command 'version'
     exit 0
 }
 
@@ -240,34 +332,42 @@ if ($Version) {
 function Write-Detail {
     param([AllowEmptyString()][Parameter(Mandatory)][string]$Message)
     if ($script:OutputLevel -eq 'detailed' -and -not $Json) {
-        Write-Information $Message -InformationAction Continue
+        Write-CDHostLog -Level Info -Message $Message
+    } else {
+        Write-CDHostLog -Level Info -Message $Message -LogOnly
     }
 }
 
 function Write-Summary {
     param([AllowEmptyString()][Parameter(Mandatory)][string]$Message)
     if ($script:OutputLevel -ne 'quiet' -and -not $Json) {
-        Write-Information $Message -InformationAction Continue
+        Write-CDHostLog -Level Info -Message $Message
+    } else {
+        Write-CDHostLog -Level Info -Message $Message -LogOnly
     }
 }
 
 function Write-Section {
     param([AllowEmptyString()][Parameter(Mandatory)][string]$Message)
     if ($script:OutputLevel -eq 'detailed' -and -not $Json) {
-        Write-Information '' -InformationAction Continue
-        Write-Information ('=' * 70) -InformationAction Continue
-        Write-Information $Message -InformationAction Continue
-        Write-Information ('=' * 70) -InformationAction Continue
+        Write-CDHostLog -Level Info -Message ''
+        Write-CDHostLog -Level Info -Message ('=' * 70)
+        Write-CDHostLog -Level Info -Message $Message
+        Write-CDHostLog -Level Info -Message ('=' * 70)
+    } else {
+        Write-CDHostLog -Level Info -Message $Message -LogOnly
     }
 }
 
 function Write-SummarySection {
     param([AllowEmptyString()][Parameter(Mandatory)][string]$Message)
     if ($script:OutputLevel -ne 'quiet' -and -not $Json) {
-        Write-Information '' -InformationAction Continue
-        Write-Information ('=' * 70) -InformationAction Continue
-        Write-Information $Message -InformationAction Continue
-        Write-Information ('=' * 70) -InformationAction Continue
+        Write-CDHostLog -Level Info -Message ''
+        Write-CDHostLog -Level Info -Message ('=' * 70)
+        Write-CDHostLog -Level Info -Message $Message
+        Write-CDHostLog -Level Info -Message ('=' * 70)
+    } else {
+        Write-CDHostLog -Level Info -Message $Message -LogOnly
     }
 }
 
@@ -383,6 +483,32 @@ function Send-ToLinuxTrash {
     }
 }
 
+function Get-PlatformKind {
+    if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+        if ($IsWindows) { return 'Windows' }
+        if ($IsMacOS)   { return 'macOS' }
+        if ($IsLinux)   { return 'Linux' }
+    }
+
+    switch ([System.Environment]::OSVersion.Platform) {
+        'Win32NT' { return 'Windows' }
+        'Unix' {
+            try {
+                if ([System.IO.Directory]::Exists('/System/Library/CoreServices')) {
+                    return 'macOS'
+                }
+            }
+            catch {
+                Write-CDHostLog -Level Verbose -Message "Platform probe for macOS fallback failed: $($_.Exception.Message)"
+            }
+
+            return 'Linux'
+        }
+        'MacOSX' { return 'macOS' }
+        default  { return 'Unknown' }
+    }
+}
+
 function Send-ToRecycleBin {
     param(
         [Parameter(Mandatory)]
@@ -393,7 +519,9 @@ function Send-ToRecycleBin {
         [string]$Type
     )
 
-    if ($IsWindows) {
+    $platformKind = Get-PlatformKind
+
+    if ($platformKind -eq 'Windows') {
         Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
         if ($Type -eq 'File') {
             [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
@@ -410,10 +538,10 @@ function Send-ToRecycleBin {
             )
         }
     }
-    elseif ($IsMacOS) {
+    elseif ($platformKind -eq 'macOS') {
         Send-ToMacTrash -Path $Path
     }
-    elseif ($IsLinux) {
+    elseif ($platformKind -eq 'Linux') {
         Send-ToLinuxTrash -Path $Path
     }
     else {
@@ -547,7 +675,7 @@ function Read-ConfigFile {
         return $content | ConvertFrom-Json
     }
     catch {
-        Write-Warning "[config] Failed to parse '$Path': $($_.Exception.Message)"
+        Write-CDHostLog -Level Warning -Message "[config] Failed to parse '$Path': $($_.Exception.Message)"
         return $null
     }
 }
@@ -633,18 +761,18 @@ function Resolve-EffectiveConfig {
     if (-not [string]::IsNullOrEmpty($homeDir)) {
         $homeConfigPath = Join-Path $homeDir 'delphi-clean.json'
         $homeConfig     = Read-ConfigFile -Path $homeConfigPath
-        Write-Verbose ("[config] user-level:     {0}" -f $(if ($null -ne $homeConfig) { $homeConfigPath } else { "$homeConfigPath (not found)" }))
+        Write-CDHostLog -Level Verbose -Message ("[config] user-level:     {0}" -f $(if ($null -ne $homeConfig) { $homeConfigPath } else { "$homeConfigPath (not found)" }))
         if ($null -ne $homeConfig) { $anyConfigFound = $true; $log.Add("[config] user-level:     $homeConfigPath") }
     } else {
-        Write-Verbose '[config] user-level:     skipped ($HOME not set)'
+        Write-CDHostLog -Level Verbose -Message '[config] user-level:     skipped ($HOME not set)'
     }
 
     $projectConfig = Read-ConfigFile -Path $projectConfigPath
     $localConfig   = Read-ConfigFile -Path $localConfigPath
 
     # Write-Verbose always shows all paths; log only tracks found files
-    Write-Verbose ("[config] project-level:  {0}" -f $(if ($null -ne $projectConfig) { $projectConfigPath } else { "$projectConfigPath (not found)" }))
-    Write-Verbose ("[config] local override: {0}" -f $(if ($null -ne $localConfig)   { $localConfigPath   } else { "$localConfigPath (not found)" }))
+    Write-CDHostLog -Level Verbose -Message ("[config] project-level:  {0}" -f $(if ($null -ne $projectConfig) { $projectConfigPath } else { "$projectConfigPath (not found)" }))
+    Write-CDHostLog -Level Verbose -Message ("[config] local override: {0}" -f $(if ($null -ne $localConfig)   { $localConfigPath   } else { "$localConfigPath (not found)" }))
 
     if ($null -ne $projectConfig) { $anyConfigFound = $true; $log.Add("[config] project-level:  $projectConfigPath") }
     if ($null -ne $localConfig)   { $anyConfigFound = $true; $log.Add("[config] local override: $localConfigPath") }
@@ -667,11 +795,11 @@ function Resolve-EffectiveConfig {
                 # Prepend so farthest ancestor ends up first (lowest priority among traversed)
                 $traversedConfigs = @($parentConfig) + $traversedConfigs
                 $anyConfigFound   = $true
-                Write-Verbose "[config] traversed:      $parentConfigPath"
+                Write-CDHostLog -Level Verbose -Message "[config] traversed:      $parentConfigPath"
                 $log.Add("[config] traversed:      $parentConfigPath")
 
                 if ((Get-ConfigValue -Config $parentConfig -Key 'searchParentFolders') -eq $false) {
-                    Write-Verbose '[config]   (stop marker -- traversal ends here)'
+                    Write-CDHostLog -Level Verbose -Message '[config]   (stop marker -- traversal ends here)'
                     $log.Add('[config]   (stop marker -- traversal ends here)')
                     break
                 }
@@ -687,13 +815,13 @@ function Resolve-EffectiveConfig {
     $explicitConfig = $null
     if (-not [string]::IsNullOrEmpty($ConfigFile)) {
         if (-not (Test-Path -LiteralPath $ConfigFile)) {
-            Write-Warning "[config] Explicit config file not found: $ConfigFile"
+            Write-CDHostLog -Level Warning -Message "[config] Explicit config file not found: $ConfigFile"
         }
         else {
             $explicitConfig = Read-ConfigFile -Path $ConfigFile
             if ($null -ne $explicitConfig) {
                 $anyConfigFound = $true
-                Write-Verbose "[config] explicit file:  $ConfigFile"
+                Write-CDHostLog -Level Verbose -Message "[config] explicit file:  $ConfigFile"
                 $log.Add("[config] explicit file:  $ConfigFile")
             }
         }
@@ -712,7 +840,7 @@ function Resolve-EffectiveConfig {
         ("[config]   includeFilePattern      = [{0}]" -f ($merged.includeFilePattern -join ', '))
         ("[config]   excludeDirectoryPattern = [{0}]" -f ($merged.excludeDirectoryPattern -join ', '))
     )
-    foreach ($line in $finalLogLines) { Write-Verbose $line }
+    foreach ($line in $finalLogLines) { Write-CDHostLog -Level Verbose -Message $line }
 
     return [PSCustomObject]@{
         Merged       = $merged
@@ -776,6 +904,7 @@ function Get-LevelDefinition {
     $standardDirsExtra = @(
         'Win32',
         'Win64',
+        'WinARM64EC',
         'Debug',
         'Release',
         'OSX64',
@@ -853,7 +982,7 @@ function Get-FilesToDelete {
         [string[]]$ExcludedDirPatterns
     )
 
-    Write-Verbose 'Scanning for matching files.'
+    Write-CDHostLog -Level Verbose -Message 'Scanning for matching files.'
 
     $examined = 0
     $allFiles = Get-ChildItem -Path $Root -Recurse -File -Force -ErrorAction SilentlyContinue |
@@ -893,7 +1022,7 @@ function Get-DirectoriesToDelete {
         [string[]]$ExcludedDirPatterns
     )
 
-    Write-Verbose 'Scanning for matching directories.'
+    Write-CDHostLog -Level Verbose -Message 'Scanning for matching directories.'
 
     $nameSet = @{}
     foreach ($dirName in $DirectoryNames) {
@@ -945,12 +1074,14 @@ function Remove-FileList {
     param(
         [System.IO.FileInfo[]]$Files = @(),
         [switch]$ReturnRecords,
-        [switch]$RecycleBin
+        [switch]$RecycleBin,
+        [switch]$SuppressWhatIfOutput
     )
 
     $result = [PSCustomObject]@{
         DeletedCount = 0
         FailedCount  = 0
+        BytesFreed   = [long]0
         Records      = New-Object System.Collections.Generic.List[object]
     }
 
@@ -962,7 +1093,15 @@ function Remove-FileList {
     $verb   = if ($RecycleBin) { 'Recycled' } else { 'Deleted' }
 
     foreach ($file in $Files) {
-        Write-Verbose "Evaluating file: $($file.FullName)"
+        Write-CDHostLog -Level Debug -Message "Evaluating file: $($file.FullName)"
+
+        if ($WhatIfPreference -and $SuppressWhatIfOutput) {
+            Write-Detail "Would $($action.ToLower()): $($file.FullName)"
+            if ($ReturnRecords) {
+                $result.Records.Add((ConvertTo-DeletionRecord -Type File -Path $file.FullName -Deleted $false -Size $file.Length))
+            }
+            continue
+        }
 
         if ($PSCmdlet.ShouldProcess($file.FullName, $action)) {
             try {
@@ -973,6 +1112,7 @@ function Remove-FileList {
                     Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
                 }
                 $result.DeletedCount++
+                $result.BytesFreed += $file.Length
                 Write-Detail "$verb file: $($file.FullName)"
 
                 if ($ReturnRecords) {
@@ -981,7 +1121,7 @@ function Remove-FileList {
             }
             catch {
                 $result.FailedCount++
-                Write-Warning "Failed to $($action.ToLower()): $($file.FullName) - $($_.Exception.Message)"
+                Write-CDHostLog -Level Warning -Message "Failed to $($action.ToLower()): $($file.FullName) - $($_.Exception.Message)"
 
                 if ($ReturnRecords) {
                     $result.Records.Add((ConvertTo-DeletionRecord -Type File -Path $file.FullName -Deleted $false -Size $file.Length))
@@ -1004,12 +1144,14 @@ function Remove-DirectoryList {
     param(
         [System.IO.DirectoryInfo[]]$Directories = @(),
         [switch]$ReturnRecords,
-        [switch]$RecycleBin
+        [switch]$RecycleBin,
+        [switch]$SuppressWhatIfOutput
     )
 
     $result = [PSCustomObject]@{
         DeletedCount = 0
         FailedCount  = 0
+        BytesFreed   = [long]0
         Records      = New-Object System.Collections.Generic.List[object]
     }
 
@@ -1025,10 +1167,18 @@ function Remove-DirectoryList {
             continue
         }
 
-        Write-Verbose "Evaluating directory: $($dir.FullName)"
+        Write-CDHostLog -Level Debug -Message "Evaluating directory: $($dir.FullName)"
 
         # Compute size before any deletion so it is available for the record regardless of outcome
         $dirSize = Get-TreeSize -Path $dir.FullName
+
+        if ($WhatIfPreference -and $SuppressWhatIfOutput) {
+            Write-Detail "Would $($action.ToLower()): $($dir.FullName)"
+            if ($ReturnRecords) {
+                $result.Records.Add((ConvertTo-DeletionRecord -Type Directory -Path $dir.FullName -Deleted $false -Size $dirSize))
+            }
+            continue
+        }
 
         if ($PSCmdlet.ShouldProcess($dir.FullName, $action)) {
             try {
@@ -1048,6 +1198,7 @@ function Remove-DirectoryList {
                 }
 
                 $result.DeletedCount++
+                $result.BytesFreed += $dirSize
                 Write-Detail "$verb directory: $($dir.FullName)"
 
                 if ($ReturnRecords) {
@@ -1056,7 +1207,7 @@ function Remove-DirectoryList {
             }
             catch {
                 $result.FailedCount++
-                Write-Warning "Failed to $($action.ToLower()): $($dir.FullName) - $($_.Exception.Message)"
+                Write-CDHostLog -Level Warning -Message "Failed to $($action.ToLower()): $($dir.FullName) - $($_.Exception.Message)"
 
                 if ($ReturnRecords) {
                     $result.Records.Add((ConvertTo-DeletionRecord -Type Directory -Path $dir.FullName -Deleted $false -Size $dirSize))
@@ -1082,8 +1233,9 @@ try {
     # -Check cannot be combined with -WhatIf: they are both no-op scan modes
     # but have different exit code semantics that cannot be meaningfully reconciled.
     if ($Check -and $WhatIfPreference) {
-        Write-Error '-Check cannot be combined with -WhatIf. Use -Check with -OutputLevel instead.'
-        Write-Verbose 'Exit code = 3'
+        Write-CDHostLog -Level Error -Message '-Check cannot be combined with -WhatIf. Use -Check with -OutputLevel instead.' -EventId 'INVALID-ARGS'
+        Write-CDHostLog -Level Verbose -Message 'Exit code = 3'
+        Complete-CDActivity -ExitCode 3 -Command 'clean' -Message 'Invalid arguments'
         exit 3
     }
 
@@ -1159,31 +1311,32 @@ try {
         }
         else {
             $nl = [System.Environment]::NewLine
-            Write-Information "$nl$('=' * 70)" -InformationAction Continue
-            Write-Information 'Delphi Clean -- Effective Configuration' -InformationAction Continue
-            Write-Information ('=' * 70) -InformationAction Continue
-            Write-Information "Root: $cleanRoot" -InformationAction Continue
-            Write-Information '' -InformationAction Continue
+            Write-CDHostLog -Level Info -Message "$nl$('=' * 70)"
+            Write-CDHostLog -Level Info -Message 'Delphi Clean -- Effective Configuration'
+            Write-CDHostLog -Level Info -Message ('=' * 70)
+            Write-CDHostLog -Level Info -Message "Root: $cleanRoot"
+            Write-CDHostLog -Level Info -Message ''
             if ($configResult.Log.Count -gt 0) {
-                Write-Information 'Config sources:' -InformationAction Continue
+                Write-CDHostLog -Level Info -Message 'Config sources:'
                 foreach ($line in $configResult.Log) {
-                    Write-Information "  $line" -InformationAction Continue
+                    Write-CDHostLog -Level Info -Message "  $line"
                 }
-                Write-Information '' -InformationAction Continue
+                Write-CDHostLog -Level Info -Message ''
             }
             else {
-                Write-Information 'No config files found (using defaults and CLI parameters).' -InformationAction Continue
-                Write-Information '' -InformationAction Continue
+                Write-CDHostLog -Level Info -Message 'No config files found (using defaults and CLI parameters).'
+                Write-CDHostLog -Level Info -Message ''
             }
             $includeDisplay = if ($IncludeFilePattern.Count -gt 0) { $IncludeFilePattern -join ', ' } else { '(none)' }
-            Write-Information 'Effective values:' -InformationAction Continue
-            Write-Information ('  Level                   : {0}' -f $Level) -InformationAction Continue
-            Write-Information ('  OutputLevel             : {0}' -f $script:OutputLevel) -InformationAction Continue
-            Write-Information ('  RecycleBin              : {0}' -f $RecycleBin.IsPresent) -InformationAction Continue
-            Write-Information ('  IncludeFilePattern      : {0}' -f $includeDisplay) -InformationAction Continue
-            Write-Information ('  ExcludeDirectoryPattern : {0}' -f ($ExcludeDirectoryPattern -join ', ')) -InformationAction Continue
+            Write-CDHostLog -Level Info -Message 'Effective values:'
+            Write-CDHostLog -Level Info -Message ('  Level                   : {0}' -f $Level)
+            Write-CDHostLog -Level Info -Message ('  OutputLevel             : {0}' -f $script:OutputLevel)
+            Write-CDHostLog -Level Info -Message ('  RecycleBin              : {0}' -f $RecycleBin.IsPresent)
+            Write-CDHostLog -Level Info -Message ('  IncludeFilePattern      : {0}' -f $includeDisplay)
+            Write-CDHostLog -Level Info -Message ('  ExcludeDirectoryPattern : {0}' -f ($ExcludeDirectoryPattern -join ', '))
         }
-        Write-Verbose 'Exit code = 0'
+        Write-CDHostLog -Level Verbose -Message 'Exit code = 0'
+        Complete-CDActivity -ExitCode 0 -Command 'showConfig'
         exit 0
     }
 
@@ -1247,7 +1400,8 @@ try {
             Write-Summary 'Nothing to clean.'
         }
 
-        Write-Verbose 'Exit code = 0'
+        Write-CDHostLog -Level Verbose -Message 'Exit code = 0'
+        Complete-CDActivity -ExitCode 0 -Command 'clean' -Message 'Nothing to clean'
         exit 0
     }
 
@@ -1303,16 +1457,17 @@ try {
             Write-Summary ('Duration         : {0}' -f (Format-Duration $stopwatch.ElapsedMilliseconds))
         }
 
-        Write-Verbose 'Exit code = 1'
+        Write-CDHostLog -Level Verbose -Message 'Exit code = 1'
+        Complete-CDActivity -ExitCode 1 -Command 'check' -Message 'Artifacts found'
         exit 1
     }
 
     # Normal clean path
     Write-Section 'Cleaning'
     if (-not $Json) { Write-Progress -Activity 'delphi-clean' -Status "Removing $($filesToDelete.Count) files..." }
-    $fileRemovalResult = Remove-FileList      -Files $filesToDelete       -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin
+    $fileRemovalResult = Remove-FileList      -Files $filesToDelete       -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin -SuppressWhatIfOutput:$Json
     if (-not $Json) { Write-Progress -Activity 'delphi-clean' -Status "Removing $($dirsToDelete.Count) directories..." }
-    $dirRemovalResult  = Remove-DirectoryList -Directories $dirsToDelete  -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin
+    $dirRemovalResult  = Remove-DirectoryList -Directories $dirsToDelete  -ReturnRecords:$returnRecords -RecycleBin:$RecycleBin -SuppressWhatIfOutput:$Json
     if (-not $Json) { Write-Progress -Activity 'delphi-clean' -Completed }
 
     $allRecords = New-Object System.Collections.Generic.List[object]
@@ -1320,6 +1475,7 @@ try {
     $allRecords.AddRange([object[]]$dirRemovalResult.Records)
 
     $totalFailed = $fileRemovalResult.FailedCount + $dirRemovalResult.FailedCount
+    $bytesFreed  = $fileRemovalResult.BytesFreed + $dirRemovalResult.BytesFreed
 
     if ($Json) {
         [PSCustomObject]@{
@@ -1337,7 +1493,7 @@ try {
             DirectoriesDeleted      = $dirRemovalResult.DeletedCount
             FilesFailed             = $fileRemovalResult.FailedCount
             DirectoriesFailed       = $dirRemovalResult.FailedCount
-            BytesFreed              = $totalBytes
+            BytesFreed              = $bytesFreed
             DurationMs              = $stopwatch.ElapsedMilliseconds
             Items                   = $allRecords
         } | ConvertTo-Json -Depth 5
@@ -1349,17 +1505,17 @@ try {
         if ($WhatIfPreference) {
             Write-Summary ('{0}: {1}' -f ('Files would be {0}'       -f $removedLabel).PadRight(29), $filesToDelete.Count)
             Write-Summary ('{0}: {1}' -f ('Directories would be {0}' -f $removedLabel).PadRight(29), $dirsToDelete.Count)
-            Write-Summary ('{0}: {1}' -f 'Space would free'.PadRight(29), (Format-ByteSize $totalBytes))
+            Write-Summary ('{0}: {1}' -f 'Space to free'.PadRight(29), (Format-ByteSize $totalBytes))
             Write-Summary ('{0}: {1}' -f 'Duration'.PadRight(29), (Format-Duration $stopwatch.ElapsedMilliseconds))
         }
         else {
             Write-Summary ('{0}: {1}' -f ('Files {0}'       -f $removedLabel).PadRight(20), $fileRemovalResult.DeletedCount)
             Write-Summary ('{0}: {1}' -f ('Directories {0}' -f $removedLabel).PadRight(20), $dirRemovalResult.DeletedCount)
-            Write-Summary ('{0}: {1}' -f 'Space freed'.PadRight(20), (Format-ByteSize $totalBytes))
+            Write-Summary ('{0}: {1}' -f 'Space freed'.PadRight(20), (Format-ByteSize $bytesFreed))
             Write-Summary ('{0}: {1}' -f 'Duration'.PadRight(20), (Format-Duration $stopwatch.ElapsedMilliseconds))
 
             if ($totalFailed -gt 0) {
-                Write-Warning ('Items failed to {0}: {1}' -f $removedLabel, $totalFailed)
+                Write-CDHostLog -Level Warning -Message ('Items failed to {0}: {1}' -f $removedLabel, $totalFailed)
             }
         }
     }
@@ -1378,15 +1534,20 @@ try {
     #   2 = Error deleting a file or directory.  [Cleanup failures]
     #   3 = Fatal.  Invalid usage / exceptions (root path, invalid platform)
     if ($totalFailed -gt 0) {
-        Write-Verbose 'Exit code = 2'
+        Write-CDHostLog -Level Verbose -Message 'Exit code = 2'
+        Complete-CDActivity -ExitCode 2 -Command 'clean' -Message "Items failed: $totalFailed"
         exit 2
     }
 
-    Write-Verbose 'Exit code = 0'
+    Write-CDHostLog -Level Verbose -Message 'Exit code = 0'
+    Complete-CDActivity -ExitCode 0 -Command 'clean'
     exit 0
 }
 catch {
-    Write-Error -ErrorRecord $_
-    Write-Verbose 'Exit code = 3'
+    $errMsg = if ([string]::IsNullOrWhiteSpace($_.Exception.Message)) { $_.ToString() } else { $_.Exception.Message }
+    if ([string]::IsNullOrWhiteSpace($errMsg)) { $errMsg = 'Unknown error' }
+    Write-CDHostLog -Level Fatal -Message $errMsg -EventId 'UNEXPECTED-ERROR'
+    Write-CDHostLog -Level Verbose -Message 'Exit code = 3'
+    Complete-CDActivity -ExitCode 3 -Command 'clean' -Message $errMsg
     exit 3
 }
