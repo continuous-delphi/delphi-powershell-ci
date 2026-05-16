@@ -71,6 +71,12 @@ Each Pipeline entry:
 **Run:**
 `timeoutSeconds`, `arguments`
 
+**CallGraph:**
+`path`, `engine`, `enginePath`, `outputDir`, `formats`, `jsonFile`,
+`dotFile`, `summaryFile`, `class`, `annotations`, `deterministic`,
+`graphKind`, `graphVizUses`, `graphVizClasses`, `pasDocOptions`,
+`projectFile`, `graphVizExclude`, `engineArguments`, `timeoutSeconds`
+
 ### Job keys
 
 Jobs are hashtables containing all resolved keys from the merge chain plus

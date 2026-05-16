@@ -18,6 +18,7 @@ Invoke-DelphiCallGraph
     [-CallGraphSummaryFile <string>]
     [-CallGraphClass <string>]
     [-CallGraphAnnotations <bool>]
+    [-CallGraphDeterministic <bool>]
     [-CallGraphGraphKind <string>]
     [-CallGraphGraphVizUses <bool>]
     [-CallGraphGraphVizClasses <bool>]
@@ -43,6 +44,7 @@ Invoke-DelphiCallGraph
 | `-CallGraphSummaryFile` | string | | Explicit text summary path. |
 | `-CallGraphClass` | string | | radCallGraph class filter. |
 | `-CallGraphAnnotations` | bool | `$true` | Include radCallGraph `{cg:...}` annotation data. |
+| `-CallGraphDeterministic` | bool | `$true` | Pass radCallGraph `--deterministic` for reproducible output without timestamps. |
 | `-CallGraphGraphKind` | string | | `call`, `uses`, `classes`, `dependency`, or `all`. |
 | `-CallGraphGraphVizUses` | bool | `$false` | PasDoc `--graphviz-uses`. |
 | `-CallGraphGraphVizClasses` | bool | `$false` | PasDoc `--graphviz-classes`. |
@@ -123,6 +125,9 @@ Returns a `PSCustomObject` with these fields:
 ## Notes
 
 - `radCallGraph` supports `json`, `dot`, and `txt`.
+- radCallGraph deterministic output is enabled by default. Set
+  `-CallGraphDeterministic $false` or `"deterministic": false` to keep
+  engine timestamps.
 - PasDoc and DCC modes are DOT/GV graph generators.
 - Extra engine and PasDoc options are passed through environment variables so
   option values beginning with `-` are not misparsed by PowerShell `-File`.

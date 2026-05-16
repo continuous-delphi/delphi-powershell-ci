@@ -824,7 +824,13 @@ Describe 'Get-DelphiCiConfig' {
             $job['engine']      | Should -Be 'radCallGraph'
             $job['outputDir']   | Should -Be 'callgraph'
             $job['annotations'] | Should -Be $true
+            $job['deterministic'] | Should -Be $true
             $job['formats']     | Should -Contain 'json'
+        }
+
+        It '-CallGraphDeterministic can disable deterministic output' {
+            $config = Get-DelphiCiConfig -Steps 'CallGraph' -CallGraphPath 'source' -CallGraphDeterministic $false
+            $config.Pipeline[0].Jobs[0]['deterministic'] | Should -Be $false
         }
 
         It '-CallGraphPath creates a single callgraph job' {

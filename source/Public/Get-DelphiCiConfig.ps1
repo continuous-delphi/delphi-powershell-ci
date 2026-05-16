@@ -86,6 +86,7 @@ function Get-DelphiCiConfig {
         [string]$CallGraphSummaryFile,
         [string]$CallGraphClass,
         [bool]$CallGraphAnnotations,
+        [bool]$CallGraphDeterministic,
         [string]$CallGraphGraphKind,
         [bool]$CallGraphGraphVizUses,
         [bool]$CallGraphGraphVizClasses,
@@ -161,6 +162,7 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CallGraphSummaryFile'))          { $overrides['CallGraphSummaryFile']         = $CallGraphSummaryFile }
     if ($PSBoundParameters.ContainsKey('CallGraphClass'))                { $overrides['CallGraphClass']               = $CallGraphClass }
     if ($PSBoundParameters.ContainsKey('CallGraphAnnotations'))          { $overrides['CallGraphAnnotations']         = $CallGraphAnnotations }
+    if ($PSBoundParameters.ContainsKey('CallGraphDeterministic'))        { $overrides['CallGraphDeterministic']       = $CallGraphDeterministic }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphKind'))            { $overrides['CallGraphGraphKind']           = $CallGraphGraphKind }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizUses'))         { $overrides['CallGraphGraphVizUses']        = $CallGraphGraphVizUses }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizClasses'))      { $overrides['CallGraphGraphVizClasses']     = $CallGraphGraphVizClasses }

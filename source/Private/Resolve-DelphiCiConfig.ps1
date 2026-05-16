@@ -78,6 +78,7 @@ function Resolve-DelphiCiConfig {
             summaryFile       = ''
             class             = ''
             annotations       = $true
+            deterministic     = $true
             graphKind         = ''
             graphVizUses      = $false
             graphVizClasses   = $false
@@ -321,6 +322,8 @@ function Resolve-DelphiCiConfig {
         -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphClass']))            { $callGraphCliLayer['class']            = $Overrides['CallGraphClass'] }
     if ($Overrides.ContainsKey('CallGraphAnnotations') -and
         $null -ne $Overrides['CallGraphAnnotations'])                               { $callGraphCliLayer['annotations']      = [bool]$Overrides['CallGraphAnnotations'] }
+    if ($Overrides.ContainsKey('CallGraphDeterministic') -and
+        $null -ne $Overrides['CallGraphDeterministic'])                              { $callGraphCliLayer['deterministic']    = [bool]$Overrides['CallGraphDeterministic'] }
     if ($Overrides.ContainsKey('CallGraphGraphKind') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphGraphKind']))        { $callGraphCliLayer['graphKind']        = $Overrides['CallGraphGraphKind'] }
     if ($Overrides.ContainsKey('CallGraphGraphVizUses') -and

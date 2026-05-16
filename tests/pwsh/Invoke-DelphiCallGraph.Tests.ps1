@@ -135,6 +135,14 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes deterministic as numeric bool for PowerShell File mode' {
+                Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source' -CallGraphDeterministic $false
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $deterministicIndex = [array]::IndexOf($Arguments, '-Deterministic')
+                    $deterministicIndex -ge 0 -and $Arguments[$deterministicIndex + 1] -eq '0'
+                }
+            }
+
             It 'always passes -OutputFile' {
                 Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source'
                 Should -Invoke Invoke-BundledTool -ParameterFilter {

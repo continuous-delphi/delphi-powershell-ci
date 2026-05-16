@@ -79,6 +79,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                         summaryFile       = ''
                         class             = ''
                         annotations       = $true
+                        deterministic     = $true
                         graphKind         = ''
                         graphVizUses      = $false
                         graphVizClasses   = $false
@@ -335,6 +336,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             summaryFile      = ''
             class            = ''
             annotations      = $true
+            deterministic    = $true
             graphKind        = ''
             graphVizUses     = $false
             graphVizClasses  = $false

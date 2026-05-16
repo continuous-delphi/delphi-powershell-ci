@@ -220,6 +220,9 @@ function Invoke-DelphiCi {
         [bool]$CallGraphAnnotations,
 
         [Parameter(ParameterSetName = 'Run')]
+        [bool]$CallGraphDeterministic,
+
+        [Parameter(ParameterSetName = 'Run')]
         [string]$CallGraphGraphKind,
 
         [Parameter(ParameterSetName = 'Run')]
@@ -336,6 +339,7 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CallGraphSummaryFile'))          { $overrides['CallGraphSummaryFile']         = $CallGraphSummaryFile }
     if ($PSBoundParameters.ContainsKey('CallGraphClass'))                { $overrides['CallGraphClass']               = $CallGraphClass }
     if ($PSBoundParameters.ContainsKey('CallGraphAnnotations'))          { $overrides['CallGraphAnnotations']         = $CallGraphAnnotations }
+    if ($PSBoundParameters.ContainsKey('CallGraphDeterministic'))        { $overrides['CallGraphDeterministic']       = $CallGraphDeterministic }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphKind'))            { $overrides['CallGraphGraphKind']           = $CallGraphGraphKind }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizUses'))         { $overrides['CallGraphGraphVizUses']        = $CallGraphGraphVizUses }
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizClasses'))      { $overrides['CallGraphGraphVizClasses']     = $CallGraphGraphVizClasses }
@@ -727,6 +731,7 @@ function Invoke-DelphiCi {
                             -CallGraphSummaryFile       $graphSummaryFile `
                             -CallGraphClass             $job['class'] `
                             -CallGraphAnnotations       $job['annotations'] `
+                            -CallGraphDeterministic     $job['deterministic'] `
                             -CallGraphGraphKind         $job['graphKind'] `
                             -CallGraphGraphVizUses      $job['graphVizUses'] `
                             -CallGraphGraphVizClasses   $job['graphVizClasses'] `

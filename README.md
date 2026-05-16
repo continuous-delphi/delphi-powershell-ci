@@ -180,7 +180,12 @@ be string or array, producing a cross product of builds.
       "verbosity": "minimal"
     },
     "run": { "timeoutSeconds": 10 },
-    "incver": { "target": "", "style": "", "part": "" }
+    "incver": { "target": "", "style": "", "part": "" },
+    "callgraph": {
+      "engine": "radCallGraph",
+      "formats": ["json"],
+      "deterministic": true
+    }
   },
   "pipeline": [
     { "action": "Clean", "level": "deep" },
@@ -270,6 +275,7 @@ Invoke-DelphiCoverage -Execute .\test\Win32\Debug\MyApp.Tests.exe `
     -CoverageSourceDir .\source -CoverageThreshold 60
 
 # Generate a call graph with radCallGraph
+# Deterministic output is enabled by default; use -CallGraphDeterministic $false to keep timestamps
 Invoke-DelphiCallGraph -CallGraphPath .\source `
     -CallGraphFormats json,dot,txt `
     -CallGraphOutputDir .\artifacts\callgraph

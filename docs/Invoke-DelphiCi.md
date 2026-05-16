@@ -67,6 +67,9 @@ When no jobs are defined for an action:
 For CLI shorthand, `-ProjectFile` creates a single build job and `-Execute`
 creates a single run job. `-CallGraphPath` or `-CallGraphProjectFile`
 creates a single CallGraph job when `-Steps CallGraph` is used.
+CallGraph jobs use deterministic radCallGraph output by default; set
+`-CallGraphDeterministic $false` or `"deterministic": false` to keep
+engine timestamps.
 
 ---
 

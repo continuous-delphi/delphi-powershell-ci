@@ -100,6 +100,9 @@ param(
     [object]$Annotations = $true,
 
     [Parameter(ParameterSetName = 'Graph')]
+    [object]$Deterministic = $true,
+
+    [Parameter(ParameterSetName = 'Graph')]
     [ValidateSet('', 'call', 'uses', 'classes', 'dependency', 'all')]
     [string]$GraphKind = '',
 
@@ -524,6 +527,9 @@ function Get-RadCallGraphArgumentList {
     else {
         $argumentList.Add('--no-annotations')
     }
+    if ($script:ResolvedDeterministic) {
+        $argumentList.Add('--deterministic')
+    }
 
     foreach ($extraArgument in $script:ResolvedEngineArguments) {
         if (-not [string]::IsNullOrWhiteSpace($extraArgument)) {
@@ -777,7 +783,8 @@ function ConvertTo-Bool {
     param(
         [AllowNull()]
         $Value,
-        [bool]$Default = $false
+        [bool]$Default = $false,
+        [string]$ParameterName = 'value'
     )
 
     if ($null -eq $Value) { return $Default }
@@ -791,7 +798,7 @@ function ConvertTo-Bool {
         '^(1|true|\$true|yes|on)$'  { return $true }
         '^(0|false|\$false|no|off)$' { return $false }
         default {
-            Exit-WithError -Message "Invalid boolean value for -Annotations: $Value" -ExitCode $ExitInvalidArguments
+            Exit-WithError -Message "Invalid boolean value for -$($ParameterName): $Value" -ExitCode $ExitInvalidArguments
         }
     }
 }
@@ -819,7 +826,8 @@ try {
     $resolvedInputs = @(Resolve-InputPathList -InputPaths $Path)
     $script:ResolvedEngineArguments = @(Resolve-ArgumentList -Values $EngineArguments -EnvironmentValue $env:DELPHI_CALLGRAPH_ENGINE_ARGS)
     $script:ResolvedPasDocOptions = @(Resolve-ArgumentList -Values $PasDocOptions -EnvironmentValue $env:DELPHI_CALLGRAPH_PASDOC_OPTIONS)
-    $script:ResolvedAnnotations = ConvertTo-Bool -Value $Annotations -Default $true
+    $script:ResolvedAnnotations = ConvertTo-Bool -Value $Annotations -Default $true -ParameterName 'Annotations'
+    $script:ResolvedDeterministic = ConvertTo-Bool -Value $Deterministic -Default $true -ParameterName 'Deterministic'
 
     $resolvedProjectFile = $null
     if ($Engine -eq 'DCC') {

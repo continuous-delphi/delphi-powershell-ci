@@ -19,6 +19,7 @@ function Invoke-DelphiCallGraph {
         [string]$CallGraphSummaryFile = '',
         [string]$CallGraphClass = '',
         [bool]$CallGraphAnnotations = $true,
+        [bool]$CallGraphDeterministic = $true,
         [string]$CallGraphGraphKind = '',
         [bool]$CallGraphGraphVizUses = $false,
         [bool]$CallGraphGraphVizClasses = $false,
@@ -57,6 +58,8 @@ function Invoke-DelphiCallGraph {
     $toolArgs.Add($CallGraphTimeoutSeconds.ToString())
     $toolArgs.Add('-Annotations')
     $toolArgs.Add($(if ($CallGraphAnnotations) { '1' } else { '0' }))
+    $toolArgs.Add('-Deterministic')
+    $toolArgs.Add($(if ($CallGraphDeterministic) { '1' } else { '0' }))
 
     if ($CallGraphFormats.Count -gt 0) { $toolArgs.Add('-Formats'); $toolArgs.Add(($CallGraphFormats -join ',')) }
     if (-not [string]::IsNullOrWhiteSpace($CallGraphEnginePath))  { $toolArgs.Add('-EnginePath');  $toolArgs.Add($CallGraphEnginePath) }
