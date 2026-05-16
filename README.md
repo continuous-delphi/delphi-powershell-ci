@@ -332,8 +332,8 @@ Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
 `ProjectFile`. Coverage results add `Execute`, `CoveragePercent`,
 `LinesCovered`, `LinesTotal`, `ThresholdMet`, `OutputDir`, and `Badge`.
-CallGraph results add `Engine`, `Inputs`, `OutputDir`, `Formats`, and
-`Files`. Copy results add `Source`, `Destination`, `FileCount`,
+CallGraph results add `Engine`, `Inputs`, `OutputDir`, `Formats`, `Files`,
+and `Summary`. Copy results add `Source`, `Destination`, `FileCount`,
 and `BytesCopied`. Compress results add `Source`, `Destination`,
 `ArchiveSize`, and `Checksum`.
 

@@ -97,7 +97,7 @@ param(
     [string]$Class,
 
     [Parameter(ParameterSetName = 'Graph')]
-    [bool]$Annotations = $true,
+    [object]$Annotations = $true,
 
     [Parameter(ParameterSetName = 'Graph')]
     [ValidateSet('', 'call', 'uses', 'classes', 'dependency', 'all')]
@@ -169,6 +169,16 @@ function Split-CommaList {
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
+function Split-PathListArgument {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return @() }
+
+    return @($Value -split ',' |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
 function ConvertTo-FullPath {
     param([Parameter(Mandatory)][string]$Value)
 
@@ -235,14 +245,16 @@ function Resolve-InputPathList {
     param([string[]]$InputPaths)
 
     $resolved = [System.Collections.Generic.List[string]]::new()
-    foreach ($inputPath in $InputPaths) {
-        if ([string]::IsNullOrWhiteSpace($inputPath)) { continue }
+    foreach ($rawInputPath in $InputPaths) {
+        foreach ($inputPath in @(Split-PathListArgument -Value $rawInputPath)) {
+            if ([string]::IsNullOrWhiteSpace($inputPath)) { continue }
 
-        $fullPath = ConvertTo-FullPath -Value $inputPath
-        if (-not (Test-Path -LiteralPath $fullPath)) {
-            Exit-WithError -Message "Input path not found: $inputPath" -ExitCode $ExitInputNotFound -Extra @{ input = $inputPath }
+            $fullPath = ConvertTo-FullPath -Value $inputPath
+            if (-not (Test-Path -LiteralPath $fullPath)) {
+                Exit-WithError -Message "Input path not found: $inputPath" -ExitCode $ExitInputNotFound -Extra @{ input = $inputPath }
+            }
+            $resolved.Add($fullPath)
         }
-        $resolved.Add($fullPath)
     }
 
     return $resolved.ToArray()
@@ -506,7 +518,7 @@ function Get-RadCallGraphArgumentList {
         $argumentList.Add('--class')
         $argumentList.Add($Class)
     }
-    if ($Annotations) {
+    if ($script:ResolvedAnnotations) {
         $argumentList.Add('--annotations')
     }
     else {
@@ -624,6 +636,122 @@ function Move-GraphOutputIfRequested {
     Move-Item -LiteralPath $candidate[0].FullName -Destination $Files['dot'] -Force
 }
 
+function Get-CallGraphSummaryFromJson {
+    param([string]$JsonPath)
+
+    if ([string]::IsNullOrWhiteSpace($JsonPath) -or -not (Test-Path -LiteralPath $JsonPath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $graph = Get-Content -LiteralPath $JsonPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Write-Verbose "Unable to read CallGraph JSON summary from '$JsonPath': $_"
+        return $null
+    }
+
+    $files = @($graph.files)
+    $nodes = @($graph.nodes)
+    $edges = @($graph.edges)
+    $classes = @($nodes |
+        Where-Object { $null -ne $_.class -and -not [string]::IsNullOrWhiteSpace([string]$_.class) } |
+        Select-Object -ExpandProperty class -Unique)
+    $standalone = @($nodes |
+        Where-Object { $null -eq $_.class -or [string]::IsNullOrWhiteSpace([string]$_.class) })
+
+    return [ordered]@{
+        files      = $files.Count
+        nodes      = $nodes.Count
+        classes    = $classes.Count
+        standalone = $standalone.Count
+        edges      = $edges.Count
+    }
+}
+
+function Get-CallGraphSummaryFromText {
+    param([string]$TextPath)
+
+    if ([string]::IsNullOrWhiteSpace($TextPath) -or -not (Test-Path -LiteralPath $TextPath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $lines = Get-Content -LiteralPath $TextPath -TotalCount 6 -ErrorAction Stop
+    }
+    catch {
+        Write-Verbose "Unable to read CallGraph text summary from '$TextPath': $_"
+        return $null
+    }
+
+    $summary = [ordered]@{
+        files      = $null
+        nodes      = $null
+        classes    = $null
+        standalone = $null
+        edges      = $null
+    }
+
+    foreach ($line in $lines) {
+        if ($line -match '^Files:\s*(\d+)') {
+            $summary.files = [int]$Matches[1]
+        }
+        elseif ($line -match '^Nodes:\s*(\d+)(?:\s*\((\d+)\s+classes,\s*(\d+)\s+standalone\))?') {
+            $summary.nodes = [int]$Matches[1]
+            if ($Matches.Count -ge 4 -and -not [string]::IsNullOrWhiteSpace($Matches[2])) {
+                $summary.classes = [int]$Matches[2]
+                $summary.standalone = [int]$Matches[3]
+            }
+        }
+        elseif ($line -match '^Edges:\s*(\d+)') {
+            $summary.edges = [int]$Matches[1]
+        }
+    }
+
+    if ($null -eq $summary.files -and $null -eq $summary.nodes -and $null -eq $summary.edges) {
+        return $null
+    }
+
+    return $summary
+}
+
+function Get-CallGraphSummary {
+    param([hashtable]$Files)
+
+    if ($Files.ContainsKey('json')) {
+        $summary = Get-CallGraphSummaryFromJson -JsonPath $Files['json']
+        if ($null -ne $summary) { return $summary }
+    }
+
+    if ($Files.ContainsKey('txt')) {
+        $summary = Get-CallGraphSummaryFromText -TextPath $Files['txt']
+        if ($null -ne $summary) { return $summary }
+    }
+
+    return $null
+}
+
+function Write-CallGraphSummary {
+    param($Summary)
+
+    if ($null -eq $Summary) { return }
+
+    Write-Host ''
+    Write-Host '--- CallGraph Summary ---'
+    if ($null -ne $Summary.files) { Write-Host "Files: $($Summary.files)" }
+    if ($null -ne $Summary.nodes) {
+        $nodeDetail = if ($null -ne $Summary.classes -and $null -ne $Summary.standalone) {
+            " ($($Summary.classes) classes, $($Summary.standalone) standalone)"
+        }
+        else {
+            ''
+        }
+        Write-Host "Nodes: $($Summary.nodes)$nodeDetail"
+    }
+    if ($null -ne $Summary.edges) { Write-Host "Edges: $($Summary.edges)" }
+    Write-Host ''
+}
+
 # -----------------------------------------------------------------------------
 # Argument environment fallback
 # -----------------------------------------------------------------------------
@@ -643,6 +771,29 @@ function Resolve-ArgumentList {
     }
 
     return @()
+}
+
+function ConvertTo-Bool {
+    param(
+        [AllowNull()]
+        $Value,
+        [bool]$Default = $false
+    )
+
+    if ($null -eq $Value) { return $Default }
+    if ($Value -is [bool]) { return $Value }
+    if ($Value -is [int]) { return ([int]$Value -ne 0) }
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) { return $Default }
+
+    switch -Regex ($text.ToLowerInvariant()) {
+        '^(1|true|\$true|yes|on)$'  { return $true }
+        '^(0|false|\$false|no|off)$' { return $false }
+        default {
+            Exit-WithError -Message "Invalid boolean value for -Annotations: $Value" -ExitCode $ExitInvalidArguments
+        }
+    }
 }
 
 # -----------------------------------------------------------------------------
@@ -668,6 +819,7 @@ try {
     $resolvedInputs = @(Resolve-InputPathList -InputPaths $Path)
     $script:ResolvedEngineArguments = @(Resolve-ArgumentList -Values $EngineArguments -EnvironmentValue $env:DELPHI_CALLGRAPH_ENGINE_ARGS)
     $script:ResolvedPasDocOptions = @(Resolve-ArgumentList -Values $PasDocOptions -EnvironmentValue $env:DELPHI_CALLGRAPH_PASDOC_OPTIONS)
+    $script:ResolvedAnnotations = ConvertTo-Bool -Value $Annotations -Default $true
 
     $resolvedProjectFile = $null
     if ($Engine -eq 'DCC') {
@@ -728,6 +880,8 @@ try {
         Move-GraphOutputIfRequested -Files $files -Since $engineStartTime
     }
 
+    $summary = Get-CallGraphSummary -Files $files
+
     $stopwatch.Stop()
     $duration = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
 
@@ -741,8 +895,12 @@ try {
         files     = $files
         duration  = $duration
     }
+    if ($null -ne $summary) {
+        $result['summary'] = $summary
+    }
 
     Write-Result -Result $result
+    Write-CallGraphSummary -Summary $summary
     Write-Host "Call graph analysis completed in ${duration}s"
     exit $ExitSuccess
 }

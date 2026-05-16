@@ -118,6 +118,7 @@ Returns a `PSCustomObject` with these fields:
 | `OutputDir` | string | Output directory. |
 | `Formats` | string[] | Generated formats. |
 | `Files` | object | Generated output files from the tool result. |
+| `Summary` | object | Call graph metrics when available: `files`, `nodes`, `classes`, `standalone`, and `edges`. |
 
 ## Notes
 

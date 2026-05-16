@@ -13,7 +13,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             }
             Mock Write-DelphiCiMessage {}
             Mock Get-Content {
-                '{"engine":"radCallGraph","inputs":["C:\\Fake\\source"],"success":true,"formats":["json","dot"],"files":{"json":"C:\\Fake\\callgraph\\callgraph.json","dot":"C:\\Fake\\callgraph\\callgraph.dot"}}'
+                '{"engine":"radCallGraph","inputs":["C:\\Fake\\source"],"success":true,"formats":["json","dot"],"files":{"json":"C:\\Fake\\callgraph\\callgraph.json","dot":"C:\\Fake\\callgraph\\callgraph.dot"},"summary":{"files":2,"nodes":3,"classes":1,"standalone":1,"edges":2}}'
             }
             Mock Remove-Item {}
         }
@@ -38,6 +38,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
             It 'Formats are populated from result file' {
                 (Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source').Formats | Should -Contain 'dot'
+            }
+
+            It 'Summary is populated from result file' {
+                $result = Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source'
+                $result.Summary.nodes | Should -Be 3
+                $result.Summary.edges | Should -Be 2
             }
 
         }
@@ -88,6 +94,15 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes multiple paths as one comma-delimited -Path value for PowerShell File mode' {
+                Invoke-DelphiCallGraph -CallGraphPath @('C:\Fake\source', 'C:\Fake\test')
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $pathIndex = [array]::IndexOf($Arguments, '-Path')
+                    $pathIndex -ge 0 -and
+                    $Arguments[$pathIndex + 1] -eq 'C:\Fake\source,C:\Fake\test'
+                }
+            }
+
             It 'passes project file for DCC mode' {
                 Invoke-DelphiCallGraph -CallGraphEngine DCC -CallGraphProjectFile 'C:\Fake\App.dpr' -CallGraphFormats dot
                 Should -Invoke Invoke-BundledTool -ParameterFilter {
@@ -112,10 +127,25 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes annotations as numeric bool for PowerShell File mode' {
+                Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source' -CallGraphAnnotations $false
+                Should -Invoke Invoke-BundledTool -ParameterFilter {
+                    $annotationIndex = [array]::IndexOf($Arguments, '-Annotations')
+                    $annotationIndex -ge 0 -and $Arguments[$annotationIndex + 1] -eq '0'
+                }
+            }
+
             It 'always passes -OutputFile' {
                 Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source'
                 Should -Invoke Invoke-BundledTool -ParameterFilter {
                     $Arguments -contains '-OutputFile'
+                }
+            }
+
+            It 'writes summary metrics in the success message' {
+                Invoke-DelphiCallGraph -CallGraphPath 'C:\Fake\source'
+                Should -Invoke Write-DelphiCiMessage -ParameterFilter {
+                    $Level -eq 'OK' -and $Message -eq 'CallGraph completed: 3 nodes, 2 edges'
                 }
             }
 

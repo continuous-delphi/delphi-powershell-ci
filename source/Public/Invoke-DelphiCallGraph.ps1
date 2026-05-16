@@ -56,7 +56,7 @@ function Invoke-DelphiCallGraph {
     $toolArgs.Add('-TimeoutSeconds')
     $toolArgs.Add($CallGraphTimeoutSeconds.ToString())
     $toolArgs.Add('-Annotations')
-    $toolArgs.Add($CallGraphAnnotations.ToString())
+    $toolArgs.Add($(if ($CallGraphAnnotations) { '1' } else { '0' }))
 
     if ($CallGraphFormats.Count -gt 0) { $toolArgs.Add('-Formats'); $toolArgs.Add(($CallGraphFormats -join ',')) }
     if (-not [string]::IsNullOrWhiteSpace($CallGraphEnginePath))  { $toolArgs.Add('-EnginePath');  $toolArgs.Add($CallGraphEnginePath) }
@@ -88,6 +88,7 @@ function Invoke-DelphiCallGraph {
     $resultFormats = @($CallGraphFormats)
     $resultFiles = $null
     $resultInputs = @($CallGraphPath)
+    $resultSummary = $null
 
     try {
         if ($PSCmdlet.ShouldProcess($displayTarget, "CallGraph")) {
@@ -101,6 +102,7 @@ function Invoke-DelphiCallGraph {
                 if ($null -ne $parsed.formats) { $resultFormats = @($parsed.formats) }
                 if ($null -ne $parsed.files)   { $resultFiles = $parsed.files }
                 if ($null -ne $parsed.inputs)  { $resultInputs = @($parsed.inputs) }
+                if ($null -ne $parsed.summary) { $resultSummary = $parsed.summary }
             }
             catch {
                 # Result file missing or malformed; keep exit-code-only result.
@@ -112,9 +114,17 @@ function Invoke-DelphiCallGraph {
     }
 
     $stopwatch.Stop()
+    $successMessage = "CallGraph completed: $CallGraphOutputDir"
+    if ($null -ne $resultSummary) {
+        $summaryNodes = $resultSummary.PSObject.Properties['nodes']
+        $summaryEdges = $resultSummary.PSObject.Properties['edges']
+        if ($null -ne $summaryNodes -and $null -ne $summaryEdges) {
+            $successMessage = "CallGraph completed: $($summaryNodes.Value) nodes, $($summaryEdges.Value) edges"
+        }
+    }
 
     if ($toolResult.Success) {
-        Write-DelphiCiMessage -Level 'OK' -Message "CallGraph completed: $CallGraphOutputDir"
+        Write-DelphiCiMessage -Level 'OK' -Message $successMessage
     }
     else {
         Write-DelphiCiMessage -Level 'ERROR' -Message "CallGraph failed (exit code $($toolResult.ExitCode))"
@@ -126,11 +136,12 @@ function Invoke-DelphiCallGraph {
         Duration  = $stopwatch.Elapsed
         ExitCode  = $toolResult.ExitCode
         Tool      = $tool
-        Message   = if ($toolResult.Success) { "CallGraph completed: $CallGraphOutputDir" } else { "Exit code $($toolResult.ExitCode)" }
+        Message   = if ($toolResult.Success) { $successMessage } else { "Exit code $($toolResult.ExitCode)" }
         Engine    = $CallGraphEngine
         Inputs    = $resultInputs
         OutputDir = $CallGraphOutputDir
         Formats   = $resultFormats
         Files     = $resultFiles
+        Summary   = $resultSummary
     }
 }
