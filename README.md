@@ -26,6 +26,7 @@ a single opinionated command surface for local and CI use.
 | [delphi-dccbuild](https://github.com/continuous-delphi/delphi-dccbuild) | Drives DCC builds for Delphi projects |
 | [delphi-incver](https://github.com/continuous-delphi/delphi-incver) | Increments version numbers in RC and text files |
 | [delphi-coverage](https://github.com/continuous-delphi/delphi-coverage) | Code coverage orchestrator for Delphi projects |
+| [delphi-callgraph](https://github.com/continuous-delphi/delphi-callgraph) | Call graph and dependency graph analyzer |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
@@ -39,7 +40,7 @@ test projects or other utilities as needed.
 
 ## v1 scope
 
-v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Coverage**, **Copy**, and **Compress** steps.
+v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Coverage**, **CallGraph**, **Copy**, and **Compress** steps.
 
 ---
 
@@ -268,6 +269,11 @@ Invoke-DelphiCoverage -Execute .\test\Win32\Debug\MyApp.Tests.exe `
     -MapFile .\test\Win32\Debug\MyApp.Tests.map `
     -CoverageSourceDir .\source -CoverageThreshold 60
 
+# Generate a call graph with radCallGraph
+Invoke-DelphiCallGraph -CallGraphPath .\source `
+    -CallGraphFormats json,dot,txt `
+    -CallGraphOutputDir .\artifacts\callgraph
+
 # Copy build outputs into a staging directory (flatten matrix outputs)
 Invoke-DelphiCopy -Source .\source\*\Release\*.exe -Destination .\dist -Flatten $true
 
@@ -325,7 +331,9 @@ Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
 `Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
 `ProjectFile`. Coverage results add `Execute`, `CoveragePercent`,
-`LinesCovered`, `LinesTotal`, `ThresholdMet`, `OutputDir`, and `Badge`. Copy results add `Source`, `Destination`, `FileCount`,
+`LinesCovered`, `LinesTotal`, `ThresholdMet`, `OutputDir`, and `Badge`.
+CallGraph results add `Engine`, `Inputs`, `OutputDir`, `Formats`, and
+`Files`. Copy results add `Source`, `Destination`, `FileCount`,
 and `BytesCopied`. Compress results add `Source`, `Destination`,
 `ArchiveSize`, and `Checksum`.
 
@@ -341,6 +349,7 @@ tools (included, no install needed)
   delphi-dccbuild.ps1
   delphi-incver.ps1
   delphi-coverage.ps1
+  delphi-callgraph.ps1
 source/                 PowerShell module source
   Delphi.PowerShell.CI.psm1
   bundled-tools/        Packaged standalone
@@ -356,6 +365,7 @@ docs/                   Per-command reference documentation
   Invoke-DelphiCompress.md
   Invoke-DelphiCopy.md
   Invoke-DelphiCoverage.md
+  Invoke-DelphiCallGraph.md
   Invoke-DelphiIncVer.md
   Invoke-DelphiRun.md
 tests/                  Pester test suite
@@ -375,6 +385,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiCompress` | Compress step (create .zip archives with optional SHA256 sidecar) |
 | `Invoke-DelphiCopy` | Copy step (collect build outputs with glob, flatten, and checksum) |
 | `Invoke-DelphiCoverage` | Coverage step (code coverage with threshold and badge generation) |
+| `Invoke-DelphiCallGraph` | CallGraph step (call graph and dependency graph analysis) |
 | `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC, DProj, or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |
@@ -402,4 +413,3 @@ This repository follows the Continuous Delphi organization taxonomy. See
 - `docs/org-taxonomy.md` -- naming and tagging conventions
 - `docs/versioning-policy.md` -- release and versioning rules
 - `docs/repo-lifecycle.md` -- lifecycle states and graduation criteria
-

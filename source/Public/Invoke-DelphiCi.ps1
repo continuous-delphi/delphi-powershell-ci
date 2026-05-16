@@ -185,7 +185,63 @@ function Invoke-DelphiCi {
         [int]$CoverageTimeoutSeconds,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$CoverageBadge
+        [string]$CoverageBadge,
+
+        # --- CallGraph defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CallGraphPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphEngine,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphEnginePath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphOutputDir,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CallGraphFormats,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphJsonFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphDotFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphSummaryFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphClass,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CallGraphAnnotations,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphGraphKind,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CallGraphGraphVizUses,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$CallGraphGraphVizClasses,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CallGraphPasDocOptions,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CallGraphProjectFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CallGraphGraphVizExclude,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$CallGraphEngineArguments,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [int]$CallGraphTimeoutSeconds
     )
 
     # ---------------------------------------------------------------------------
@@ -270,6 +326,24 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CoverageThreshold'))             { $overrides['CoverageThreshold']            = $CoverageThreshold }
     if ($PSBoundParameters.ContainsKey('CoverageTimeoutSeconds'))        { $overrides['CoverageTimeoutSeconds']       = $CoverageTimeoutSeconds }
     if ($PSBoundParameters.ContainsKey('CoverageBadge'))                 { $overrides['CoverageBadge']                = $CoverageBadge }
+    if ($PSBoundParameters.ContainsKey('CallGraphPath'))                 { $overrides['CallGraphPath']                = $CallGraphPath }
+    if ($PSBoundParameters.ContainsKey('CallGraphEngine'))               { $overrides['CallGraphEngine']              = $CallGraphEngine }
+    if ($PSBoundParameters.ContainsKey('CallGraphEnginePath'))           { $overrides['CallGraphEnginePath']          = $CallGraphEnginePath }
+    if ($PSBoundParameters.ContainsKey('CallGraphOutputDir'))            { $overrides['CallGraphOutputDir']           = $CallGraphOutputDir }
+    if ($PSBoundParameters.ContainsKey('CallGraphFormats'))              { $overrides['CallGraphFormats']             = $CallGraphFormats }
+    if ($PSBoundParameters.ContainsKey('CallGraphJsonFile'))             { $overrides['CallGraphJsonFile']            = $CallGraphJsonFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphDotFile'))              { $overrides['CallGraphDotFile']             = $CallGraphDotFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphSummaryFile'))          { $overrides['CallGraphSummaryFile']         = $CallGraphSummaryFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphClass'))                { $overrides['CallGraphClass']               = $CallGraphClass }
+    if ($PSBoundParameters.ContainsKey('CallGraphAnnotations'))          { $overrides['CallGraphAnnotations']         = $CallGraphAnnotations }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphKind'))            { $overrides['CallGraphGraphKind']           = $CallGraphGraphKind }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizUses'))         { $overrides['CallGraphGraphVizUses']        = $CallGraphGraphVizUses }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizClasses'))      { $overrides['CallGraphGraphVizClasses']     = $CallGraphGraphVizClasses }
+    if ($PSBoundParameters.ContainsKey('CallGraphPasDocOptions'))        { $overrides['CallGraphPasDocOptions']       = $CallGraphPasDocOptions }
+    if ($PSBoundParameters.ContainsKey('CallGraphProjectFile'))          { $overrides['CallGraphProjectFile']         = $CallGraphProjectFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizExclude'))      { $overrides['CallGraphGraphVizExclude']     = $CallGraphGraphVizExclude }
+    if ($PSBoundParameters.ContainsKey('CallGraphEngineArguments'))      { $overrides['CallGraphEngineArguments']     = $CallGraphEngineArguments }
+    if ($PSBoundParameters.ContainsKey('CallGraphTimeoutSeconds'))       { $overrides['CallGraphTimeoutSeconds']      = $CallGraphTimeoutSeconds }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
@@ -585,6 +659,82 @@ function Invoke-DelphiCi {
                         }
 
                         $result = Invoke-DelphiCoverage @covParams
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'callgraph' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        throw 'No callgraph jobs defined. Use -CallGraphPath/-CallGraphProjectFile or define callgraph jobs in the config file.'
+                    }
+
+                    foreach ($job in $jobs) {
+                        $hasProjectFile = -not [string]::IsNullOrWhiteSpace($job['projectFile'])
+                        $hasPath = @($job['path']).Count -gt 0
+                        if (-not $hasProjectFile -and -not $hasPath) {
+                            throw "CallGraph job '$($job['name'])' has no path or projectFile."
+                        }
+
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "CallGraph job: $($job['name'])"
+                        }
+
+                        $graphPaths = @($job['path']) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+                            $p = $_
+                            if ($p[0] -eq '/' -or ($p[0] -eq '\' -and $p.Length -gt 1 -and $p[1] -ne '\')) { $p = ".$p" }
+                            if (-not [System.IO.Path]::IsPathRooted($p)) { Join-Path $config.Root $p } else { $p }
+                        }
+
+                        $graphProjectFile = $job['projectFile']
+                        if (-not [string]::IsNullOrWhiteSpace($graphProjectFile) -and -not [System.IO.Path]::IsPathRooted($graphProjectFile)) {
+                            $graphProjectFile = Join-Path $config.Root $graphProjectFile
+                        }
+
+                        $graphOutputDir = $job['outputDir']
+                        if (-not [string]::IsNullOrWhiteSpace($graphOutputDir) -and -not [System.IO.Path]::IsPathRooted($graphOutputDir)) {
+                            $graphOutputDir = Join-Path $config.Root $graphOutputDir
+                        }
+
+                        $graphJsonFile = $job['jsonFile']
+                        if (-not [string]::IsNullOrWhiteSpace($graphJsonFile) -and -not [System.IO.Path]::IsPathRooted($graphJsonFile)) {
+                            $graphJsonFile = Join-Path $config.Root $graphJsonFile
+                        }
+
+                        $graphDotFile = $job['dotFile']
+                        if (-not [string]::IsNullOrWhiteSpace($graphDotFile) -and -not [System.IO.Path]::IsPathRooted($graphDotFile)) {
+                            $graphDotFile = Join-Path $config.Root $graphDotFile
+                        }
+
+                        $graphSummaryFile = $job['summaryFile']
+                        if (-not [string]::IsNullOrWhiteSpace($graphSummaryFile) -and -not [System.IO.Path]::IsPathRooted($graphSummaryFile)) {
+                            $graphSummaryFile = Join-Path $config.Root $graphSummaryFile
+                        }
+
+                        $result = Invoke-DelphiCallGraph `
+                            -CallGraphPath              $graphPaths `
+                            -CallGraphEngine            $job['engine'] `
+                            -CallGraphEnginePath        $job['enginePath'] `
+                            -CallGraphOutputDir         $graphOutputDir `
+                            -CallGraphFormats           @($job['formats']) `
+                            -CallGraphJsonFile          $graphJsonFile `
+                            -CallGraphDotFile           $graphDotFile `
+                            -CallGraphSummaryFile       $graphSummaryFile `
+                            -CallGraphClass             $job['class'] `
+                            -CallGraphAnnotations       $job['annotations'] `
+                            -CallGraphGraphKind         $job['graphKind'] `
+                            -CallGraphGraphVizUses      $job['graphVizUses'] `
+                            -CallGraphGraphVizClasses   $job['graphVizClasses'] `
+                            -CallGraphPasDocOptions     @($job['pasDocOptions']) `
+                            -CallGraphProjectFile       $graphProjectFile `
+                            -CallGraphGraphVizExclude   @($job['graphVizExclude']) `
+                            -CallGraphEngineArguments   @($job['engineArguments']) `
+                            -CallGraphTimeoutSeconds    $job['timeoutSeconds']
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {

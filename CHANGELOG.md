@@ -18,6 +18,8 @@ of action objects. This enables repeatable and freely ordered actions
 - Support more options in the external config file for delphi-clean, delphi-msbuild, delphi-dccbuild
 - Support -Verbosity for delphi-msbuild and outputLevel for delphi-clean
 - Add -ExeOutputDir+DcuOutputDir parameters to Invoke-DelphiBuild
+- Add `CallGraph` pipeline action and `Invoke-DelphiCallGraph`, bundling
+  `delphi-callgraph.ps1` for radCallGraph, PasDoc GraphViz, and DCC GraphViz output.
 ---
 
 ## [0.1.0] - Unreleased

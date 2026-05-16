@@ -73,7 +73,27 @@ function Get-DelphiCiConfig {
         [string[]]$CoverageFormats,
         [int]$CoverageThreshold,
         [int]$CoverageTimeoutSeconds,
-        [string]$CoverageBadge
+        [string]$CoverageBadge,
+
+        # CallGraph defaults
+        [string[]]$CallGraphPath,
+        [string]$CallGraphEngine,
+        [string]$CallGraphEnginePath,
+        [string]$CallGraphOutputDir,
+        [string[]]$CallGraphFormats,
+        [string]$CallGraphJsonFile,
+        [string]$CallGraphDotFile,
+        [string]$CallGraphSummaryFile,
+        [string]$CallGraphClass,
+        [bool]$CallGraphAnnotations,
+        [string]$CallGraphGraphKind,
+        [bool]$CallGraphGraphVizUses,
+        [bool]$CallGraphGraphVizClasses,
+        [string[]]$CallGraphPasDocOptions,
+        [string]$CallGraphProjectFile,
+        [string[]]$CallGraphGraphVizExclude,
+        [string[]]$CallGraphEngineArguments,
+        [int]$CallGraphTimeoutSeconds
     )
 
     $overrides = @{}
@@ -131,6 +151,24 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CoverageThreshold'))             { $overrides['CoverageThreshold']            = $CoverageThreshold }
     if ($PSBoundParameters.ContainsKey('CoverageTimeoutSeconds'))        { $overrides['CoverageTimeoutSeconds']       = $CoverageTimeoutSeconds }
     if ($PSBoundParameters.ContainsKey('CoverageBadge'))                 { $overrides['CoverageBadge']                = $CoverageBadge }
+    if ($PSBoundParameters.ContainsKey('CallGraphPath'))                 { $overrides['CallGraphPath']                = $CallGraphPath }
+    if ($PSBoundParameters.ContainsKey('CallGraphEngine'))               { $overrides['CallGraphEngine']              = $CallGraphEngine }
+    if ($PSBoundParameters.ContainsKey('CallGraphEnginePath'))           { $overrides['CallGraphEnginePath']          = $CallGraphEnginePath }
+    if ($PSBoundParameters.ContainsKey('CallGraphOutputDir'))            { $overrides['CallGraphOutputDir']           = $CallGraphOutputDir }
+    if ($PSBoundParameters.ContainsKey('CallGraphFormats'))              { $overrides['CallGraphFormats']             = $CallGraphFormats }
+    if ($PSBoundParameters.ContainsKey('CallGraphJsonFile'))             { $overrides['CallGraphJsonFile']            = $CallGraphJsonFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphDotFile'))              { $overrides['CallGraphDotFile']             = $CallGraphDotFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphSummaryFile'))          { $overrides['CallGraphSummaryFile']         = $CallGraphSummaryFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphClass'))                { $overrides['CallGraphClass']               = $CallGraphClass }
+    if ($PSBoundParameters.ContainsKey('CallGraphAnnotations'))          { $overrides['CallGraphAnnotations']         = $CallGraphAnnotations }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphKind'))            { $overrides['CallGraphGraphKind']           = $CallGraphGraphKind }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizUses'))         { $overrides['CallGraphGraphVizUses']        = $CallGraphGraphVizUses }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizClasses'))      { $overrides['CallGraphGraphVizClasses']     = $CallGraphGraphVizClasses }
+    if ($PSBoundParameters.ContainsKey('CallGraphPasDocOptions'))        { $overrides['CallGraphPasDocOptions']       = $CallGraphPasDocOptions }
+    if ($PSBoundParameters.ContainsKey('CallGraphProjectFile'))          { $overrides['CallGraphProjectFile']         = $CallGraphProjectFile }
+    if ($PSBoundParameters.ContainsKey('CallGraphGraphVizExclude'))      { $overrides['CallGraphGraphVizExclude']     = $CallGraphGraphVizExclude }
+    if ($PSBoundParameters.ContainsKey('CallGraphEngineArguments'))      { $overrides['CallGraphEngineArguments']     = $CallGraphEngineArguments }
+    if ($PSBoundParameters.ContainsKey('CallGraphTimeoutSeconds'))       { $overrides['CallGraphTimeoutSeconds']      = $CallGraphTimeoutSeconds }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

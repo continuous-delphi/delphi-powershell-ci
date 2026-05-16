@@ -137,9 +137,9 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 # We test this indirectly: if Get-BundledToolInfo returns a version
                 # for a tool marked SupportsVersionApi, the subprocess path was used.
                 # The integration test below exercises the real path.
-                # Here we verify the function returns entries for all four tools.
+                # Here we verify the function returns entries for all bundled tools.
                 $info = Get-BundledToolInfo
-                @($info).Count | Should -Be 6
+                @($info).Count | Should -Be 7
             }
 
         }

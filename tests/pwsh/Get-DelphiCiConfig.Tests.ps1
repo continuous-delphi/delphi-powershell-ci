@@ -811,6 +811,68 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
+    Context 'callgraph defaults and pipeline resolution' {
+
+        It 'callgraph action gets correct defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'CallGraph'; jobs = @(@{ path = @('source') }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['engine']      | Should -Be 'radCallGraph'
+            $job['outputDir']   | Should -Be 'callgraph'
+            $job['annotations'] | Should -Be $true
+            $job['formats']     | Should -Contain 'json'
+        }
+
+        It '-CallGraphPath creates a single callgraph job' {
+            $config = Get-DelphiCiConfig -Steps 'CallGraph' -CallGraphPath 'source'
+            $config.Pipeline[0].Action | Should -Be 'CallGraph'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['path'] | Should -Contain 'source'
+        }
+
+        It '-CallGraphProjectFile creates a single callgraph job' {
+            $config = Get-DelphiCiConfig -Steps 'CallGraph' -CallGraphProjectFile 'source/App.dpr'
+            $config.Pipeline[0].Jobs.Count | Should -Be 1
+            $config.Pipeline[0].Jobs[0]['projectFile'] | Should -Be 'source/App.dpr'
+        }
+
+    }
+
+    Context 'callgraph validation' {
+
+        It 'throws on an invalid callgraph engine' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'CallGraph'; engine = 'FakeEngine' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid callgraph engine*'
+        }
+
+        It 'throws on an invalid callgraph format' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'CallGraph'; formats = @('xml') })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid callgraph format*'
+        }
+
+        It 'throws on an invalid callgraph graphKind' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'CallGraph'; graphKind = 'packages' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid callgraph graphKind*'
+        }
+
+    }
+
     Context 'validation' {
 
         It 'throws on an invalid clean level in config file' {

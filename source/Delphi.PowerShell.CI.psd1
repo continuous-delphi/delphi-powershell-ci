@@ -25,6 +25,7 @@
         'Invoke-DelphiCi'
         'Invoke-DelphiClean'
         'Invoke-DelphiBuild'
+        'Invoke-DelphiCallGraph'
         'Invoke-DelphiCompress'
         'Invoke-DelphiCopy'
         'Invoke-DelphiCoverage'

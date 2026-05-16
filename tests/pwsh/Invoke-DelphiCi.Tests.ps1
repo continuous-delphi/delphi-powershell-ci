@@ -67,6 +67,28 @@ InModuleScope 'Delphi.PowerShell.CI' {
                         arguments      = @()
                     }
                 }
+                'callgraph' {
+                    @{
+                        path              = @()
+                        engine            = 'radCallGraph'
+                        enginePath        = ''
+                        outputDir         = 'callgraph'
+                        formats           = @('json')
+                        jsonFile          = ''
+                        dotFile           = ''
+                        summaryFile       = ''
+                        class             = ''
+                        annotations       = $true
+                        graphKind         = ''
+                        graphVizUses      = $false
+                        graphVizClasses   = $false
+                        pasDocOptions     = @()
+                        projectFile       = ''
+                        graphVizExclude   = @()
+                        engineArguments   = @()
+                        timeoutSeconds    = 300
+                    }
+                }
                 default { @{} }
             }
         }
@@ -296,6 +318,51 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
+    function script:New-CallGraphJob {
+        param(
+            [string]$Name = 'Source call graph',
+            [string[]]$Path = @('C:\Fake\source')
+        )
+        @{
+            name             = $Name
+            path             = $Path
+            engine           = 'radCallGraph'
+            enginePath       = ''
+            outputDir        = 'callgraph'
+            formats          = @('json')
+            jsonFile         = ''
+            dotFile          = ''
+            summaryFile      = ''
+            class            = ''
+            annotations      = $true
+            graphKind        = ''
+            graphVizUses     = $false
+            graphVizClasses  = $false
+            pasDocOptions    = @()
+            projectFile      = ''
+            graphVizExclude  = @()
+            engineArguments  = @()
+            timeoutSeconds   = 300
+        }
+    }
+
+    function script:New-CallGraphResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName  = 'CallGraph'
+            Success   = $Success
+            Duration  = [timespan]::Zero
+            ExitCode  = if ($Success) { 0 } else { 5 }
+            Tool      = 'delphi-callgraph.ps1'
+            Message   = if ($Success) { 'CallGraph completed: callgraph' } else { 'Exit code 5' }
+            Engine    = 'radCallGraph'
+            Inputs    = @('C:\Fake\source')
+            OutputDir = 'callgraph'
+            Formats   = @('json')
+            Files     = $null
+        }
+    }
+
     # ---------------------------------------------------------------------------
 
     Describe 'Invoke-DelphiCi -- unit' {
@@ -311,6 +378,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Mock Invoke-DelphiCopy       { script:New-CopyResult }
             Mock Invoke-DelphiCompress   { script:New-CompressResult }
             Mock Invoke-DelphiCoverage   { script:New-CoverageResult }
+            Mock Invoke-DelphiCallGraph  { script:New-CallGraphResult }
             Mock Write-DelphiCiMessage   {}
         }
 
@@ -421,6 +489,16 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiCoverage -Times 1
+            }
+
+            It 'runs Invoke-DelphiCallGraph when pipeline contains CallGraph' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'CallGraph' -Jobs @(script:New-CallGraphJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiCallGraph -Times 1
             }
 
             It 'does not run Clean when pipeline is only Build' {

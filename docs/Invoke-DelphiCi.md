@@ -1,8 +1,9 @@
 # Invoke-DelphiCi
 
 Primary orchestration command. Loads configuration, then runs the pipeline
-of actions (Clean, Build, Run, and future action types) in order. Each
-action can have multiple jobs. Always returns a structured result object.
+of actions (Clean, Build, Run, Coverage, CallGraph, Copy, Compress, and
+other action types) in order. Each action can have multiple jobs. Always
+returns a structured result object.
 
 ---
 
@@ -52,17 +53,20 @@ Invoke-DelphiCi -VersionInfo
 ## Pipeline model
 
 The configuration defines an ordered **pipeline** of actions. Each action
-(Clean, Build, Run) supports multiple **jobs** that run sequentially. Build
-jobs support **matrix expansion** -- `platform` and `configuration` can be
-arrays, producing a cross product of builds.
+supports multiple **jobs** that run sequentially. Build jobs support
+**matrix expansion** -- `platform` and `configuration` can be arrays,
+producing a cross product of builds.
 
 When no jobs are defined for an action:
 - **Clean** creates a default job from the action defaults + root.
 - **Build** throws an error (a project file is required).
 - **Run** throws an error (an execute target is required).
+- **Coverage** throws an error (an executable/map file or dproj is required).
+- **CallGraph** throws an error (a path or project file is required).
 
 For CLI shorthand, `-ProjectFile` creates a single build job and `-Execute`
-creates a single run job.
+creates a single run job. `-CallGraphPath` or `-CallGraphProjectFile`
+creates a single CallGraph job when `-Steps CallGraph` is used.
 
 ---
 

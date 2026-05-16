@@ -67,6 +67,26 @@ function Resolve-DelphiCiConfig {
             timeoutSeconds = 300
             badge          = ''
         }
+        callgraph = @{
+            path              = @()
+            engine            = 'radCallGraph'
+            enginePath        = ''
+            outputDir         = 'callgraph'
+            formats           = @('json')
+            jsonFile          = ''
+            dotFile           = ''
+            summaryFile       = ''
+            class             = ''
+            annotations       = $true
+            graphKind         = ''
+            graphVizUses      = $false
+            graphVizClasses   = $false
+            pasDocOptions     = @()
+            projectFile       = ''
+            graphVizExclude   = @()
+            engineArguments   = @()
+            timeoutSeconds    = 300
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -279,6 +299,48 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['coverage'] = Merge-ActionConfig -Base $effectiveDefaults['coverage'] -Layer $coverageCliLayer
     }
 
+    # CallGraph CLI overrides
+    $callGraphCliLayer = @{}
+    if ($Overrides.ContainsKey('CallGraphPath') -and
+        $null -ne $Overrides['CallGraphPath'])                                      { $callGraphCliLayer['path!']            = @($Overrides['CallGraphPath']) }
+    if ($Overrides.ContainsKey('CallGraphEngine') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphEngine']))           { $callGraphCliLayer['engine']           = $Overrides['CallGraphEngine'] }
+    if ($Overrides.ContainsKey('CallGraphEnginePath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphEnginePath']))       { $callGraphCliLayer['enginePath']       = $Overrides['CallGraphEnginePath'] }
+    if ($Overrides.ContainsKey('CallGraphOutputDir') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphOutputDir']))        { $callGraphCliLayer['outputDir']        = $Overrides['CallGraphOutputDir'] }
+    if ($Overrides.ContainsKey('CallGraphFormats') -and
+        $null -ne $Overrides['CallGraphFormats'])                                   { $callGraphCliLayer['formats!']         = @($Overrides['CallGraphFormats']) }
+    if ($Overrides.ContainsKey('CallGraphJsonFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphJsonFile']))         { $callGraphCliLayer['jsonFile']         = $Overrides['CallGraphJsonFile'] }
+    if ($Overrides.ContainsKey('CallGraphDotFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphDotFile']))          { $callGraphCliLayer['dotFile']          = $Overrides['CallGraphDotFile'] }
+    if ($Overrides.ContainsKey('CallGraphSummaryFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphSummaryFile']))      { $callGraphCliLayer['summaryFile']      = $Overrides['CallGraphSummaryFile'] }
+    if ($Overrides.ContainsKey('CallGraphClass') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphClass']))            { $callGraphCliLayer['class']            = $Overrides['CallGraphClass'] }
+    if ($Overrides.ContainsKey('CallGraphAnnotations') -and
+        $null -ne $Overrides['CallGraphAnnotations'])                               { $callGraphCliLayer['annotations']      = [bool]$Overrides['CallGraphAnnotations'] }
+    if ($Overrides.ContainsKey('CallGraphGraphKind') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphGraphKind']))        { $callGraphCliLayer['graphKind']        = $Overrides['CallGraphGraphKind'] }
+    if ($Overrides.ContainsKey('CallGraphGraphVizUses') -and
+        $null -ne $Overrides['CallGraphGraphVizUses'])                              { $callGraphCliLayer['graphVizUses']     = [bool]$Overrides['CallGraphGraphVizUses'] }
+    if ($Overrides.ContainsKey('CallGraphGraphVizClasses') -and
+        $null -ne $Overrides['CallGraphGraphVizClasses'])                           { $callGraphCliLayer['graphVizClasses']  = [bool]$Overrides['CallGraphGraphVizClasses'] }
+    if ($Overrides.ContainsKey('CallGraphPasDocOptions') -and
+        $null -ne $Overrides['CallGraphPasDocOptions'])                             { $callGraphCliLayer['pasDocOptions!']   = @($Overrides['CallGraphPasDocOptions']) }
+    if ($Overrides.ContainsKey('CallGraphProjectFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphProjectFile']))      { $callGraphCliLayer['projectFile']      = $Overrides['CallGraphProjectFile'] }
+    if ($Overrides.ContainsKey('CallGraphGraphVizExclude') -and
+        $null -ne $Overrides['CallGraphGraphVizExclude'])                           { $callGraphCliLayer['graphVizExclude!'] = @($Overrides['CallGraphGraphVizExclude']) }
+    if ($Overrides.ContainsKey('CallGraphEngineArguments') -and
+        $null -ne $Overrides['CallGraphEngineArguments'])                           { $callGraphCliLayer['engineArguments!'] = @($Overrides['CallGraphEngineArguments']) }
+    if ($Overrides.ContainsKey('CallGraphTimeoutSeconds') -and
+        $null -ne $Overrides['CallGraphTimeoutSeconds'])                            { $callGraphCliLayer['timeoutSeconds']   = [int]$Overrides['CallGraphTimeoutSeconds'] }
+    if ($callGraphCliLayer.Count -gt 0) {
+        $effectiveDefaults['callgraph'] = Merge-ActionConfig -Base $effectiveDefaults['callgraph'] -Layer $callGraphCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params if no pipeline was loaded from JSON
     # -------------------------------------------------------------------------
@@ -328,6 +390,7 @@ function Resolve-DelphiCiConfig {
             'copy'     { Assert-CopyConfig     $actionDefaults }
             'compress' { Assert-CompressConfig $actionDefaults }
             'coverage' { Assert-CoverageConfig $actionDefaults }
+            'callgraph' { Assert-CallGraphConfig $actionDefaults }
         }
 
         # Resolve jobs
@@ -593,6 +656,20 @@ function Build-CliPipeline {
             }
         }
 
+        # If CLI provides call graph path or project file, inject as a single callgraph job
+        if ($stepName -eq 'CallGraph') {
+            if ($Overrides.ContainsKey('CallGraphProjectFile') -and
+                -not [string]::IsNullOrWhiteSpace($Overrides['CallGraphProjectFile'])) {
+                $callGraphJob = @{ projectFile = $Overrides['CallGraphProjectFile'] }
+                $entry['jobs'] = @([PSCustomObject]$callGraphJob)
+            }
+            elseif ($Overrides.ContainsKey('CallGraphPath') -and
+                $null -ne $Overrides['CallGraphPath']) {
+                $callGraphJob = @{ path = @($Overrides['CallGraphPath']) }
+                $entry['jobs'] = @([PSCustomObject]$callGraphJob)
+            }
+        }
+
         $pipeline.Add([PSCustomObject]$entry)
     }
 
@@ -711,5 +788,31 @@ function Assert-CoverageConfig {
                 throw "Invalid coverage format '$fmt'. Valid values: $($validFormats -join ', ')"
             }
         }
+    }
+}
+
+function Assert-CallGraphConfig {
+    <#
+    .SYNOPSIS
+        Validates enum-like fields in a resolved call graph configuration.
+    #>
+    param([hashtable]$Config)
+
+    $validEngines = @('radCallGraph', 'PasDoc', 'DCC')
+    $validFormats = @('json', 'dot', 'txt')
+    $validGraphKinds = @('', 'call', 'uses', 'classes', 'dependency', 'all')
+
+    if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
+        throw "Invalid callgraph engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
+    }
+    if ($Config.ContainsKey('formats')) {
+        foreach ($fmt in $Config['formats']) {
+            if ($fmt.ToLower() -notin $validFormats) {
+                throw "Invalid callgraph format '$fmt'. Valid values: $($validFormats -join ', ')"
+            }
+        }
+    }
+    if ($Config.ContainsKey('graphKind') -and $Config['graphKind'] -notin $validGraphKinds) {
+        throw "Invalid callgraph graphKind '$($Config['graphKind'])'. Valid values: call, uses, classes, dependency, all"
     }
 }
