@@ -38,7 +38,7 @@ Invoke-DelphiCoverage
 | `-CoverageUnits` | string[] | `@()` | Unit name patterns to include (supports wildcards). |
 | `-CoverageExcludeUnits` | string[] | `@()` | Unit name patterns to exclude. |
 | `-CoverageOutputDir` | string | `coverage` | Directory for coverage reports. |
-| `-CoverageFormats` | string[] | `@('html')` | Output formats: `html`, `xml`, `emma`, `lcov`, `cobertura`, `md`. |
+| `-CoverageFormats` | string[] | `@('html')` | Output formats: `html`, `xml`, `emma`, `lcov`, `cobertura`, `md`, `covdb`. |
 | `-CoverageThreshold` | int | `0` | Minimum coverage %. Fails if below. 0 = disabled. |
 | `-CoverageArguments` | string[] | `@()` | Extra arguments passed to the test executable. |
 | `-CoverageTimeoutSeconds` | int | `300` | Maximum time before the engine process is killed. |
@@ -54,8 +54,8 @@ Invoke-DelphiCoverage
 
 Both engines share the same CLI parameter conventions and both support
 `-dproj` for auto-discovery from a project file. `radCodeCoverage`
-additionally supports the `md` and `lcov` output formats for markdown
-and LCOV coverage reports.
+additionally supports the `md`, `lcov`, and `covdb` output formats for
+markdown, LCOV, and SQLite coverage reports.
 
 The engine must be on PATH or specified via `-CoverageEnginePath`.
 Use `-CoverageEnginePath` for platform-specific variants (e.g.,
@@ -148,6 +148,15 @@ Invoke-DelphiCoverage -Execute .\test\Win64\Debug\MyApp.Tests.exe `
     -CoverageSourceDir .\source -CoverageFormats html,md
 ```
 
+### Using radCodeCoverage with covdb (SQLite) output
+
+```powershell
+Invoke-DelphiCoverage -Execute .\test\Win64\Debug\MyApp.Tests.exe `
+    -MapFile .\test\Win64\Debug\MyApp.Tests.map `
+    -CoverageEngine radCodeCoverage `
+    -CoverageSourceDir .\source -CoverageFormats html,covdb
+```
+
 ### Pipeline Coverage action in Invoke-DelphiCi config file
 
 ```json
@@ -204,8 +213,9 @@ Each job inherits defaults through the three-level merge
 - The engine executable must be installed separately. `DelphiCodeCoverage`
   is available at [github.com/DelphiCodeCoverage](https://github.com/DelphiCodeCoverage/DelphiCodeCoverage).
 - `radCodeCoverage` shares DelphiCodeCoverage's CLI conventions and adds
-  the `md` format for markdown reports. Use `-CoverageEnginePath` to
-  specify platform-specific variants like `radCodeCoverage.x64.exe`.
+  the `md` format for markdown reports and `covdb` for SQLite database
+  output. Use `-CoverageEnginePath` to specify platform-specific variants
+  like `radCodeCoverage.x64.exe`.
 - Coverage reports are written to `-CoverageOutputDir`. The directory is
   created automatically if it does not exist.
 - The standalone tool is maintained at

@@ -22,6 +22,8 @@ of action objects. This enables repeatable and freely ordered actions
   `delphi-callgraph.ps1` for radCallGraph, PasDoc GraphViz, and DCC GraphViz output.
 - Enable deterministic radCallGraph output by default and expose
   `CallGraphDeterministic` / `deterministic` opt-out controls.
+- Add `covdb` coverage output format (SQLite) for radCodeCoverage engine
+  [#10](https://github.com/continuous-delphi/delphi-powershell-ci/issues/10)
 
 ---
 

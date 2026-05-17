@@ -780,7 +780,7 @@ function Assert-CoverageConfig {
     param([hashtable]$Config)
 
     $validEngines = @('DelphiCodeCoverage', 'radCodeCoverage')
-    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md')
+    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md', 'covdb')
 
     if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
         throw "Invalid coverage engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"

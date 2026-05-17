@@ -273,6 +273,7 @@ function Invoke-DelphiCodeCoverageEngine {
             'lcov'      { $engineArgs.Add('-lcov') }
             'cobertura' { $engineArgs.Add('-xml'); $engineArgs.Add('-xmllines'); $xmlRequested = $true }
             'md'        { $engineArgs.Add('-md') }
+            'covdb'     { $engineArgs.Add('-covdb') }
         }
     }
     if (-not $xmlRequested) {
@@ -370,6 +371,7 @@ function Invoke-CoverageEngineDproj {
             'lcov'      { $engineArgs.Add('-lcov') }
             'cobertura' { $engineArgs.Add('-xml'); $engineArgs.Add('-xmllines'); $xmlRequested = $true }
             'md'        { $engineArgs.Add('-md') }
+            'covdb'     { $engineArgs.Add('-covdb') }
         }
     }
     if (-not $xmlRequested) {
@@ -685,12 +687,18 @@ try {
     $resolvedFormats = @(if (-not [string]::IsNullOrEmpty($Formats)) { $Formats -split ',' } else { @('html') })
 
     # Validate formats
-    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md')
+    $validFormats = @('html', 'xml', 'emma', 'lcov', 'cobertura', 'md', 'covdb')
     foreach ($fmt in $resolvedFormats) {
         if ($fmt.ToLower() -notin $validFormats) {
             Write-Error "Invalid format '$fmt'. Valid values: $($validFormats -join ', ')" -ErrorAction Continue
             exit $ExitInvalidArguments
         }
+    }
+
+    # covdb format requires radCodeCoverage engine
+    if ($resolvedFormats -contains 'covdb' -and $Engine -ne 'radCodeCoverage') {
+        Write-Error "Format 'covdb' requires -Engine radCodeCoverage" -ErrorAction Continue
+        exit $ExitInvalidArguments
     }
 
     # Find the coverage engine
