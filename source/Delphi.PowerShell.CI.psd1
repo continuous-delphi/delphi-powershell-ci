@@ -14,7 +14,7 @@
     Copyright         = '(c) Continuous Delphi. All rights reserved.'
 
     # Description
-    Description       = 'Bundled PowerShell CI orchestration layer for Delphi projects. Packages delphi-clean, delphi-inspect, and delphi-msbuild into a single opinionated command surface for local and CI use.'
+    Description       = 'Bundled PowerShell CI orchestration layer for Delphi projects. Packages delphi-inspect, delphi-clean, delphi-msbuild, delphi-dccbuild, delphi-incver, delphi-coverage, and delphi-callgraph into a single opinionated command surface for local and CI use.'
 
     # PowerShell version requirement
     PowerShellVersion = '5.1'

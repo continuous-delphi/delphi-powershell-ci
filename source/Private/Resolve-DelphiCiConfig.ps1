@@ -234,16 +234,16 @@ function Resolve-DelphiCiConfig {
 
     # IncVer CLI overrides
     $incverCliLayer = @{}
-    if ($Overrides.ContainsKey('IncverTarget') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['IncverTarget']))     { $incverCliLayer['target']     = $Overrides['IncverTarget'] }
-    if ($Overrides.ContainsKey('IncverStyle') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['IncverStyle']))      { $incverCliLayer['style']      = $Overrides['IncverStyle'] }
-    if ($Overrides.ContainsKey('IncverPart') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['IncverPart']))       { $incverCliLayer['part']       = $Overrides['IncverPart'] }
-    if ($Overrides.ContainsKey('IncverPattern') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['IncverPattern']))    { $incverCliLayer['pattern']    = $Overrides['IncverPattern'] }
-    if ($Overrides.ContainsKey('IncverDateformat') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['IncverDateformat'])) { $incverCliLayer['dateformat'] = $Overrides['IncverDateformat'] }
+    if ($Overrides.ContainsKey('IncVerTarget') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncVerTarget']))     { $incverCliLayer['target']     = $Overrides['IncVerTarget'] }
+    if ($Overrides.ContainsKey('IncVerStyle') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncVerStyle']))      { $incverCliLayer['style']      = $Overrides['IncVerStyle'] }
+    if ($Overrides.ContainsKey('IncVerPart') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncVerPart']))       { $incverCliLayer['part']       = $Overrides['IncVerPart'] }
+    if ($Overrides.ContainsKey('IncVerPattern') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncVerPattern']))    { $incverCliLayer['pattern']    = $Overrides['IncVerPattern'] }
+    if ($Overrides.ContainsKey('IncVerDateformat') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['IncVerDateformat'])) { $incverCliLayer['dateformat'] = $Overrides['IncVerDateformat'] }
     if ($incverCliLayer.Count -gt 0) {
         $effectiveDefaults['incver'] = Merge-ActionConfig -Base $effectiveDefaults['incver'] -Layer $incverCliLayer
     }
@@ -389,7 +389,7 @@ function Resolve-DelphiCiConfig {
         switch ($actionType) {
             'clean'    { Assert-CleanConfig    $actionDefaults }
             'build'    { Assert-BuildConfig    $actionDefaults }
-            'incver'   { Assert-IncverConfig   $actionDefaults }
+            'incver'   { Assert-IncVerConfig   $actionDefaults }
             'copy'     { Assert-CopyConfig     $actionDefaults }
             'compress' { Assert-CompressConfig $actionDefaults }
             'coverage' { Assert-CoverageConfig $actionDefaults }
@@ -614,9 +614,9 @@ function Build-CliPipeline {
         }
 
         # If CLI provides a version file, inject it as a single incver job
-        if ($stepName -eq 'IncVer' -and $Overrides.ContainsKey('IncverFile') -and
-            -not [string]::IsNullOrWhiteSpace($Overrides['IncverFile'])) {
-            $entry['jobs'] = @([PSCustomObject]@{ file = $Overrides['IncverFile'] })
+        if ($stepName -eq 'IncVer' -and $Overrides.ContainsKey('IncVerFile') -and
+            -not [string]::IsNullOrWhiteSpace($Overrides['IncVerFile'])) {
+            $entry['jobs'] = @([PSCustomObject]@{ file = $Overrides['IncVerFile'] })
         }
 
         # If CLI provides copy source/destination, inject as a single copy job
@@ -719,7 +719,7 @@ function Assert-BuildConfig {
     }
 }
 
-function Assert-IncverConfig {
+function Assert-IncVerConfig {
     <#
     .SYNOPSIS
         Validates fields in a resolved incver configuration.

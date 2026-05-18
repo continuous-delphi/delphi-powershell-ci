@@ -1,4 +1,4 @@
-function Invoke-DelphiIncver {
+function Invoke-DelphiIncVer {
     <#
     .SYNOPSIS
         Increments a version number in a source file as a CI step.
@@ -15,18 +15,18 @@ function Invoke-DelphiIncver {
         [string]$File,
 
         # File type: RC or Text. Auto-detected from extension if empty.
-        [string]$IncverTarget = '',
+        [string]$IncVerTarget = '',
 
         # Version style: WinVer or SemVer. Auto-detected from target if empty.
-        [string]$IncverStyle = '',
+        [string]$IncVerStyle = '',
 
         # Which version component to bump: major, minor, patch, build,
         # or pre-release. When empty, bumps the last component.
-        [string]$IncverPart = '',
+        [string]$IncVerPart = '',
 
         # Regex pattern with a capture group around the version string.
         # Required for Text targets.
-        [string]$IncverPattern = ''
+        [string]$IncVerPattern = ''
     )
 
     $tool      = 'delphi-incver.ps1'
@@ -35,10 +35,10 @@ function Invoke-DelphiIncver {
     Write-DelphiCiMessage -Level 'STEP' -Message "IncVer -- $File"
 
     $toolArgs = [System.Collections.Generic.List[string]]@('-File', $File)
-    if (-not [string]::IsNullOrEmpty($IncverTarget))  { $toolArgs.Add('-Target');  $toolArgs.Add($IncverTarget) }
-    if (-not [string]::IsNullOrEmpty($IncverStyle))   { $toolArgs.Add('-Style');   $toolArgs.Add($IncverStyle) }
-    if (-not [string]::IsNullOrEmpty($IncverPart))    { $toolArgs.Add('-Part');    $toolArgs.Add($IncverPart) }
-    if (-not [string]::IsNullOrEmpty($IncverPattern)) { $toolArgs.Add('-Pattern'); $toolArgs.Add($IncverPattern) }
+    if (-not [string]::IsNullOrEmpty($IncVerTarget))  { $toolArgs.Add('-Target');  $toolArgs.Add($IncVerTarget) }
+    if (-not [string]::IsNullOrEmpty($IncVerStyle))   { $toolArgs.Add('-Style');   $toolArgs.Add($IncVerStyle) }
+    if (-not [string]::IsNullOrEmpty($IncVerPart))    { $toolArgs.Add('-Part');    $toolArgs.Add($IncVerPart) }
+    if (-not [string]::IsNullOrEmpty($IncVerPattern)) { $toolArgs.Add('-Pattern'); $toolArgs.Add($IncVerPattern) }
 
     $resultFile = [System.IO.Path]::GetTempFileName()
     $toolArgs.Add('-OutputFile')

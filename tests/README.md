@@ -7,16 +7,20 @@ tests/
 +- run-tests.ps1        PowerShell runner (requires PowerShell 7+)
 +- run-tests.bat        Convenience wrapper for interactive Windows use
 +- pwsh/
-   +- PesterConfig.psd1                  Pester 5.7+ configuration
-   +- TestHelpers.ps1                    Shared utilities dot-sourced by test files
-   +- Smoke.Tests.ps1                    Infrastructure smoke test
-   +- PSScriptAnalyzer.Tests.ps1         Lint gate
-   +- Get-DelphiCiConfig.Tests.ps1       Config normalization tests
-   +- Resolve-DefaultPlatform.Tests.ps1  Platform resolution tests
-   +- Invoke-DelphiCi.Tests.ps1          Orchestration command tests
-   +- Invoke-DelphiBuild.Tests.ps1       Build step tests
-   +- Invoke-DelphiClean.Tests.ps1       Clean step tests
-   +- Invoke-DelphiTest.Tests.ps1        Test step tests
+   +- PesterConfig.psd1                       Pester 5.7+ configuration
+   +- TestHelpers.ps1                         Shared utilities dot-sourced by test files
+   +- PSScriptAnalyzer.Tests.ps1              Lint gate
+   +- Resolve-DefaultPlatform.Tests.ps1       Platform resolution tests
+   +- Get-DelphiCiConfig.Tests.ps1            Config normalization tests
+   +- Invoke-DelphiCi.Tests.ps1               Orchestration command tests
+   +- Invoke-DelphiCi.VersionInfo.Tests.ps1   -VersionInfo flag tests
+   +- Invoke-DelphiBuild.Tests.ps1            Build action tests
+   +- Invoke-DelphiClean.Tests.ps1            Clean action tests
+   +- Invoke-DelphiRun.Tests.ps1              Run action tests
+   +- Invoke-DelphiIncVer.Tests.ps1           IncVer action tests
+   +- Invoke-DelphiCopy.Tests.ps1             Copy action tests
+   +- Invoke-DelphiCompress.Tests.ps1         Compress action tests
+   +- Invoke-DelphiCallGraph.Tests.ps1        CallGraph action tests
    +- results/
       +- pester-results.xml     NUnitXml output (generated, git-ignored)
 ```
@@ -69,29 +73,11 @@ Install-Module PSScriptAnalyzer -MinimumVersion 1.21.0 -Force
 
 ## Test files
 
-### Smoke.Tests.ps1
-
-Minimal infrastructure check. Verifies that the test runner, Pester
-configuration, and source script are all wired up correctly. Not a
-substitute for unit tests.
-
 ### PSScriptAnalyzer.Tests.ps1
 
 Lint gate. Runs `Invoke-ScriptAnalyzer` on the source and asserts zero
 violations using the default rule set. Violations are listed with rule
 name, severity, and line number on failure.
-
-### Find-DelphiProjects.Tests.ps1
-
-Behaviour-contract tests for the private `Find-DelphiProjects` function.
-Uses `InModuleScope` to access the private function. Covers:
-
-- `.dproj` found directly in root
-- Falls through to `root/source` when root has none
-- Falls through to `root/../source` (tools-folder convention) when both above have none
-- Stops at first location that yields results (no over-searching)
-- Non-recursive search (files in subdirectories are not returned)
-- Empty result when no `.dproj` exists in any search location
 
 ### Resolve-DefaultPlatform.Tests.ps1
 
@@ -104,22 +90,34 @@ Uses `InModuleScope` to access the private function. Covers:
 - Returns the single platform name when exactly one platform is active
 - Integration test against the real `ConsoleProject.dproj`
 
+### Get-DelphiCiConfig.Tests.ps1
+
+Behaviour-contract tests for `Get-DelphiCiConfig` and its private
+normalization logic. Covers:
+
+- Built-in defaults when no arguments are supplied
+- JSON config file loading (all supported fields)
+- Root resolution relative to the config file directory
+- CLI parameter override precedence over config file values
+- CLI parameter override precedence over built-in defaults
+- Validation errors for invalid field values
+
 ### Invoke-DelphiCi.Tests.ps1
 
 Behaviour-contract tests for `Invoke-DelphiCi`. Uses `InModuleScope` with
 mocked step commands and private helpers for unit tests. Covers:
 
-- Step routing: Clean-only, Build-only, Clean+Build, Test-only, and
-  Clean+Build+Test
-- Halt-on-failure: Build does not run when Clean fails; Success reflects failure
-- PassThru result shape: Success, Duration, ProjectFile, Steps array with names
-- Steps array contains only executed steps when halted by failure
-- Parameter forwarding: Level to Invoke-DelphiClean; Platform, Configuration,
-  and Defines to Invoke-DelphiBuild; Defines, Arguments, TimeoutSeconds, Build,
-  and Run to Invoke-DelphiTest
-- Platform auto-resolution: resolved from main project for Build, from test
-  project for Test; DCCBuild defaults to Win32
+- Pipeline action routing and ordering
+- Halt-on-failure: subsequent actions do not run when an earlier action fails
+- PassThru result shape: Success, Duration, ProjectFile, Steps array
+- Parameter forwarding to each action command
+- Platform auto-resolution from project files
 - Integration test: real clean + build of ConsoleProject for Win32 Debug
+
+### Invoke-DelphiCi.VersionInfo.Tests.ps1
+
+Tests for the `-VersionInfo` flag on `Invoke-DelphiCi`. Verifies that
+the module version and bundled tool inventory are reported correctly.
 
 ### Invoke-DelphiBuild.Tests.ps1
 
@@ -148,38 +146,36 @@ the private `Invoke-BundledTool` helper. Uses `InModuleScope` with mocked
 - Argument passing: tool name, -Level default and explicit values, -RootPath
 - Integration test against the real `ConsoleProjectGroup/Source` with level `basic`
 
-### Get-DelphiCiConfig.Tests.ps1
+### Invoke-DelphiRun.Tests.ps1
 
-Behaviour-contract tests for `Get-DelphiCiConfig` and its private
-normalization logic. Covers:
+Behaviour-contract tests for `Invoke-DelphiRun`. Covers tool invocation,
+argument forwarding, timeout handling, and structured result shape.
 
-- Built-in defaults when no arguments are supplied (including all Test defaults)
-- JSON config file loading (all supported fields, including the `test` section)
-- Root resolution relative to the config file directory
-- CLI parameter override precedence over config file values (including all
-  Test parameters)
-- CLI parameter override precedence over built-in defaults
-- Validation errors for invalid field values
+### Invoke-DelphiIncVer.Tests.ps1
 
-### Invoke-DelphiTest.Tests.ps1
+Behaviour-contract tests for `Invoke-DelphiIncVer`. Uses `InModuleScope`
+with mocked `Invoke-BundledTool`. Covers:
 
-Behaviour-contract tests for `Invoke-DelphiTest` and its private helpers.
-Uses `InModuleScope`. Covers:
+- Step result shape (StepName, Tool, Duration, File, OldVersion, NewVersion)
+- Success and failure paths with exit code reflection
+- WhatIf support (tool not invoked)
+- Argument passing: -File, -Target, -Style, -Part, -Pattern, -OutputFile
+- Temp result file cleanup after success and failure
 
-- Step result shape (StepName, Tool, Duration, TestProjectFile, TestExecutable)
-- Success and ExitCode reflect runner exit code
-- Build phase failure: runner not called, TestExecutable is null, message
-  indicates build failure
-- Build/run phase control: `-Build $false` skips build; `-Run $false` skips run
-- WhatIf: neither build nor run phase executes
-- Platform auto-resolution: calls Resolve-DefaultPlatform when no platform
-  given (MSBuild); uses Win32 for DCCBuild; explicit value bypasses resolution
-- Parameter forwarding to Invoke-TestBuild (Platform, Configuration, Defines,
-  BuildEngine) and Invoke-TestRunner (TimeoutSeconds, Arguments)
-- Invoke-TestRunner unit tests with real `pwsh.exe`: timeout kill path,
-  success (exit 0), failure (exit non-zero), missing executable
-- Integration test: real build and run of `ConsoleProject.Tests.dproj` with
-  `-Defines CI`
+### Invoke-DelphiCopy.Tests.ps1
+
+Behaviour-contract tests for `Invoke-DelphiCopy`. Covers source/destination
+argument forwarding, flatten mode, and structured result shape.
+
+### Invoke-DelphiCompress.Tests.ps1
+
+Behaviour-contract tests for `Invoke-DelphiCompress`. Covers source/destination
+argument forwarding and structured result shape.
+
+### Invoke-DelphiCallGraph.Tests.ps1
+
+Behaviour-contract tests for `Invoke-DelphiCallGraph`. Covers tool invocation,
+argument forwarding, deterministic output control, and structured result shape.
 
 ## Result output
 
