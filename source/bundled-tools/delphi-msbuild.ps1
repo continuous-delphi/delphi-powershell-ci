@@ -1,3 +1,28 @@
+# -----------------------------------------------------------------------------
+# delphi-msbuild
+#
+# Simple command-line consistent builds for Delphi projects.
+#
+# Project repository:
+# https://github.com/continuous-delphi/delphi-msbuild
+#
+# Pair with delphi-inspect to discover the full list of installed Delphi toolchains
+# (or pick the latest) and pass build settings into scripts or CI.
+# https://github.com/continuous-delphi/delphi-inspect
+#
+# Also bundled as part of delphi-powershell-ci, providing a suite of pipeline
+# actions including: Clean, IncVer, Build, Run, Coverage, CallGraph, Copy, and Compress.
+# https://github.com/continuous-delphi/delphi-powershell-ci
+#
+# Part of Continuous-Delphi: Strengthening Delphi's continued success
+# https://github.com/continuous-delphi
+#
+# Copyright (c) 2026 Darian Miller
+# Licensed under the MIT License.
+# https://opensource.org/licenses/MIT
+# SPDX-License-Identifier: MIT
+# -----------------------------------------------------------------------------
+
 <#
 delphi-msbuild.ps1
 
@@ -34,8 +59,8 @@ NOTES
   are Debug and Release.
 
   MSBuild output is always captured and returned in the result object's
-  .output property.  Use -ShowOutput to also stream output to stdout in real
-  time; .output is populated in both cases.
+  .output property.  Use -ShowOutput to also stream output to the console in
+  real time; .output is populated in both cases.
 
   Exit codes:
     0  success
@@ -65,7 +90,7 @@ param(
   [string]$RootDir,
 
   [ValidateSet('Win32','Win64','macOS32','macOS64','macOSARM64','Linux64',
-               'iOS32','iOSSimulator32','iOS64','iOSSimulator64','Android32','Android64')]
+               'iOS32','iOSSimulator32','iOS64','iOSSimulator64','Android32','Android64','WinARM64EC')]
   [string]$Platform = 'Win32',
 
   [string]$Config = 'Debug',
@@ -114,7 +139,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.7.0'
+$script:Version = '1.1.0'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -178,8 +203,8 @@ function Invoke-RsvarsEnvironment {
 
 # Invoke msbuild.exe with the given arguments.
 # Returns [pscustomobject]@{ ExitCode; Output } where Output is always the
-# captured build text.  When -ShowOutput is set the text is also written to
-# the host so the caller sees it in real time.
+# captured build text.  When -ShowOutput is set each output line is also
+# written to the host as MSBuild emits it.
 # Separated into its own function so tests can mock it.
 function Invoke-MsbuildExe {
   param(
@@ -187,9 +212,18 @@ function Invoke-MsbuildExe {
     [switch]$ShowOutput
   )
 
-  $output = & msbuild.exe @Arguments 2>&1 | Out-String
-  if ($ShowOutput) { Write-Host $output }
-  return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+  $outputLines = New-Object System.Collections.Generic.List[string]
+  & msbuild.exe @Arguments 2>&1 | ForEach-Object {
+    $line = [string]$_
+    [void]$outputLines.Add($line)
+    if ($ShowOutput) { Write-Host $line }
+  }
+  $exitCode = $LASTEXITCODE
+  $output = $outputLines -join [Environment]::NewLine
+  if ($outputLines.Count -gt 0) {
+    $output += [Environment]::NewLine
+  }
+  return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
 }
 
 # Assemble MSBuild arguments and invoke the build.

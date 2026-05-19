@@ -29,9 +29,10 @@ Increments a version number in an RC, DProj, or text file.
 Parses a version string from the target file, increments the specified
 component, and writes the updated version back to the file.
 
-For RC files, all four VERSIONINFO locations are updated:
-  FILEVERSION, PRODUCTVERSION (comma-separated)
-  VALUE "FileVersion", VALUE "ProductVersion" (dot-separated strings)
+For RC files, the two FileVersion locations are updated:
+  FILEVERSION (comma-separated)
+  VALUE "FileVersion" (dot-separated string)
+ProductVersion is left unchanged.
 
 For DProj files, the FileVersion value inside every VerInfo_Keys element
 is updated across all PropertyGroups. ProductVersion is left unchanged.
@@ -100,7 +101,7 @@ $ExitFileNotFound     = 3
 $ExitPatternNotFound  = 4
 $ExitIncrementFailed  = 5
 
-$script:ToolVersion = '0.2.0'
+$script:ToolVersion = '1.3.0'
 
 # -----------------------------------------------------------------------------
 # Version parsing and formatting
@@ -352,7 +353,7 @@ function Step-SemVerPreRelease {
 function Update-RcContent {
     <#
     .SYNOPSIS
-        Updates all VERSIONINFO locations in RC file content.
+        Updates FileVersion in VERSIONINFO block of RC file content (leaves ProductVersion unchanged).
         Returns a hashtable with Content (updated string) and OldVersion/NewVersion.
     #>
     param(
@@ -380,13 +381,11 @@ function Update-RcContent {
     $commaPattern = '\d+' + ('\s*,\s*\d+' * $commaCount)
     $dotPattern   = '\d+' + ('\.\d+' * $dotCount)
 
-    # Replace FILEVERSION and PRODUCTVERSION (comma-separated)
+    # Replace FILEVERSION (comma-separated) -- leave PRODUCTVERSION unchanged
     $Content = $Content -replace "(?m)^(\s*FILEVERSION\s+)${commaPattern}(\s*)$",    "`${1}${newCommaVer}`${2}"
-    $Content = $Content -replace "(?m)^(\s*PRODUCTVERSION\s+)${commaPattern}(\s*)$", "`${1}${newCommaVer}`${2}"
 
-    # Replace VALUE "FileVersion" and VALUE "ProductVersion" (dot-separated strings)
+    # Replace VALUE "FileVersion" (dot-separated string) -- leave VALUE "ProductVersion" unchanged
     $Content = $Content -replace "(VALUE\s+`"FileVersion`"\s*,\s*`")${dotPattern}",    "`${1}${newDotVer}"
-    $Content = $Content -replace "(VALUE\s+`"ProductVersion`"\s*,\s*`")${dotPattern}",  "`${1}${newDotVer}"
 
     return @{
         Content    = $Content
@@ -398,16 +397,17 @@ function Update-RcContent {
 function Update-TextContent {
     <#
     .SYNOPSIS
-        Uses a regex pattern with a capture group to find and replace a
-        version string in text file content.
+        Parses, increments, and replaces a version string in text file content
+        using a regex pattern with a capture group.
+        Returns a hashtable with Content (updated string) and OldVersion/NewVersion.
     #>
     param(
         [string]$Content,
         [string]$Pattern,
-        [string]$NewVersion
+        [string]$Style,
+        [string]$PartName
     )
 
-    # The pattern must have exactly one capture group for the version
     $regex = [regex]::new($Pattern)
     $match = $regex.Match($Content)
     if (-not $match.Success) {
@@ -418,14 +418,28 @@ function Update-TextContent {
     }
 
     $group = $match.Groups[1]
+    $oldVersionStr = $group.Value
+
+    # Parse and increment based on style
+    if ($Style -eq 'WinVer') {
+        $parts = ConvertFrom-WinVer $oldVersionStr
+        $newParts = Step-WinVer -Parts $parts -PartName $PartName
+        $newVersionStr = ConvertTo-WinVer -Parts $newParts -Separator '.'
+    }
+    else {
+        $parsed = ConvertFrom-SemVer $oldVersionStr
+        $bumped = Step-SemVer -Parsed $parsed -PartName $PartName
+        $newVersionStr = ConvertTo-SemVer $bumped
+    }
+
     $before = $Content.Substring(0, $group.Index)
     $after  = $Content.Substring($group.Index + $group.Length)
-    $updated = $before + $NewVersion + $after
+    $updated = $before + $newVersionStr + $after
 
     return @{
         Content    = $updated
-        OldVersion = $group.Value
-        NewVersion = $NewVersion
+        OldVersion = $oldVersionStr
+        NewVersion = $newVersionStr
     }
 }
 
@@ -584,6 +598,7 @@ try {
             exit $ExitPatternNotFound
         }
 
+        # XmlDocument.Save writes UTF-8 with BOM, matching the Delphi IDE
         $updateResult.XmlDocument.Save($File)
         Write-Host "$($updateResult.OldVersion) -> $($updateResult.NewVersion)"
 
@@ -598,53 +613,24 @@ try {
         exit $ExitSuccess
     }
     else {
-        # Text target -- use pattern to find and update version
-        # First extract the current version using the pattern
-        $regex = [regex]::new($Pattern)
-        $match = $regex.Match($content)
-        if (-not $match.Success) {
+        # Text target -- parse, increment, and replace version via pattern
+        $updateResult = Update-TextContent -Content $content -Pattern $Pattern -Style $resolvedStyle -PartName $Part
+        if ($null -eq $updateResult) {
             Write-Error "Pattern not found in $File" -ErrorAction Continue
             Write-Result @{ file = $File; error = "Pattern not found" }
             exit $ExitPatternNotFound
         }
-        if ($match.Groups.Count -lt 2) {
-            Write-Error "Pattern must contain at least one capture group for the version string." -ErrorAction Continue
-            exit $ExitInvalidArguments
-        }
-
-        $oldVersionStr = $match.Groups[1].Value
-
-        # Parse and increment based on style
-        if ($resolvedStyle -eq 'WinVer') {
-            $parts = ConvertFrom-WinVer $oldVersionStr
-            $newParts = Step-WinVer -Parts $parts -PartName $Part
-            $newVersionStr = ConvertTo-WinVer -Parts $newParts -Separator '.'
-        }
-        else {
-            # SemVer
-            $parsed = ConvertFrom-SemVer $oldVersionStr
-            $bumped = Step-SemVer -Parsed $parsed -PartName $Part
-            $newVersionStr = ConvertTo-SemVer $bumped
-        }
-
-        # Replace the version in the content using the capture group position
-        $updateResult = Update-TextContent -Content $content -Pattern $Pattern -NewVersion $newVersionStr
-        if ($null -eq $updateResult) {
-            Write-Error "Failed to update version in $File" -ErrorAction Continue
-            Write-Result @{ file = $File; error = "Update failed" }
-            exit $ExitPatternNotFound
-        }
 
         Set-Content -LiteralPath $File -Value $updateResult.Content -NoNewline -Encoding UTF8
-        Write-Host "$oldVersionStr -> $newVersionStr"
+        Write-Host "$($updateResult.OldVersion) -> $($updateResult.NewVersion)"
 
         Write-Result @{
             file       = $File
             target     = $resolvedTarget
             style      = $resolvedStyle
             part       = if ([string]::IsNullOrEmpty($Part)) { 'last' } else { $Part }
-            oldVersion = $oldVersionStr
-            newVersion = $newVersionStr
+            oldVersion = $updateResult.OldVersion
+            newVersion = $updateResult.NewVersion
         }
         exit $ExitSuccess
     }
