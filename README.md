@@ -218,8 +218,9 @@ be string or array, producing a cross product of builds.
 }
 ```
 
-`includePath` and `namespace` are DCCBuild-only and are ignored when `engine`
-is `MSBuild`.
+`includePath` and `namespace` are DCCBuild-only. When `engine` is `MSBuild`,
+the build step rejects those fields with a clear error; configure equivalent
+settings in the project's MSBuild property groups instead.
 
 All fields are optional. Absent fields fall back to built-in defaults.
 

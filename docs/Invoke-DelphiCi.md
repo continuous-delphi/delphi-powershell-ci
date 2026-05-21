@@ -144,8 +144,8 @@ Root directory used as the resolved absolute working directory and as the defaul
 ### -Steps
 
 Action types to include in the pipeline. Valid values: `Clean`, `Build`,
-`Run`. Default: `Clean, Build`. Used when no config file pipeline is
-present.
+`Run`, `IncVer`, `Copy`, `Compress`, `Coverage`, and `CallGraph`. Default:
+`Clean, Build`. Used when no config file pipeline is present.
 
 ### -ProjectFile
 
