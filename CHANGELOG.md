@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ---
 
 ## [Unreleased]
+- Add `schemas/delphi-ci.schema.json` for editor completion and validation of
+  `delphi-ci.json` pipeline configuration files.
+- Remove unreleased legacy JSON config support for top-level `"steps"` and
+  named action sections; config files now use the ordered `"pipeline"` format.
 - Extended pipeline redesign v2: replaced the fixed `"steps"` 
 and named-section config layout with an ordered `"pipeline"` array
 of action objects. This enables repeatable and freely ordered actions

@@ -1,4 +1,5 @@
 {
+  "$schema": "../schemas/delphi-ci.schema.json",
   "root": ".",
   "defaults": {
     "clean": {
@@ -110,8 +111,6 @@
       "exeOutputDir": "",
       "dcuOutputDir": "",
       "unitSearchPath": ["lib/units"],
-      "includePath": ["lib/include"],
-      "namespace": ["System", "System.Classes"],
       "jobs": [
         {
           "name": "Main App",
@@ -125,9 +124,7 @@
           "target": "Build",
           "exeOutputDir": "bin/",
           "dcuOutputDir": "dcu/",
-          "unitSearchPath": ["lib/extra"],
-          "includePath": [],
-          "namespace": []
+          "unitSearchPath": ["lib/extra"]
         },
         {
           "name": "Tests",

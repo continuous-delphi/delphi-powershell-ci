@@ -222,13 +222,28 @@ be string or array, producing a cross product of builds.
 the build step rejects those fields with a clear error; configure equivalent
 settings in the project's MSBuild property groups instead.
 
-All fields are optional. Absent fields fall back to built-in defaults.
+When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
+Without a config file, `Invoke-DelphiCi` generates a pipeline from `-Steps`
+or the default `Clean, Build` steps. Absent action and job fields fall back
+to built-in defaults and the `defaults` section.
 
 `root` is resolved relative to the config file's directory when it is a
 relative path or `.`.
 
-The legacy format (with `"steps"` and named sections) is still supported and
-automatically converted internally.
+### JSON Schema
+
+For VS Code completion and validation, add a `$schema` property to your
+config file:
+
+```json
+{
+  "$schema": "./schemas/delphi-ci.schema.json",
+  "root": ".",
+  "pipeline": []
+}
+```
+
+The repo-local schema is available at `schemas/delphi-ci.schema.json`.
 
 ### Clean levels
 

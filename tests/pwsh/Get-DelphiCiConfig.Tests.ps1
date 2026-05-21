@@ -204,188 +204,20 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
-    Context 'legacy format JSON config' {
+    Context 'unsupported legacy JSON config' {
 
-        It 'loads steps from legacy config file' {
+        It 'throws when a config file defines steps without pipeline' {
             $cfgFile = Join-Path $TestDrive 'test.json'
             Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Clean') } | ConvertTo-Json)
 
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline.Count | Should -Be 1
-            $config.Pipeline[0].Action | Should -Be 'Clean'
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw "*must define a 'pipeline' array*"
         }
 
-        It 'loads platform from legacy build section' {
+        It 'throws when a config file uses named sections without pipeline' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win64' }; steps = @('Build') } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ platform = 'Win64' } } | ConvertTo-Json -Depth 5)
 
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Defaults['platform'] | Should -Be 'Win64'
-        }
-
-        It 'loads configuration from legacy build section' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ configuration = 'Release' }; steps = @('Build') } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Defaults['configuration'] | Should -Be 'Release'
-        }
-
-        It 'loads clean level from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ clean = @{ level = 'standard' }; steps = @('Clean') } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Defaults['level'] | Should -Be 'standard'
-        }
-
-        It 'loads toolchain version from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ toolchain = @{ version = 'Athens' } }; steps = @('Build') } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Defaults['toolchain']['version'] | Should -Be 'Athens'
-        }
-
-        It 'loads defines array from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ build = @{ defines = @('CI', 'RELEASE') }; steps = @('Build') } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Defaults['defines'] | Should -Be @('CI', 'RELEASE')
-        }
-
-        It 'loads build jobs from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Build')
-                build = @{
-                    jobs = @(
-                        @{ name = 'App'; projectFile = 'source/App.dproj' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs.Count | Should -Be 1
-            $config.Pipeline[0].Jobs[0]['name'] | Should -Be 'App'
-            $config.Pipeline[0].Jobs[0]['projectFile'] | Should -Be 'source/App.dproj'
-        }
-
-        It 'build jobs inherit defaults from the legacy build section' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Build')
-                build = @{
-                    platform = 'Win64'
-                    configuration = 'Release'
-                    jobs = @(
-                        @{ projectFile = 'source/App.dproj' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs[0]['platform'] | Should -Be @('Win64')
-            $config.Pipeline[0].Jobs[0]['configuration'] | Should -Be @('Release')
-        }
-
-        It 'build jobs can override defaults' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Build')
-                build = @{
-                    platform = 'Win32'
-                    jobs = @(
-                        @{ projectFile = 'source/App.dproj'; platform = 'Win64' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs[0]['platform'] | Should -Be @('Win64')
-        }
-
-        It 'build job platform can be an array for matrix expansion' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Build')
-                build = @{
-                    jobs = @(
-                        @{ projectFile = 'source/App.dproj'; platform = @('Win32', 'Win64') }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs[0]['platform'] | Should -Be @('Win32', 'Win64')
-        }
-
-        It 'loads run jobs from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Run')
-                run = @{
-                    jobs = @(
-                        @{ name = 'Unit tests'; execute = 'test/Win32/Debug/App.Tests.exe' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs.Count | Should -Be 1
-            $config.Pipeline[0].Jobs[0]['execute'] | Should -Be 'test/Win32/Debug/App.Tests.exe'
-        }
-
-        It 'run jobs inherit defaults from the legacy run section' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Run')
-                run = @{
-                    timeoutSeconds = 30
-                    jobs = @(
-                        @{ execute = 'test/App.Tests.exe' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs[0]['timeoutSeconds'] | Should -Be 30
-        }
-
-        It 'loads clean jobs from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            $json = @{
-                steps = @('Clean')
-                clean = @{
-                    level = 'deep'
-                    jobs = @(
-                        @{ name = 'Repo clean'; root = './' }
-                    )
-                }
-            } | ConvertTo-Json -Depth 5
-            Set-Content -LiteralPath $cfgFile -Value $json
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[0].Jobs.Count | Should -Be 1
-            $config.Pipeline[0].Jobs[0]['name'] | Should -Be 'Repo clean'
-            $config.Pipeline[0].Jobs[0]['level'] | Should -Be 'deep'
-        }
-
-        It 'applies built-in defaults for fields absent from legacy config file' {
-            $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Clean', 'Build'); build = @{ platform = 'Win64' } } | ConvertTo-Json -Depth 5)
-
-            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
-            $config.Pipeline[1].Defaults['configuration'] | Should -Be 'Debug'
-            $config.Pipeline[1].Defaults['engine']        | Should -Be 'MSBuild'
-            $config.Pipeline[0].Defaults['level']         | Should -Be 'basic'
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw "*must define a 'pipeline' array*"
         }
 
     }
@@ -427,7 +259,10 @@ Describe 'Get-DelphiCiConfig' {
 
         It '-Platform overrides config file platform' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Build'); build = @{ platform = 'Win32' } } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ platform = 'Win32' } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Platform 'Win64'
             $config.Pipeline[0].Defaults['platform'] | Should -Be 'Win64'
@@ -435,24 +270,30 @@ Describe 'Get-DelphiCiConfig' {
 
         It '-Configuration overrides config file configuration' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Build'); build = @{ configuration = 'Debug' } } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ configuration = 'Debug' } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Configuration 'Release'
             $config.Pipeline[0].Defaults['configuration'] | Should -Be 'Release'
         }
 
-        It '-Steps overrides config file steps' {
+        It '-Steps does not override a config file pipeline' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Clean', 'Build') } | ConvertTo-Json)
+            Set-Content -LiteralPath $cfgFile -Value (@{ pipeline = @(@{ action = 'Clean' }) } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Steps 'Build'
             $config.Pipeline.Count | Should -Be 1
-            $config.Pipeline[0].Action | Should -Be 'Build'
+            $config.Pipeline[0].Action | Should -Be 'Clean'
         }
 
         It '-Toolchain overrides config file toolchain version' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Build'); build = @{ toolchain = @{ version = 'Athens' } } } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ toolchain = @{ version = 'Athens' } } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Toolchain 'Florence'
             $config.Pipeline[0].Defaults['toolchain']['version'] | Should -Be 'Florence'
@@ -460,7 +301,10 @@ Describe 'Get-DelphiCiConfig' {
 
         It '-BuildEngine overrides config file engine' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Build'); build = @{ engine = 'MSBuild' } } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ engine = 'MSBuild' } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -BuildEngine 'DCCBuild'
             $config.Pipeline[0].Defaults['engine'] | Should -Be 'DCCBuild'
@@ -468,7 +312,10 @@ Describe 'Get-DelphiCiConfig' {
 
         It '-Defines overrides config file defines' {
             $cfgFile = Join-Path $TestDrive 'test.json'
-            Set-Content -LiteralPath $cfgFile -Value (@{ steps = @('Build'); build = @{ defines = @('FROM_FILE') } } | ConvertTo-Json -Depth 5)
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ defines = @('FROM_FILE') } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile -Defines 'CI', 'RELEASE_BUILD'
             $config.Pipeline[0].Defaults['defines'] | Should -Be @('CI', 'RELEASE_BUILD')

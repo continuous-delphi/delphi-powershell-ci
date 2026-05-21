@@ -64,9 +64,10 @@ When no jobs are defined for an action:
 - **Coverage** throws an error (an executable/map file or dproj is required).
 - **CallGraph** throws an error (a path or project file is required).
 
-For CLI shorthand, `-ProjectFile` creates a single build job and `-Execute`
-creates a single run job. `-CallGraphPath` or `-CallGraphProjectFile`
-creates a single CallGraph job when `-Steps CallGraph` is used.
+When no config file is supplied, CLI shorthand can generate jobs:
+`-ProjectFile` creates a single build job and `-Execute` creates a single
+run job. `-CallGraphPath` or `-CallGraphProjectFile` creates a single
+CallGraph job when `-Steps CallGraph` is used.
 CallGraph jobs use deterministic radCallGraph output by default; set
 `-CallGraphDeterministic $false` or `"deterministic": false` to keep
 engine timestamps.
@@ -75,7 +76,7 @@ engine timestamps.
 
 ## Configuration
 
-### New pipeline format
+### Pipeline format
 
 ```json
 {
@@ -124,10 +125,9 @@ Configuration resolves through three levels per job:
 CLI parameters override the defaults layer and always win over config file
 defaults.
 
-### Legacy format (still supported)
-
-The old format with `"steps"` and named sections (`clean`, `build`, `test`)
-is automatically converted to a pipeline internally.
+When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
+The older unreleased `"steps"` and named-section JSON format is not supported.
+Without a config file, `-Steps` still generates an in-memory pipeline.
 
 ---
 
@@ -145,7 +145,7 @@ Root directory used as the resolved absolute working directory and as the defaul
 
 Action types to include in the pipeline. Valid values: `Clean`, `Build`,
 `Run`, `IncVer`, `Copy`, `Compress`, `Coverage`, and `CallGraph`. Default:
-`Clean, Build`. Used when no config file pipeline is present.
+`Clean, Build`. Used when no config file is supplied.
 
 ### -ProjectFile
 

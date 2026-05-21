@@ -1,0 +1,881 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://continuous-delphi.github.io/delphi-powershell-ci/schemas/delphi-ci.schema.json",
+  "title": "Delphi PowerShell CI configuration",
+  "description": "Configuration file for Invoke-DelphiCi. The PowerShell resolver remains the runtime source of truth; this schema is intended for editor assistance and early validation.",
+  "type": "object",
+  "required": ["pipeline"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URI used by editors such as VS Code."
+    },
+    "root": {
+      "type": "string",
+      "description": "Working root for the CI run. Relative paths are resolved from the config file directory."
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Base values keyed by action type. Action entries and jobs merge over these values.",
+      "additionalProperties": false,
+      "properties": {
+        "clean": { "$ref": "#/$defs/cleanConfig" },
+        "build": { "$ref": "#/$defs/buildConfig" },
+        "run": { "$ref": "#/$defs/runConfig" },
+        "incver": { "$ref": "#/$defs/incverConfig" },
+        "copy": { "$ref": "#/$defs/copyConfig" },
+        "compress": { "$ref": "#/$defs/compressConfig" },
+        "coverage": { "$ref": "#/$defs/coverageConfig" },
+        "callgraph": { "$ref": "#/$defs/callgraphConfig" }
+      }
+    },
+    "pipeline": {
+      "type": "array",
+      "description": "Ordered list of actions to run. Each action can define action-level values and zero or more jobs.",
+      "items": { "$ref": "#/$defs/pipelineAction" }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "stringOrStringArray": {
+      "oneOf": [
+        { "type": "string" },
+        { "$ref": "#/$defs/stringArray" }
+      ]
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cleanConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "Clean root. Relative paths are resolved from the CI root."
+        },
+        "level": {
+          "type": "string",
+          "enum": ["basic", "standard", "deep"],
+          "default": "basic",
+          "description": "Cleanup intensity level."
+        },
+        "outputLevel": {
+          "type": "string",
+          "enum": ["detailed", "summary", "quiet"],
+          "default": "detailed",
+          "description": "Amount of clean output to emit."
+        },
+        "includeFilePattern": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Additional file glob patterns to include during cleanup. Arrays append across merge levels."
+        },
+        "includeFilePattern!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited includeFilePattern values instead of appending."
+        },
+        "excludeDirectoryPattern": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Directory glob patterns to exclude during cleanup. Arrays append across merge levels."
+        },
+        "excludeDirectoryPattern!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited excludeDirectoryPattern values instead of appending."
+        },
+        "configFile": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit delphi-clean config file."
+        },
+        "recycleBin": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send removed items to the recycle bin when supported."
+        },
+        "check": {
+          "type": "boolean",
+          "default": false,
+          "description": "Audit cleanup without deleting files."
+        }
+      }
+    },
+    "buildConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectFile": {
+          "type": "string",
+          "description": "Delphi project file. MSBuild expects .dproj; DCCBuild expects .dpr."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["MSBuild", "DCCBuild"],
+          "default": "MSBuild",
+          "description": "Build engine."
+        },
+        "toolchain": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "default": "Latest",
+              "description": "Toolchain version or Latest."
+            }
+          }
+        },
+        "platform": {
+          "$ref": "#/$defs/stringOrStringArray",
+          "default": "Win32",
+          "description": "Build platform. Build jobs may use an array for matrix expansion."
+        },
+        "configuration": {
+          "$ref": "#/$defs/stringOrStringArray",
+          "default": "Debug",
+          "description": "Build configuration. Build jobs may use an array for matrix expansion."
+        },
+        "defines": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Conditional defines. Arrays append across merge levels."
+        },
+        "defines!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited defines instead of appending."
+        },
+        "verbosity": {
+          "type": "string",
+          "enum": ["quiet", "minimal", "normal", "detailed", "diagnostic"],
+          "default": "normal",
+          "description": "Build output verbosity."
+        },
+        "target": {
+          "type": "string",
+          "enum": ["Build", "Clean", "Rebuild"],
+          "default": "Build",
+          "description": "Build target. Clean is MSBuild-only."
+        },
+        "exeOutputDir": {
+          "type": "string",
+          "default": "",
+          "description": "Executable output directory."
+        },
+        "dcuOutputDir": {
+          "type": "string",
+          "default": "",
+          "description": "DCU output directory."
+        },
+        "unitSearchPath": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Additional unit search paths. Arrays append across merge levels."
+        },
+        "unitSearchPath!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited unitSearchPath values instead of appending."
+        },
+        "includePath": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Additional include paths. DCCBuild-only; MSBuild rejects this field."
+        },
+        "includePath!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited includePath values instead of appending."
+        },
+        "namespace": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Unit scope names. DCCBuild-only; MSBuild rejects this field."
+        },
+        "namespace!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited namespace values instead of appending."
+        }
+      }
+    },
+    "runConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execute": {
+          "type": "string",
+          "description": "Executable, script, or command to run."
+        },
+        "arguments": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Arguments passed to the command. Arrays append across merge levels."
+        },
+        "arguments!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited arguments instead of appending."
+        },
+        "timeoutSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "default": 10,
+          "description": "Maximum runtime before the process is killed."
+        }
+      }
+    },
+    "incverConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "File containing the version to increment."
+        },
+        "target": {
+          "type": "string",
+          "enum": ["", "RC", "DProj", "Text"],
+          "default": "",
+          "description": "Version target type. Empty means auto-detect."
+        },
+        "style": {
+          "type": "string",
+          "enum": ["", "WinVer", "SemVer"],
+          "default": "",
+          "description": "Version style. Empty means auto-detect."
+        },
+        "part": {
+          "type": "string",
+          "enum": ["", "major", "minor", "patch", "build", "pre-release"],
+          "default": "",
+          "description": "Version component to bump. Empty means the last component."
+        },
+        "pattern": {
+          "type": "string",
+          "default": "",
+          "description": "Regex pattern with a capture group around the version string. Required for Text targets."
+        },
+        "dateformat": {
+          "type": "string",
+          "default": "yyyy.mm.dd",
+          "description": "Date format used by version incrementing when applicable."
+        }
+      }
+    },
+    "copyConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "File, directory, or glob pattern to copy."
+        },
+        "destination": {
+          "type": "string",
+          "description": "Destination directory."
+        },
+        "flatten": {
+          "type": "boolean",
+          "default": false,
+          "description": "Copy matched files into a flat destination structure."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": true,
+          "description": "Overwrite existing files."
+        },
+        "createDestination": {
+          "type": "boolean",
+          "default": true,
+          "description": "Create the destination directory when it does not exist."
+        },
+        "checksum": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate checksums for copied files."
+        }
+      }
+    },
+    "compressConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "File, directory, or glob pattern to compress."
+        },
+        "destination": {
+          "type": "string",
+          "description": "Destination .zip file."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": true,
+          "description": "Overwrite an existing archive."
+        },
+        "checksum": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate a SHA256 checksum sidecar file."
+        }
+      }
+    },
+    "coverageConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execute": {
+          "type": "string",
+          "description": "Test executable. Required at runtime unless dproj is supplied through the merge chain."
+        },
+        "mapFile": {
+          "type": "string",
+          "description": "Detailed MAP file. Required at runtime unless dproj is supplied through the merge chain."
+        },
+        "dproj": {
+          "type": "string",
+          "default": "",
+          "description": "Project file used for coverage auto-discovery."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["DelphiCodeCoverage", "radCodeCoverage"],
+          "default": "DelphiCodeCoverage",
+          "description": "Coverage engine."
+        },
+        "enginePath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to the coverage engine executable."
+        },
+        "sourceDir": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Directories containing Delphi source files. Arrays append across merge levels."
+        },
+        "sourceDir!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited sourceDir values instead of appending."
+        },
+        "units": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Unit name patterns to include. Arrays append across merge levels."
+        },
+        "units!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited units values instead of appending."
+        },
+        "excludeUnits": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Unit name patterns to exclude. Arrays append across merge levels."
+        },
+        "excludeUnits!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited excludeUnits values instead of appending."
+        },
+        "outputDir": {
+          "type": "string",
+          "default": "coverage",
+          "description": "Directory for coverage reports."
+        },
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["html", "xml", "emma", "lcov", "cobertura", "md", "covdb"]
+          },
+          "default": ["html"],
+          "description": "Coverage output formats. Arrays append across merge levels."
+        },
+        "formats!": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["html", "xml", "emma", "lcov", "cobertura", "md", "covdb"]
+          },
+          "description": "Replace inherited formats instead of appending."
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0,
+          "description": "Minimum coverage percentage. Zero disables the threshold."
+        },
+        "arguments": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Arguments passed to the test executable. Arrays append across merge levels."
+        },
+        "arguments!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited arguments instead of appending."
+        },
+        "timeoutSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "default": 300,
+          "description": "Maximum runtime before the coverage process is killed."
+        },
+        "badge": {
+          "type": "string",
+          "default": "",
+          "description": "Output path for a coverage badge."
+        }
+      }
+    },
+    "callgraphConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Source files or directories to analyze. Arrays append across merge levels."
+        },
+        "path!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited path values instead of appending."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["radCallGraph", "PasDoc", "DCC"],
+          "default": "radCallGraph",
+          "description": "Call graph engine."
+        },
+        "enginePath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to the call graph engine executable."
+        },
+        "outputDir": {
+          "type": "string",
+          "default": "callgraph",
+          "description": "Directory for generated graph files."
+        },
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["json", "dot", "txt"]
+          },
+          "default": ["json"],
+          "description": "Output formats. Arrays append across merge levels."
+        },
+        "formats!": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["json", "dot", "txt"]
+          },
+          "description": "Replace inherited formats instead of appending."
+        },
+        "jsonFile": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit JSON output path."
+        },
+        "dotFile": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit DOT/GV output path."
+        },
+        "summaryFile": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit text summary output path."
+        },
+        "class": {
+          "type": "string",
+          "default": "",
+          "description": "radCallGraph class filter."
+        },
+        "annotations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include radCallGraph annotation data."
+        },
+        "deterministic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use deterministic engine output when supported."
+        },
+        "graphKind": {
+          "type": "string",
+          "enum": ["", "call", "uses", "classes", "dependency", "all"],
+          "default": "",
+          "description": "PasDoc or DCC graph kind."
+        },
+        "graphVizUses": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable PasDoc graphviz uses output."
+        },
+        "graphVizClasses": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable PasDoc graphviz classes output."
+        },
+        "pasDocOptions": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Extra PasDoc options. Arrays append across merge levels."
+        },
+        "pasDocOptions!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited pasDocOptions instead of appending."
+        },
+        "projectFile": {
+          "type": "string",
+          "default": "",
+          "description": "DCC project file for compiler GraphViz output."
+        },
+        "graphVizExclude": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "DCC graphviz exclude unit patterns. Arrays append across merge levels."
+        },
+        "graphVizExclude!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited graphVizExclude values instead of appending."
+        },
+        "engineArguments": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Extra arguments passed to the selected engine. Arrays append across merge levels."
+        },
+        "engineArguments!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited engineArguments instead of appending."
+        },
+        "timeoutSeconds": {
+          "$ref": "#/$defs/nonNegativeInteger",
+          "default": 300,
+          "description": "Maximum runtime before failure."
+        }
+      }
+    },
+    "cleanJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "root": { "$ref": "#/$defs/cleanConfig/properties/root" },
+        "level": { "$ref": "#/$defs/cleanConfig/properties/level" },
+        "outputLevel": { "$ref": "#/$defs/cleanConfig/properties/outputLevel" },
+        "includeFilePattern": { "$ref": "#/$defs/cleanConfig/properties/includeFilePattern" },
+        "includeFilePattern!": { "$ref": "#/$defs/cleanConfig/properties/includeFilePattern!" },
+        "excludeDirectoryPattern": { "$ref": "#/$defs/cleanConfig/properties/excludeDirectoryPattern" },
+        "excludeDirectoryPattern!": { "$ref": "#/$defs/cleanConfig/properties/excludeDirectoryPattern!" },
+        "configFile": { "$ref": "#/$defs/cleanConfig/properties/configFile" },
+        "recycleBin": { "$ref": "#/$defs/cleanConfig/properties/recycleBin" },
+        "check": { "$ref": "#/$defs/cleanConfig/properties/check" }
+      }
+    },
+    "buildJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "projectFile": { "$ref": "#/$defs/buildConfig/properties/projectFile" },
+        "engine": { "$ref": "#/$defs/buildConfig/properties/engine" },
+        "toolchain": { "$ref": "#/$defs/buildConfig/properties/toolchain" },
+        "platform": { "$ref": "#/$defs/buildConfig/properties/platform" },
+        "configuration": { "$ref": "#/$defs/buildConfig/properties/configuration" },
+        "defines": { "$ref": "#/$defs/buildConfig/properties/defines" },
+        "defines!": { "$ref": "#/$defs/buildConfig/properties/defines!" },
+        "verbosity": { "$ref": "#/$defs/buildConfig/properties/verbosity" },
+        "target": { "$ref": "#/$defs/buildConfig/properties/target" },
+        "exeOutputDir": { "$ref": "#/$defs/buildConfig/properties/exeOutputDir" },
+        "dcuOutputDir": { "$ref": "#/$defs/buildConfig/properties/dcuOutputDir" },
+        "unitSearchPath": { "$ref": "#/$defs/buildConfig/properties/unitSearchPath" },
+        "unitSearchPath!": { "$ref": "#/$defs/buildConfig/properties/unitSearchPath!" },
+        "includePath": { "$ref": "#/$defs/buildConfig/properties/includePath" },
+        "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
+        "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
+        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" }
+      }
+    },
+    "runJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "execute": { "$ref": "#/$defs/runConfig/properties/execute" },
+        "arguments": { "$ref": "#/$defs/runConfig/properties/arguments" },
+        "arguments!": { "$ref": "#/$defs/runConfig/properties/arguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/runConfig/properties/timeoutSeconds" }
+      }
+    },
+    "incverJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "file": { "$ref": "#/$defs/incverConfig/properties/file" },
+        "target": { "$ref": "#/$defs/incverConfig/properties/target" },
+        "style": { "$ref": "#/$defs/incverConfig/properties/style" },
+        "part": { "$ref": "#/$defs/incverConfig/properties/part" },
+        "pattern": { "$ref": "#/$defs/incverConfig/properties/pattern" },
+        "dateformat": { "$ref": "#/$defs/incverConfig/properties/dateformat" }
+      }
+    },
+    "copyJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "source": { "$ref": "#/$defs/copyConfig/properties/source" },
+        "destination": { "$ref": "#/$defs/copyConfig/properties/destination" },
+        "flatten": { "$ref": "#/$defs/copyConfig/properties/flatten" },
+        "overwrite": { "$ref": "#/$defs/copyConfig/properties/overwrite" },
+        "createDestination": { "$ref": "#/$defs/copyConfig/properties/createDestination" },
+        "checksum": { "$ref": "#/$defs/copyConfig/properties/checksum" }
+      }
+    },
+    "compressJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "source": { "$ref": "#/$defs/compressConfig/properties/source" },
+        "destination": { "$ref": "#/$defs/compressConfig/properties/destination" },
+        "overwrite": { "$ref": "#/$defs/compressConfig/properties/overwrite" },
+        "checksum": { "$ref": "#/$defs/compressConfig/properties/checksum" }
+      }
+    },
+    "coverageJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "execute": { "$ref": "#/$defs/coverageConfig/properties/execute" },
+        "mapFile": { "$ref": "#/$defs/coverageConfig/properties/mapFile" },
+        "dproj": { "$ref": "#/$defs/coverageConfig/properties/dproj" },
+        "engine": { "$ref": "#/$defs/coverageConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/coverageConfig/properties/enginePath" },
+        "sourceDir": { "$ref": "#/$defs/coverageConfig/properties/sourceDir" },
+        "sourceDir!": { "$ref": "#/$defs/coverageConfig/properties/sourceDir!" },
+        "units": { "$ref": "#/$defs/coverageConfig/properties/units" },
+        "units!": { "$ref": "#/$defs/coverageConfig/properties/units!" },
+        "excludeUnits": { "$ref": "#/$defs/coverageConfig/properties/excludeUnits" },
+        "excludeUnits!": { "$ref": "#/$defs/coverageConfig/properties/excludeUnits!" },
+        "outputDir": { "$ref": "#/$defs/coverageConfig/properties/outputDir" },
+        "formats": { "$ref": "#/$defs/coverageConfig/properties/formats" },
+        "formats!": { "$ref": "#/$defs/coverageConfig/properties/formats!" },
+        "threshold": { "$ref": "#/$defs/coverageConfig/properties/threshold" },
+        "arguments": { "$ref": "#/$defs/coverageConfig/properties/arguments" },
+        "arguments!": { "$ref": "#/$defs/coverageConfig/properties/arguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/coverageConfig/properties/timeoutSeconds" },
+        "badge": { "$ref": "#/$defs/coverageConfig/properties/badge" }
+      }
+    },
+    "callgraphJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "path": { "$ref": "#/$defs/callgraphConfig/properties/path" },
+        "path!": { "$ref": "#/$defs/callgraphConfig/properties/path!" },
+        "engine": { "$ref": "#/$defs/callgraphConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/callgraphConfig/properties/enginePath" },
+        "outputDir": { "$ref": "#/$defs/callgraphConfig/properties/outputDir" },
+        "formats": { "$ref": "#/$defs/callgraphConfig/properties/formats" },
+        "formats!": { "$ref": "#/$defs/callgraphConfig/properties/formats!" },
+        "jsonFile": { "$ref": "#/$defs/callgraphConfig/properties/jsonFile" },
+        "dotFile": { "$ref": "#/$defs/callgraphConfig/properties/dotFile" },
+        "summaryFile": { "$ref": "#/$defs/callgraphConfig/properties/summaryFile" },
+        "class": { "$ref": "#/$defs/callgraphConfig/properties/class" },
+        "annotations": { "$ref": "#/$defs/callgraphConfig/properties/annotations" },
+        "deterministic": { "$ref": "#/$defs/callgraphConfig/properties/deterministic" },
+        "graphKind": { "$ref": "#/$defs/callgraphConfig/properties/graphKind" },
+        "graphVizUses": { "$ref": "#/$defs/callgraphConfig/properties/graphVizUses" },
+        "graphVizClasses": { "$ref": "#/$defs/callgraphConfig/properties/graphVizClasses" },
+        "pasDocOptions": { "$ref": "#/$defs/callgraphConfig/properties/pasDocOptions" },
+        "pasDocOptions!": { "$ref": "#/$defs/callgraphConfig/properties/pasDocOptions!" },
+        "projectFile": { "$ref": "#/$defs/callgraphConfig/properties/projectFile" },
+        "graphVizExclude": { "$ref": "#/$defs/callgraphConfig/properties/graphVizExclude" },
+        "graphVizExclude!": { "$ref": "#/$defs/callgraphConfig/properties/graphVizExclude!" },
+        "engineArguments": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments" },
+        "engineArguments!": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/callgraphConfig/properties/timeoutSeconds" }
+      }
+    },
+    "pipelineAction": {
+      "oneOf": [
+        { "$ref": "#/$defs/cleanAction" },
+        { "$ref": "#/$defs/buildAction" },
+        { "$ref": "#/$defs/runAction" },
+        { "$ref": "#/$defs/incverAction" },
+        { "$ref": "#/$defs/copyAction" },
+        { "$ref": "#/$defs/compressAction" },
+        { "$ref": "#/$defs/coverageAction" },
+        { "$ref": "#/$defs/callgraphAction" }
+      ]
+    },
+    "cleanAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Clean", "clean"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/cleanJob" } },
+        "root": { "$ref": "#/$defs/cleanConfig/properties/root" },
+        "level": { "$ref": "#/$defs/cleanConfig/properties/level" },
+        "outputLevel": { "$ref": "#/$defs/cleanConfig/properties/outputLevel" },
+        "includeFilePattern": { "$ref": "#/$defs/cleanConfig/properties/includeFilePattern" },
+        "includeFilePattern!": { "$ref": "#/$defs/cleanConfig/properties/includeFilePattern!" },
+        "excludeDirectoryPattern": { "$ref": "#/$defs/cleanConfig/properties/excludeDirectoryPattern" },
+        "excludeDirectoryPattern!": { "$ref": "#/$defs/cleanConfig/properties/excludeDirectoryPattern!" },
+        "configFile": { "$ref": "#/$defs/cleanConfig/properties/configFile" },
+        "recycleBin": { "$ref": "#/$defs/cleanConfig/properties/recycleBin" },
+        "check": { "$ref": "#/$defs/cleanConfig/properties/check" }
+      }
+    },
+    "buildAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Build", "build"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/buildJob" } },
+        "projectFile": { "$ref": "#/$defs/buildConfig/properties/projectFile" },
+        "engine": { "$ref": "#/$defs/buildConfig/properties/engine" },
+        "toolchain": { "$ref": "#/$defs/buildConfig/properties/toolchain" },
+        "platform": { "$ref": "#/$defs/buildConfig/properties/platform" },
+        "configuration": { "$ref": "#/$defs/buildConfig/properties/configuration" },
+        "defines": { "$ref": "#/$defs/buildConfig/properties/defines" },
+        "defines!": { "$ref": "#/$defs/buildConfig/properties/defines!" },
+        "verbosity": { "$ref": "#/$defs/buildConfig/properties/verbosity" },
+        "target": { "$ref": "#/$defs/buildConfig/properties/target" },
+        "exeOutputDir": { "$ref": "#/$defs/buildConfig/properties/exeOutputDir" },
+        "dcuOutputDir": { "$ref": "#/$defs/buildConfig/properties/dcuOutputDir" },
+        "unitSearchPath": { "$ref": "#/$defs/buildConfig/properties/unitSearchPath" },
+        "unitSearchPath!": { "$ref": "#/$defs/buildConfig/properties/unitSearchPath!" },
+        "includePath": { "$ref": "#/$defs/buildConfig/properties/includePath" },
+        "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
+        "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
+        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" }
+      }
+    },
+    "runAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Run", "run"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/runJob" } },
+        "execute": { "$ref": "#/$defs/runConfig/properties/execute" },
+        "arguments": { "$ref": "#/$defs/runConfig/properties/arguments" },
+        "arguments!": { "$ref": "#/$defs/runConfig/properties/arguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/runConfig/properties/timeoutSeconds" }
+      }
+    },
+    "incverAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["IncVer", "incver"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/incverJob" } },
+        "file": { "$ref": "#/$defs/incverConfig/properties/file" },
+        "target": { "$ref": "#/$defs/incverConfig/properties/target" },
+        "style": { "$ref": "#/$defs/incverConfig/properties/style" },
+        "part": { "$ref": "#/$defs/incverConfig/properties/part" },
+        "pattern": { "$ref": "#/$defs/incverConfig/properties/pattern" },
+        "dateformat": { "$ref": "#/$defs/incverConfig/properties/dateformat" }
+      }
+    },
+    "copyAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Copy", "copy"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/copyJob" } },
+        "source": { "$ref": "#/$defs/copyConfig/properties/source" },
+        "destination": { "$ref": "#/$defs/copyConfig/properties/destination" },
+        "flatten": { "$ref": "#/$defs/copyConfig/properties/flatten" },
+        "overwrite": { "$ref": "#/$defs/copyConfig/properties/overwrite" },
+        "createDestination": { "$ref": "#/$defs/copyConfig/properties/createDestination" },
+        "checksum": { "$ref": "#/$defs/copyConfig/properties/checksum" }
+      }
+    },
+    "compressAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Compress", "compress"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/compressJob" } },
+        "source": { "$ref": "#/$defs/compressConfig/properties/source" },
+        "destination": { "$ref": "#/$defs/compressConfig/properties/destination" },
+        "overwrite": { "$ref": "#/$defs/compressConfig/properties/overwrite" },
+        "checksum": { "$ref": "#/$defs/compressConfig/properties/checksum" }
+      }
+    },
+    "coverageAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Coverage", "coverage"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/coverageJob" } },
+        "execute": { "$ref": "#/$defs/coverageConfig/properties/execute" },
+        "mapFile": { "$ref": "#/$defs/coverageConfig/properties/mapFile" },
+        "dproj": { "$ref": "#/$defs/coverageConfig/properties/dproj" },
+        "engine": { "$ref": "#/$defs/coverageConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/coverageConfig/properties/enginePath" },
+        "sourceDir": { "$ref": "#/$defs/coverageConfig/properties/sourceDir" },
+        "sourceDir!": { "$ref": "#/$defs/coverageConfig/properties/sourceDir!" },
+        "units": { "$ref": "#/$defs/coverageConfig/properties/units" },
+        "units!": { "$ref": "#/$defs/coverageConfig/properties/units!" },
+        "excludeUnits": { "$ref": "#/$defs/coverageConfig/properties/excludeUnits" },
+        "excludeUnits!": { "$ref": "#/$defs/coverageConfig/properties/excludeUnits!" },
+        "outputDir": { "$ref": "#/$defs/coverageConfig/properties/outputDir" },
+        "formats": { "$ref": "#/$defs/coverageConfig/properties/formats" },
+        "formats!": { "$ref": "#/$defs/coverageConfig/properties/formats!" },
+        "threshold": { "$ref": "#/$defs/coverageConfig/properties/threshold" },
+        "arguments": { "$ref": "#/$defs/coverageConfig/properties/arguments" },
+        "arguments!": { "$ref": "#/$defs/coverageConfig/properties/arguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/coverageConfig/properties/timeoutSeconds" },
+        "badge": { "$ref": "#/$defs/coverageConfig/properties/badge" }
+      }
+    },
+    "callgraphAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["CallGraph", "callgraph"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/callgraphJob" } },
+        "path": { "$ref": "#/$defs/callgraphConfig/properties/path" },
+        "path!": { "$ref": "#/$defs/callgraphConfig/properties/path!" },
+        "engine": { "$ref": "#/$defs/callgraphConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/callgraphConfig/properties/enginePath" },
+        "outputDir": { "$ref": "#/$defs/callgraphConfig/properties/outputDir" },
+        "formats": { "$ref": "#/$defs/callgraphConfig/properties/formats" },
+        "formats!": { "$ref": "#/$defs/callgraphConfig/properties/formats!" },
+        "jsonFile": { "$ref": "#/$defs/callgraphConfig/properties/jsonFile" },
+        "dotFile": { "$ref": "#/$defs/callgraphConfig/properties/dotFile" },
+        "summaryFile": { "$ref": "#/$defs/callgraphConfig/properties/summaryFile" },
+        "class": { "$ref": "#/$defs/callgraphConfig/properties/class" },
+        "annotations": { "$ref": "#/$defs/callgraphConfig/properties/annotations" },
+        "deterministic": { "$ref": "#/$defs/callgraphConfig/properties/deterministic" },
+        "graphKind": { "$ref": "#/$defs/callgraphConfig/properties/graphKind" },
+        "graphVizUses": { "$ref": "#/$defs/callgraphConfig/properties/graphVizUses" },
+        "graphVizClasses": { "$ref": "#/$defs/callgraphConfig/properties/graphVizClasses" },
+        "pasDocOptions": { "$ref": "#/$defs/callgraphConfig/properties/pasDocOptions" },
+        "pasDocOptions!": { "$ref": "#/$defs/callgraphConfig/properties/pasDocOptions!" },
+        "projectFile": { "$ref": "#/$defs/callgraphConfig/properties/projectFile" },
+        "graphVizExclude": { "$ref": "#/$defs/callgraphConfig/properties/graphVizExclude" },
+        "graphVizExclude!": { "$ref": "#/$defs/callgraphConfig/properties/graphVizExclude!" },
+        "engineArguments": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments" },
+        "engineArguments!": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments!" },
+        "timeoutSeconds": { "$ref": "#/$defs/callgraphConfig/properties/timeoutSeconds" }
+      }
+    }
+  }
+}

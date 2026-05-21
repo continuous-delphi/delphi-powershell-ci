@@ -6,10 +6,9 @@ Merges configuration through multiple levels:
 
 1. Built-in defaults
 2. JSON config file `defaults` section
-3. Legacy named sections (if old format)
-4. CLI parameters (highest priority for defaults)
-5. Action-level properties in the pipeline
-6. Job-level properties (highest priority per job)
+3. CLI parameters (highest priority for defaults)
+4. Action-level properties in the pipeline
+5. Job-level properties (highest priority per job)
 
 Returns a single `PSCustomObject` that all downstream commands consume.
 
@@ -94,7 +93,7 @@ normalized to arrays for matrix expansion.
 
 ## JSON config file format
 
-### New pipeline format (recommended)
+### Pipeline format
 
 ```json
 {
@@ -129,36 +128,17 @@ normalized to arrays for matrix expansion.
 }
 ```
 
-### Legacy format (auto-converted)
-
-```json
-{
-  "root": ".",
-  "steps": ["Clean", "Build", "Run"],
-  "clean": { "level": "deep" },
-  "build": {
-    "platform": "Win64",
-    "jobs": [{ "projectFile": "source/MyApp.dproj" }]
-  },
-  "run": {
-    "jobs": [{ "execute": "test/Win32/Debug/MyApp.Tests.exe" }]
-  }
-}
-```
-
-The legacy format is detected by the presence of a `"steps"` key (and
-absence of `"pipeline"`). Named section properties become defaults; jobs
-are placed into pipeline entries. CLI `-Steps` overrides which actions are
-included.
-
 ## Notes
 
-- All fields are optional. Absent fields use built-in defaults.
+- When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
+- Without a config file, `-Steps` generates an in-memory pipeline, or the
+  resolver uses the default `Clean, Build` steps.
+- Absent action and job fields use built-in defaults.
 - `root` is resolved relative to the config file's directory.
 - CLI parameters override defaults but not action-level or job-level values
   in the pipeline config.
-- `-ProjectFile` creates a single-entry build jobs list.
-- `-Execute` creates a single-entry run jobs list.
+- Without a config file, `-ProjectFile` creates a single-entry build jobs list.
+- Without a config file, `-Execute` creates a single-entry run jobs list.
 - Validation errors (invalid level, engine, verbosity, target) throw
   immediately before any work begins.
 - Build job `platform` and `configuration` are always normalized to arrays

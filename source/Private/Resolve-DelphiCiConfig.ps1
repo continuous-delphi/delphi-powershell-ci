@@ -132,33 +132,16 @@ function Resolve-DelphiCiConfig {
     }
 
     # -------------------------------------------------------------------------
-    # Legacy format support: convert old "steps" + named sections to pipeline
+    # Load JSON pipeline
     # -------------------------------------------------------------------------
     $pipeline = $null
 
-    if ($null -ne $json -and $json.PSObject.Properties['pipeline']) {
-        # New format: pipeline array
-        $pipeline = @($json.pipeline)
-    }
-    elseif ($null -ne $json) {
-        # Old format (or no pipeline key): named sections (clean/build/test)
-        # Section properties become defaults (so CLI can override them);
-        # only jobs go into the pipeline entries.
-        # CLI -Steps overrides which steps are included.
-        $legacySteps = $null
-        if ($Overrides.ContainsKey('Steps') -and $null -ne $Overrides['Steps']) {
-            $legacySteps = @($Overrides['Steps'] | ForEach-Object { $_ -split ',' } |
-                            ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+    if ($null -ne $json) {
+        if ($json.PSObject.Properties['pipeline']) {
+            $pipeline = @($json.pipeline)
         }
-        $legacyResult = ConvertFrom-LegacyConfig -Json $json -StepsOverride $legacySteps
-        $pipeline = $legacyResult.Pipeline
-        foreach ($actionType in $legacyResult.SectionDefaults.Keys) {
-            $layer = $legacyResult.SectionDefaults[$actionType]
-            if ($layer.Count -gt 0) {
-                $effectiveDefaults[$actionType] = Merge-ActionConfig `
-                    -Base  $effectiveDefaults[$actionType] `
-                    -Layer $layer
-            }
+        else {
+            throw "Config file must define a 'pipeline' array. The legacy 'steps' and named-section JSON format has been removed."
         }
     }
 
@@ -345,7 +328,7 @@ function Resolve-DelphiCiConfig {
     }
 
     # -------------------------------------------------------------------------
-    # Generate pipeline from CLI params if no pipeline was loaded from JSON
+    # Generate pipeline from CLI params when no config file was supplied.
     # -------------------------------------------------------------------------
     if ($null -eq $pipeline) {
         $pipeline = Build-CliPipeline -Overrides $Overrides
@@ -503,82 +486,6 @@ function ConvertTo-ActionLayer {
         $ht[$prop.Name] = $val
     }
     return $ht
-}
-
-function ConvertFrom-LegacyConfig {
-    <#
-    .SYNOPSIS
-        Converts old-format JSON (with "steps" + named sections) to a
-        pipeline array and extracted section defaults.
-    .DESCRIPTION
-        Returns a hashtable with:
-        - Pipeline: array of action entries (action + jobs only)
-        - SectionDefaults: hashtable keyed by action type with section
-          properties (excluding jobs) to merge into effective defaults
-    #>
-    param(
-        [Parameter(Mandatory)] $Json,
-        [string[]]$StepsOverride = $null
-    )
-
-    $steps = @('Clean', 'Build')
-    if ($null -ne $StepsOverride -and $StepsOverride.Count -gt 0) {
-        $steps = $StepsOverride
-    }
-    elseif ($Json.PSObject.Properties['steps']) {
-        $steps = @($Json.steps)
-    }
-
-    # Map legacy step/section names to current action types
-    $legacyActionMap  = @{ test = 'Run' }
-    $legacySectionMap = @{ test = 'run' }
-
-    # Map legacy job property names to current names
-    $legacyJobPropertyMap = @{ testExeFile = 'execute' }
-
-    $pipeline        = [System.Collections.Generic.List[object]]::new()
-    $sectionDefaults = @{}
-
-    foreach ($stepName in $steps) {
-        $sectionKey = $stepName.ToLower()
-        $actionName = if ($legacyActionMap.ContainsKey($sectionKey)) { $legacyActionMap[$sectionKey] } else { $stepName }
-        $defaultsKey = if ($legacySectionMap.ContainsKey($sectionKey)) { $legacySectionMap[$sectionKey] } else { $sectionKey }
-        $entry = @{ action = $actionName }
-        $sectionDefaults[$defaultsKey] = @{}
-
-        if ($Json.PSObject.Properties[$sectionKey]) {
-            $section = $Json.$sectionKey
-            foreach ($prop in $section.PSObject.Properties) {
-                if ($prop.Name -eq 'jobs') {
-                    # Remap legacy job property names
-                    $entry['jobs'] = @($prop.Value | ForEach-Object {
-                        $job = $_
-                        foreach ($oldName in $legacyJobPropertyMap.Keys) {
-                            if ($job.PSObject.Properties[$oldName]) {
-                                $newName = $legacyJobPropertyMap[$oldName]
-                                $job | Add-Member -NotePropertyName $newName -NotePropertyValue $job.$oldName -Force
-                                $job.PSObject.Properties.Remove($oldName)
-                            }
-                        }
-                        $job
-                    })
-                } else {
-                    $val = $prop.Value
-                    if ($null -ne $val -and $val.GetType().Name -eq 'PSCustomObject') {
-                        $val = ConvertTo-Hashtable $val
-                    }
-                    $sectionDefaults[$defaultsKey][$prop.Name] = $val
-                }
-            }
-        }
-
-        $pipeline.Add([PSCustomObject]$entry)
-    }
-
-    return @{
-        Pipeline        = $pipeline.ToArray()
-        SectionDefaults = $sectionDefaults
-    }
 }
 
 function Build-CliPipeline {
