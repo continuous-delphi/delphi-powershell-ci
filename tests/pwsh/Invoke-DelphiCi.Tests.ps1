@@ -559,6 +559,18 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -Times 0
             }
 
+            It 'does not run later actions when Build fails' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob)),
+                        (script:New-PipelineEntry -Action 'Run' -Jobs @(script:New-RunJob))
+                    )
+                }
+                Mock Invoke-DelphiBuild { script:New-BuildResult -Success $false }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiRun -Times 0
+            }
+
         }
 
         Context 'result shape' {
@@ -694,6 +706,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -Times 1
             }
 
+            It 'resolves relative projectFile paths from the CI root' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -ProjectFile 'Source\App.dproj'
+                        )
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    $ProjectFile -eq 'C:\Fake\Source\App.dproj'
+                }
+            }
+
         }
 
         Context 'multiple run jobs' {
@@ -723,6 +749,20 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiRun -ParameterFilter { $Execute -eq 'C:\Fake\Win32\App.Tests.exe' }
                 Should -Invoke Invoke-DelphiRun -ParameterFilter { $Execute -eq 'C:\Fake\Win64\App.Tests.exe' }
+            }
+
+            It 'resolves relative execute paths from the CI root' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Run' -Jobs @(
+                            script:New-RunJob -Execute 'Tests\Win32\App.Tests.exe'
+                        )
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiRun -ParameterFilter {
+                    $Execute -eq 'C:\Fake\Tests\Win32\App.Tests.exe'
+                }
             }
 
         }

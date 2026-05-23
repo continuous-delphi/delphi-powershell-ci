@@ -406,9 +406,14 @@ function Invoke-DelphiCi {
                         throw 'No build jobs defined. Use -ProjectFile or define build jobs in the config file.'
                     }
 
-                    :buildJobs foreach ($job in $jobs) {
+                    foreach ($job in $jobs) {
                         if ([string]::IsNullOrWhiteSpace($job['projectFile'])) {
                             throw "Build job '$($job['name'])' has no projectFile."
+                        }
+
+                        $projectFile = $job['projectFile']
+                        if (-not [System.IO.Path]::IsPathRooted($projectFile)) {
+                            $projectFile = Join-Path $config.Root $projectFile
                         }
 
                         # Expand platform x configuration matrix
@@ -420,7 +425,7 @@ function Invoke-DelphiCi {
                                 Write-DelphiCiMessage -Level 'INFO' -Message "Build job: $label"
 
                                 $result = Invoke-DelphiBuild `
-                                    -ProjectFile    $job['projectFile'] `
+                                    -ProjectFile    $projectFile `
                                     -Platform       $plat `
                                     -Configuration  $cfg `
                                     -Toolchain      $job['toolchain']['version'] `
@@ -437,7 +442,7 @@ function Invoke-DelphiCi {
                                 $stepResults.Add($result)
                                 if (-not $result.Success) {
                                     $overallSuccess = $false
-                                    break buildJobs
+                                    break pipeline
                                 }
                             }
                         }
@@ -459,8 +464,13 @@ function Invoke-DelphiCi {
                             Write-DelphiCiMessage -Level 'INFO' -Message "Run job: $($job['name'])"
                         }
 
+                        $executePath = $job['execute']
+                        if (-not [System.IO.Path]::IsPathRooted($executePath)) {
+                            $executePath = Join-Path $config.Root $executePath
+                        }
+
                         $result = Invoke-DelphiRun `
-                            -Execute        $job['execute'] `
+                            -Execute        $executePath `
                             -Arguments      @($job['arguments']) `
                             -TimeoutSeconds $job['timeoutSeconds']
 

@@ -22,7 +22,7 @@ function Get-BundledToolInfo {
         if ($present) {
             if ($toolDef.SupportsVersionApi) {
                 try {
-                    $jsonOutput = & pwsh -NoProfile -NonInteractive -File $toolPath -Version -Format json 2>&1
+                    $jsonOutput = & $script:PowerShellExe -NoProfile -NonInteractive -File $toolPath -Version -Format json 2>&1
                     if ($LASTEXITCODE -eq 0) {
                         $parsed  = ($jsonOutput -join '') | ConvertFrom-Json
                         $version = $parsed.tool.version

@@ -142,6 +142,27 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 @($info).Count | Should -Be 7
             }
 
+            It 'uses the module-selected PowerShell executable for version API probes' {
+                $oldToolsDir     = $script:BundledToolsDir
+                $oldPowerShellExe = $script:PowerShellExe
+                $toolsDir        = Join-Path $TestDrive 'tools'
+                $runner          = Join-Path $TestDrive 'fake-powershell.ps1'
+                $null            = New-Item -ItemType Directory -Path $toolsDir
+                Set-Content -LiteralPath (Join-Path $toolsDir 'delphi-inspect.ps1') -Value '# fake tool'
+                Set-Content -LiteralPath $runner -Value 'Write-Output ''{"tool":{"version":"9.9.9"}}'''
+
+                try {
+                    $script:BundledToolsDir = $toolsDir
+                    $script:PowerShellExe   = $runner
+                    $info = Get-BundledToolInfo
+                    ($info | Where-Object Name -eq 'delphi-inspect').Version | Should -Be '9.9.9'
+                }
+                finally {
+                    $script:BundledToolsDir = $oldToolsDir
+                    $script:PowerShellExe   = $oldPowerShellExe
+                }
+            }
+
         }
 
         Context 'tool entry shape' {

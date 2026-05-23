@@ -105,7 +105,10 @@ function Resolve-DelphiCiConfig {
 
         if ($json.PSObject.Properties['root'] -and
             -not [string]::IsNullOrWhiteSpace($json.root)) {
-            $root = Join-Path $configDir $json.root
+            $root = $json.root
+            if (-not [System.IO.Path]::IsPathRooted($root)) {
+                $root = Join-Path $configDir $root
+            }
         } else {
             $root = $configDir
         }

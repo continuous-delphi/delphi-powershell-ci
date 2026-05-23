@@ -253,6 +253,18 @@ Describe 'Get-DelphiCiConfig' {
             $config.Root | Should -Be $expected
         }
 
+        It 'preserves an absolute root from the config file' {
+            $subDir  = Join-Path $TestDrive 'ci'
+            $rootDir = Join-Path $TestDrive 'repo-root'
+            $null    = New-Item -ItemType Directory -Path $subDir -Force
+            $null    = New-Item -ItemType Directory -Path $rootDir -Force
+            $cfgFile = Join-Path $subDir 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{ root = $rootDir; pipeline = @(@{ action = 'Clean' }) } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Root | Should -Be ([System.IO.Path]::GetFullPath($rootDir))
+        }
+
     }
 
     Context 'CLI overrides beat config file values' {
