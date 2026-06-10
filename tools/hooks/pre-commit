@@ -1,0 +1,12 @@
+#!/bin/sh
+PART=${DELPHI_INCVER_PART:-patch}
+pwsh -NoProfile -Command "
+  \$result = Invoke-DelphiIncVer \`
+    -File 'source/Delphi.PowerShell.CI.psd1' \`
+    -IncverTarget 'Text' \`
+    -IncverStyle 'SemVer' \`
+    -IncverPart '$PART' \`
+    -IncverPattern '(\d+\.\d+\.\d+)'
+  if (-not \$result.Success) { exit 1 }
+"
+git add source/Delphi.PowerShell.CI.psd1

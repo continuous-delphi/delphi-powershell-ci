@@ -3,13 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.3.0] - Unreleased
+- Add `Codesign` pipeline action and `Invoke-DelphiCodesign`, bundling
+  `delphi-codesign-azure.ps1` for Authenticode signing and verification
+  via Azure Trusted Signing. Supports Sign and Verify actions with
+  engine abstraction for future signing providers.
+  [#12](https://github.com/continuous-delphi/delphi-powershell-ci/issues/12)
 
-## [Unreleased]
+## [0.2.0] - Unreleased
 - Add `schemas/delphi-ci.schema.json` for editor completion and validation of
   `delphi-ci.json` pipeline configuration files.
 - Remove unreleased legacy JSON config support for top-level `"steps"` and
   named action sections; config files now use the ordered `"pipeline"` format.
-- Extended pipeline redesign v2: replaced the fixed `"steps"` 
+- Extended pipeline redesign v2: replaced the fixed `"steps"`
 and named-section config layout with an ordered `"pipeline"` array
 of action objects. This enables repeatable and freely ordered actions
 (Clean, Build, Run, Copy, Compress, etc.) without schema changes.

@@ -139,7 +139,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 # The integration test below exercises the real path.
                 # Here we verify the function returns entries for all bundled tools.
                 $info = Get-BundledToolInfo
-                @($info).Count | Should -Be 7
+                @($info).Count | Should -Be 8
             }
 
             It 'uses the module-selected PowerShell executable for version API probes' {

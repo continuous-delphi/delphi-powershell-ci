@@ -88,6 +88,14 @@ function Resolve-DelphiCiConfig {
             engineArguments   = @()
             timeoutSeconds    = 300
         }
+        codesign = @{
+            action       = 'Sign'
+            engine       = 'AzureTrustedSigning'
+            signToolPath = ''
+            dlibPath     = ''
+            metadataPath = ''
+            envFile      = ''
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -330,6 +338,24 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['callgraph'] = Merge-ActionConfig -Base $effectiveDefaults['callgraph'] -Layer $callGraphCliLayer
     }
 
+    # --- Codesign CLI layer ---
+    $codesignCliLayer = @{}
+    if ($Overrides.ContainsKey('CodesignAction') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignAction']))              { $codesignCliLayer['action']       = $Overrides['CodesignAction'] }
+    if ($Overrides.ContainsKey('CodesignEngine') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignEngine']))              { $codesignCliLayer['engine']       = $Overrides['CodesignEngine'] }
+    if ($Overrides.ContainsKey('CodesignSignToolPath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignSignToolPath']))        { $codesignCliLayer['signToolPath'] = $Overrides['CodesignSignToolPath'] }
+    if ($Overrides.ContainsKey('CodesignDlibPath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignDlibPath']))            { $codesignCliLayer['dlibPath']     = $Overrides['CodesignDlibPath'] }
+    if ($Overrides.ContainsKey('CodesignMetadataPath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignMetadataPath']))        { $codesignCliLayer['metadataPath'] = $Overrides['CodesignMetadataPath'] }
+    if ($Overrides.ContainsKey('CodesignEnvFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['CodesignEnvFile']))             { $codesignCliLayer['envFile']      = $Overrides['CodesignEnvFile'] }
+    if ($codesignCliLayer.Count -gt 0) {
+        $effectiveDefaults['codesign'] = Merge-ActionConfig -Base $effectiveDefaults['codesign'] -Layer $codesignCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params when no config file was supplied.
     # -------------------------------------------------------------------------
@@ -380,6 +406,7 @@ function Resolve-DelphiCiConfig {
             'compress' { Assert-CompressConfig $actionDefaults }
             'coverage' { Assert-CoverageConfig $actionDefaults }
             'callgraph' { Assert-CallGraphConfig $actionDefaults }
+            'codesign'  { Assert-CodesignConfig  $actionDefaults }
         }
 
         # Resolve jobs
@@ -727,5 +754,23 @@ function Assert-CallGraphConfig {
     }
     if ($Config.ContainsKey('graphKind') -and $Config['graphKind'] -notin $validGraphKinds) {
         throw "Invalid callgraph graphKind '$($Config['graphKind'])'. Valid values: call, uses, classes, dependency, all"
+    }
+}
+
+function Assert-CodesignConfig {
+    <#
+    .SYNOPSIS
+        Validates enum-like fields in a resolved codesign configuration.
+    #>
+    param([hashtable]$Config)
+
+    $validActions = @('Sign', 'Verify')
+    $validEngines = @('AzureTrustedSigning')
+
+    if ($Config.ContainsKey('action') -and $Config['action'] -notin $validActions) {
+        throw "Invalid codesign action '$($Config['action'])'. Valid values: $($validActions -join ', ')"
+    }
+    if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
+        throw "Invalid codesign engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
     }
 }

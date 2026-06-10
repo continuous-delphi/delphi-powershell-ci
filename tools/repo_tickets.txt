@@ -1,0 +1,85 @@
+# Ticket list for https://github.com/continuous-delphi/delphi-powershell-ci
+# See C:\code\dev-automation-tooling\create-ticket-formatinfo.md for format.
+#
+# To create issues on GitHub:
+#   pwsh -File C:\code\dev-automation-tooling\create-github-issues.ps1 `
+#     -RepoUrl https://github.com/continuous-delphi/delphi-powershell-ci `
+#     -TicketListFile tools\repo_tickets.txt
+---
+Title: Add Invoke-DelphiCodesign with Sign and Verify actions
+Issue: #12
+Status: closed
+Labels: enhancement
+Body:
+Add code signing support to the CI module by bundling
+`delphi-codesign-azure.ps1` and exposing `Invoke-DelphiCodesign` as a
+public command with `Sign` and `Verify` pipeline actions.
+
+## Design
+
+Use the established engine pattern (like Build has MSBuild/DCCBuild,
+Coverage has DelphiCodeCoverage/radCodeCoverage). The codesign engine
+abstraction allows future signing providers beyond Azure Trusted Signing
+(e.g. local certificate store, DigiCert, other cloud HSMs).
+
+### Public command: Invoke-DelphiCodesign
+
+Parameters following the `<Action><Param>` naming convention:
+
+- `-CodesignAction` -- `Sign` or `Verify` (ValidateSet)
+- `-CodesignEngine` -- `AzureTrustedSigning` (default, only engine for now)
+- `-CodesignFiles` -- string array of files to sign (Sign action)
+- `-CodesignFilePath` -- single file to verify (Verify action)
+- `-CodesignSignToolPath` -- explicit signtool.exe path
+- `-CodesignDlibPath` -- Azure.CodeSigning.Dlib.dll path
+- `-CodesignMetadataPath` -- metadata.json path
+- `-CodesignEnvFile` -- .env file for Azure credentials
+- `-CodesignFormat` -- output format (object/text/json)
+
+### Pipeline action: Codesign
+
+JSON config (`delphi-ci.json`) support:
+
+```json
+{
+  "action": "Codesign",
+  "jobs": [
+    {
+      "name": "Sign release binaries",
+      "codesignAction": "Sign",
+      "files": ["projects/cli/Win32/Release/app.exe"],
+      "envFile": ".env"
+    },
+    {
+      "name": "Verify signatures",
+      "codesignAction": "Verify",
+      "filePath": "projects/cli/Win32/Release/app.exe"
+    }
+  ]
+}
+```
+
+### Files to modify
+
+| File | What to add |
+|------|-------------|
+| `source/bundled-tools/delphi-codesign-azure.ps1` | Already copied |
+| `source/Public/Invoke-DelphiCodesign.ps1` | New wrapper function |
+| `source/Public/Invoke-DelphiCi.ps1` | CLI params, override collection, Codesign dispatch case |
+| `source/Public/Get-DelphiCiConfig.ps1` | CLI params, override collection |
+| `source/Private/Resolve-DelphiCiConfig.ps1` | Built-in defaults, validation |
+| `source/Private/Get-BundledToolInfo.ps1` | Register delphi-codesign-azure |
+| `source/Delphi.PowerShell.CI.psd1` | Export Invoke-DelphiCodesign |
+| `schemas/delphi-ci.schema.json` | Codesign action definition |
+| `tests/pwsh/Invoke-DelphiCodesign.Tests.ps1` | Wrapper tests |
+| `tests/pwsh/Invoke-DelphiCi.Tests.ps1` | Integration tests |
+| `docs/Invoke-DelphiCodesign.md` | Command reference |
+| `examples/delphi-ci.json` | Pipeline example with Codesign action |
+
+Acceptance criteria:
+- [ ] Invoke-DelphiCodesign -CodesignAction Sign signs files via bundled tool
+- [ ] Invoke-DelphiCodesign -CodesignAction Verify verifies a file
+- [ ] Engine parameter defaults to AzureTrustedSigning
+- [ ] Codesign action works in delphi-ci.json pipeline
+- [ ] Bundled tool version reported by Get-DelphiCiVersionInfo
+- [ ] All Pester tests pass

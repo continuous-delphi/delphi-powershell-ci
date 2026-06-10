@@ -94,7 +94,15 @@ function Get-DelphiCiConfig {
         [string]$CallGraphProjectFile,
         [string[]]$CallGraphGraphVizExclude,
         [string[]]$CallGraphEngineArguments,
-        [int]$CallGraphTimeoutSeconds
+        [int]$CallGraphTimeoutSeconds,
+
+        [ValidateSet('Sign', 'Verify')]
+        [string]$CodesignAction,
+        [string]$CodesignEngine,
+        [string]$CodesignSignToolPath,
+        [string]$CodesignDlibPath,
+        [string]$CodesignMetadataPath,
+        [string]$CodesignEnvFile
     )
 
     $overrides = @{}
@@ -171,6 +179,13 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizExclude'))      { $overrides['CallGraphGraphVizExclude']     = $CallGraphGraphVizExclude }
     if ($PSBoundParameters.ContainsKey('CallGraphEngineArguments'))      { $overrides['CallGraphEngineArguments']     = $CallGraphEngineArguments }
     if ($PSBoundParameters.ContainsKey('CallGraphTimeoutSeconds'))       { $overrides['CallGraphTimeoutSeconds']      = $CallGraphTimeoutSeconds }
+
+    if ($PSBoundParameters.ContainsKey('CodesignAction'))               { $overrides['CodesignAction']               = $CodesignAction }
+    if ($PSBoundParameters.ContainsKey('CodesignEngine'))               { $overrides['CodesignEngine']               = $CodesignEngine }
+    if ($PSBoundParameters.ContainsKey('CodesignSignToolPath'))         { $overrides['CodesignSignToolPath']         = $CodesignSignToolPath }
+    if ($PSBoundParameters.ContainsKey('CodesignDlibPath'))             { $overrides['CodesignDlibPath']             = $CodesignDlibPath }
+    if ($PSBoundParameters.ContainsKey('CodesignMetadataPath'))         { $overrides['CodesignMetadataPath']         = $CodesignMetadataPath }
+    if ($PSBoundParameters.ContainsKey('CodesignEnvFile'))              { $overrides['CodesignEnvFile']              = $CodesignEnvFile }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

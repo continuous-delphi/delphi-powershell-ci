@@ -244,7 +244,28 @@ function Invoke-DelphiCi {
         [string[]]$CallGraphEngineArguments,
 
         [Parameter(ParameterSetName = 'Run')]
-        [int]$CallGraphTimeoutSeconds
+        [int]$CallGraphTimeoutSeconds,
+
+        # --- Codesign defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('Sign', 'Verify')]
+        [string]$CodesignAction,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CodesignEngine,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CodesignSignToolPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CodesignDlibPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CodesignMetadataPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$CodesignEnvFile
     )
 
     # ---------------------------------------------------------------------------
@@ -348,6 +369,13 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CallGraphGraphVizExclude'))      { $overrides['CallGraphGraphVizExclude']     = $CallGraphGraphVizExclude }
     if ($PSBoundParameters.ContainsKey('CallGraphEngineArguments'))      { $overrides['CallGraphEngineArguments']     = $CallGraphEngineArguments }
     if ($PSBoundParameters.ContainsKey('CallGraphTimeoutSeconds'))       { $overrides['CallGraphTimeoutSeconds']      = $CallGraphTimeoutSeconds }
+
+    if ($PSBoundParameters.ContainsKey('CodesignAction'))               { $overrides['CodesignAction']               = $CodesignAction }
+    if ($PSBoundParameters.ContainsKey('CodesignEngine'))               { $overrides['CodesignEngine']               = $CodesignEngine }
+    if ($PSBoundParameters.ContainsKey('CodesignSignToolPath'))         { $overrides['CodesignSignToolPath']         = $CodesignSignToolPath }
+    if ($PSBoundParameters.ContainsKey('CodesignDlibPath'))             { $overrides['CodesignDlibPath']             = $CodesignDlibPath }
+    if ($PSBoundParameters.ContainsKey('CodesignMetadataPath'))         { $overrides['CodesignMetadataPath']         = $CodesignMetadataPath }
+    if ($PSBoundParameters.ContainsKey('CodesignEnvFile'))              { $overrides['CodesignEnvFile']              = $CodesignEnvFile }
 
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
@@ -750,6 +778,58 @@ function Invoke-DelphiCi {
                             -CallGraphGraphVizExclude   @($job['graphVizExclude']) `
                             -CallGraphEngineArguments   @($job['engineArguments']) `
                             -CallGraphTimeoutSeconds    $job['timeoutSeconds']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'codesign' {
+                    $jobs = $entry.Jobs
+                    if ($jobs.Count -eq 0) {
+                        Write-DelphiCiMessage -Level 'WARN' -Message 'Codesign action has no jobs; skipping.'
+                        continue
+                    }
+                    foreach ($job in $jobs) {
+                        $jobAction = if ($job.ContainsKey('action')) { $job['action'] } else { 'Sign' }
+                        $jobFiles  = if ($job.ContainsKey('files'))  { @($job['files']) } else { @() }
+                        $jobFile   = if ($job.ContainsKey('filePath')) { $job['filePath'] } else { '' }
+
+                        # Resolve paths relative to config root
+                        if ($jobAction -eq 'Sign') {
+                            $jobFiles = @($jobFiles | ForEach-Object {
+                                if (-not [System.IO.Path]::IsPathRooted($_)) { Join-Path $config.Root $_ } else { $_ }
+                            })
+                        }
+                        elseif ($jobAction -eq 'Verify' -and -not [string]::IsNullOrEmpty($jobFile) -and -not [System.IO.Path]::IsPathRooted($jobFile)) {
+                            $jobFile = Join-Path $config.Root $jobFile
+                        }
+
+                        $metadataPath = $job['metadataPath']
+                        if (-not [string]::IsNullOrEmpty($metadataPath) -and -not [System.IO.Path]::IsPathRooted($metadataPath)) {
+                            $metadataPath = Join-Path $config.Root $metadataPath
+                        }
+
+                        $envFile = $job['envFile']
+                        if (-not [string]::IsNullOrEmpty($envFile) -and -not [System.IO.Path]::IsPathRooted($envFile)) {
+                            $envFile = Join-Path $config.Root $envFile
+                        }
+
+                        $codesignParams = @{
+                            Action               = $jobAction
+                            CodesignEngine       = $job['engine']
+                            CodesignSignToolPath = $job['signToolPath']
+                            CodesignDlibPath     = $job['dlibPath']
+                            CodesignMetadataPath = $metadataPath
+                            CodesignEnvFile      = $envFile
+                        }
+                        if ($jobAction -eq 'Sign')   { $codesignParams['Files']    = $jobFiles }
+                        if ($jobAction -eq 'Verify')  { $codesignParams['FilePath'] = $jobFile }
+
+                        $result = Invoke-DelphiCodesign @codesignParams
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {

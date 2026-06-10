@@ -27,7 +27,8 @@
         "copy": { "$ref": "#/$defs/copyConfig" },
         "compress": { "$ref": "#/$defs/compressConfig" },
         "coverage": { "$ref": "#/$defs/coverageConfig" },
-        "callgraph": { "$ref": "#/$defs/callgraphConfig" }
+        "callgraph": { "$ref": "#/$defs/callgraphConfig" },
+        "codesign": { "$ref": "#/$defs/codesignConfig" }
       }
     },
     "pipeline": {
@@ -557,6 +558,69 @@
         }
       }
     },
+    "codesignConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["Sign", "Verify"],
+          "default": "Sign",
+          "description": "Codesign action: Sign or Verify."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["AzureTrustedSigning"],
+          "default": "AzureTrustedSigning",
+          "description": "Signing engine. Currently only AzureTrustedSigning is supported."
+        },
+        "signToolPath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to signtool.exe. Auto-discovered from the Windows SDK if empty."
+        },
+        "dlibPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to Azure.CodeSigning.Dlib.dll. Auto-discovered from default install location if empty."
+        },
+        "metadataPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to metadata.json with Azure Trusted Signing endpoint and certificate profile."
+        },
+        "envFile": {
+          "type": "string",
+          "default": "",
+          "description": "Path to .env file with Azure credentials (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET)."
+        },
+        "files": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Files to sign (Sign action only)."
+        },
+        "filePath": {
+          "type": "string",
+          "default": "",
+          "description": "File to verify (Verify action only)."
+        }
+      }
+    },
+    "codesignJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "action": { "$ref": "#/$defs/codesignConfig/properties/action" },
+        "engine": { "$ref": "#/$defs/codesignConfig/properties/engine" },
+        "signToolPath": { "$ref": "#/$defs/codesignConfig/properties/signToolPath" },
+        "dlibPath": { "$ref": "#/$defs/codesignConfig/properties/dlibPath" },
+        "metadataPath": { "$ref": "#/$defs/codesignConfig/properties/metadataPath" },
+        "envFile": { "$ref": "#/$defs/codesignConfig/properties/envFile" },
+        "files": { "$ref": "#/$defs/codesignConfig/properties/files" },
+        "filePath": { "$ref": "#/$defs/codesignConfig/properties/filePath" }
+      }
+    },
     "cleanJob": {
       "type": "object",
       "additionalProperties": false,
@@ -712,7 +776,8 @@
         { "$ref": "#/$defs/copyAction" },
         { "$ref": "#/$defs/compressAction" },
         { "$ref": "#/$defs/coverageAction" },
-        { "$ref": "#/$defs/callgraphAction" }
+        { "$ref": "#/$defs/callgraphAction" },
+        { "$ref": "#/$defs/codesignAction" }
       ]
     },
     "cleanAction": {
@@ -875,6 +940,22 @@
         "engineArguments": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments" },
         "engineArguments!": { "$ref": "#/$defs/callgraphConfig/properties/engineArguments!" },
         "timeoutSeconds": { "$ref": "#/$defs/callgraphConfig/properties/timeoutSeconds" }
+      }
+    },
+    "codesignAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Codesign", "codesign"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/codesignJob" } },
+        "engine": { "$ref": "#/$defs/codesignConfig/properties/engine" },
+        "signToolPath": { "$ref": "#/$defs/codesignConfig/properties/signToolPath" },
+        "dlibPath": { "$ref": "#/$defs/codesignConfig/properties/dlibPath" },
+        "metadataPath": { "$ref": "#/$defs/codesignConfig/properties/metadataPath" },
+        "envFile": { "$ref": "#/$defs/codesignConfig/properties/envFile" },
+        "files": { "$ref": "#/$defs/codesignConfig/properties/files" },
+        "filePath": { "$ref": "#/$defs/codesignConfig/properties/filePath" }
       }
     }
   }

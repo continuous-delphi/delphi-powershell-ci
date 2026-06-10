@@ -110,3 +110,8 @@ TestInsightSettings.ini
 
 # PowerShell test output
 tests/pwsh/results/*.xml
+
+*.bat
+*.txt
+/.claude
+*.md
