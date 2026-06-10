@@ -49,6 +49,8 @@ pwsh -File source/delphi-codesign-azure.ps1 -Version -Format json
 [CmdletBinding(DefaultParameterSetName = 'Version')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
   Justification='Write-Host is intentional: standalone CLI tool streams status to the console host.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'OutputFile',
+  Justification='Consumed by Write-OutputFile helper function.')]
 param(
     [Parameter(ParameterSetName = 'Version', Mandatory)]
     [switch]$Version,
