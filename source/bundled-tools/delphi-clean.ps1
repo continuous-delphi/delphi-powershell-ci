@@ -206,7 +206,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:ToolVersion        = '1.2.0'
+$script:ToolVersion        = '1.3.0'
 
 $script:OutputLevel        = $OutputLevel
 $script:BuiltInExcludeDirs = @('.git', '.vs', '.claude')
@@ -767,7 +767,6 @@ function Get-LevelDefinition {
         '*.identcache',
         '*.bak',
         '*.tmp',
-        '*.dsk',
         '*.tvsconfig',
         '*.stat'
     )
@@ -825,6 +824,7 @@ function Get-LevelDefinition {
         '*.dproj.local',
         '*.groupproj.local',
         '*.projdata',
+        '*.dsk',
         '*.~*',
         '*.lib',
         '*.fbpInf',
