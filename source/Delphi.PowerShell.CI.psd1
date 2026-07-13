@@ -5,7 +5,7 @@
 @{
     # Module identity
     RootModule        = 'Delphi.PowerShell.CI.psm1'
-    ModuleVersion     = '0.3.3'
+    ModuleVersion     = '0.3.4'
     GUID              = '2cd8a9b8-b45b-44aa-9622-da80a9c1ac52'
 
     # Authorship

@@ -101,7 +101,7 @@ $ExitFileNotFound     = 3
 $ExitPatternNotFound  = 4
 $ExitIncrementFailed  = 5
 
-$script:ToolVersion = '1.3.0'
+$script:ToolVersion = '1.5.1'
 
 # -----------------------------------------------------------------------------
 # Version parsing and formatting
@@ -446,59 +446,201 @@ function Update-TextContent {
 function Update-DProjContent {
     <#
     .SYNOPSIS
-        Updates FileVersion in all VerInfo_Keys elements of a .dproj XML file.
-        Returns a hashtable with XmlDocument, OldVersion, and NewVersion.
+        Updates FileVersion in every VerInfo_Keys element and keeps the discrete
+        VerInfo_MajorVer/MinorVer/Release/Build elements of the same PropertyGroup
+        in sync (update where present, create where absent).
+
+        The .dproj format stores the file version in two representations read by
+        two different consumers: builds read the FileVersion key, while the RAD
+        Studio Version Info options page reads the discrete elements and writes its
+        state back into BOTH on Save. Bumping only the key therefore risks a
+        silent reversion the next time a developer opens Project Options and saves.
+        Keeping both in sync closes that gap (see issue #8).
+
+        The baseline version is the MAXIMUM FileVersion across all VerInfo_Keys
+        nodes (component-wise numeric, missing components treated as zero; ties
+        resolved to the last in document order). This avoids reading the Base
+        group's 1.0.0.0 placeholder and regressing the effective version that lives
+        in a more-derived config group (see issue #9). The bumped value is written
+        to every VerInfo_Keys node, so a bump never decreases any FileVersion entry.
+
+        Edits are applied as targeted string replacements so the file is preserved
+        byte-for-byte apart from the owned values and inserted elements -- the BOM,
+        line endings, indentation, and all other content are left untouched. (A DOM
+        round-trip would reindent and re-serialize the whole document.)
+
+        Returns a hashtable with Content, OldVersion, NewVersion, and
+        DiscreteVersion -- or $null if no VerInfo_Keys carrying a FileVersion is
+        found.
     #>
     param(
+        [string]$Content,
         [string]$FilePath,
         [string]$PartName
     )
 
-    $xml = [xml](Get-Content -LiteralPath $FilePath -Raw -ErrorAction Stop)
-    $nsMgr = [System.Xml.XmlNamespaceManager]::new($xml.NameTable)
-    $nsMgr.AddNamespace('ms', 'http://schemas.microsoft.com/developer/msbuild/2003')
-
-    $nodes = $xml.SelectNodes('//ms:VerInfo_Keys', $nsMgr)
-    if ($null -eq $nodes -or $nodes.Count -eq 0) {
-        return $null
-    }
-
-    # Read current FileVersion from the first VerInfo_Keys node
-    $firstKeys = $nodes[0].InnerText
-    $oldVersionStr = $null
-    foreach ($pair in $firstKeys -split ';') {
-        $kv = $pair -split '=', 2
-        if ($kv[0] -eq 'FileVersion') {
-            $oldVersionStr = $kv[1]
-            break
+    # Collect every FileVersion across all VerInfo_Keys nodes (document order).
+    $keysMatches = [regex]::Matches($Content, '<VerInfo_Keys>(.*?)</VerInfo_Keys>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $versionStrings = @()
+    foreach ($km in $keysMatches) {
+        if ($km.Groups[1].Value -match 'FileVersion=([^;<]+)') {
+            $versionStrings += $Matches[1]
         }
     }
-    if ([string]::IsNullOrEmpty($oldVersionStr)) {
+    if ($versionStrings.Count -eq 0) {
         return $null
     }
 
-    # Parse and increment
+    # Select the baseline as the MAXIMUM FileVersion. Comparison is component-wise
+    # numeric with missing components treated as zero; on ties, the last value in
+    # document order wins so the retained width matches the most-derived group.
+    # This prevents the Base group's 1.0.0.0 placeholder from being chosen and
+    # regressing the effective version (issue #9). Every FileVersion must parse --
+    # a bad value fails here (before any write) rather than being skipped.
+    $baselineStr = $null
+    $baselinePad = $null
+    foreach ($vs in $versionStrings) {
+        try {
+            $parts = ConvertFrom-WinVer $vs
+        }
+        catch {
+            throw "Unparsable FileVersion '$vs' in '$FilePath'. $($_.Exception.Message)"
+        }
+        $pad = @(0, 0, 0, 0)
+        for ($i = 0; $i -lt $parts.Count -and $i -lt 4; $i++) { $pad[$i] = $parts[$i] }
+
+        if ($null -eq $baselinePad) {
+            $baselineStr = $vs
+            $baselinePad = $pad
+            continue
+        }
+        # $atLeast is true when $pad >= $baselinePad, so an equal value (tie) also
+        # replaces the baseline and the last in document order is retained.
+        $atLeast = $true
+        for ($i = 0; $i -lt 4; $i++) {
+            if ($pad[$i] -gt $baselinePad[$i]) { $atLeast = $true; break }
+            if ($pad[$i] -lt $baselinePad[$i]) { $atLeast = $false; break }
+        }
+        if ($atLeast) {
+            $baselineStr = $vs
+            $baselinePad = $pad
+        }
+    }
+    $oldVersionStr = $baselineStr
+
+    # When the keys disagree, surface which distinct values were seen and which was
+    # chosen. Informational only (never fails); visible on the console by default.
+    $distinctCount = ($versionStrings | Select-Object -Unique | Measure-Object).Count
+    if ($distinctCount -gt 1) {
+        $summary = ($versionStrings | Group-Object | Sort-Object Name | ForEach-Object { "$($_.Name) (x$($_.Count))" }) -join ', '
+        Write-Host "Multiple FileVersion values found: $summary. Using baseline $baselineStr."
+    }
+
+    # Parse and increment (the FileVersion string keeps its original width)
     $oldParts = ConvertFrom-WinVer $oldVersionStr
     $newParts = Step-WinVer -Parts $oldParts -PartName $PartName
     $newVersionStr = ConvertTo-WinVer -Parts $newParts -Separator '.'
 
-    # Update FileVersion in all VerInfo_Keys nodes
-    foreach ($node in $nodes) {
-        $keysStr = $node.InnerText
-        $keys = $keysStr -split ';'
-        for ($i = 0; $i -lt $keys.Count; $i++) {
-            $kv = $keys[$i] -split '=', 2
-            if ($kv[0] -eq 'FileVersion') {
-                $keys[$i] = "FileVersion=$newVersionStr"
-            }
-        }
-        $node.InnerText = $keys -join ';'
+    # Discrete four-part form: zero-pad on the right (discrete elements are always
+    # four values even when the FileVersion string is narrower).
+    $discrete = [int[]]@(0, 0, 0, 0)
+    for ($i = 0; $i -lt $newParts.Count -and $i -lt 4; $i++) {
+        $discrete[$i] = $newParts[$i]
+    }
+    $discreteVersionStr = $discrete -join '.'
+
+    # Map discrete element names to their component values, in component order.
+    $script:DProjNewFileVersion = $newVersionStr
+    $script:DProjElementValues  = [ordered]@{
+        'VerInfo_MajorVer' = $discrete[0]
+        'VerInfo_MinorVer' = $discrete[1]
+        'VerInfo_Release'  = $discrete[2]
+        'VerInfo_Build'    = $discrete[3]
     }
 
+    # Pre-validate existing discrete elements in the keyed PropertyGroups. Failing
+    # here (before any write) guarantees a clear message and an untouched file when
+    # a discrete element holds a non-numeric value.
+    foreach ($pg in [regex]::Matches($Content, '<PropertyGroup\b.*?</PropertyGroup>', [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
+        if ($pg.Value -notmatch '<VerInfo_Keys>[^<]*FileVersion=') { continue }
+        foreach ($name in $script:DProjElementValues.Keys) {
+            $ex = [regex]::Match($pg.Value, "<$name>(.*?)</$name>", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+            if ($ex.Success) {
+                $cur = $ex.Groups[1].Value.Trim()
+                if ($cur -ne '' -and $cur -notmatch '^\d+$') {
+                    throw "Non-numeric <$name> value '$cur' in '$FilePath'. Cannot sync discrete version elements."
+                }
+            }
+        }
+    }
+
+    # Transform each PropertyGroup that carries a FileVersion key. PropertyGroups
+    # do not nest in a .dproj, so a non-greedy match is safe.
+    $evaluator = {
+        param([System.Text.RegularExpressions.Match]$m)
+        $block = $m.Value
+
+        # Scope: exactly the PropertyGroups whose VerInfo_Keys gets its FileVersion
+        # updated. Groups without a keyed FileVersion are left entirely alone.
+        if ($block -notmatch '<VerInfo_Keys>[^<]*FileVersion=') {
+            return $block
+        }
+
+        # 1. Update FileVersion inside VerInfo_Keys.
+        $block = [regex]::Replace($block, '(FileVersion=)[^;<]+', "`${1}$script:DProjNewFileVersion")
+
+        # Detect line ending and child indentation from the block itself so
+        # inserted elements match the surrounding file exactly.
+        $eol = if ($block -match "`r`n") { "`r`n" } else { "`n" }
+        $indent = '        '
+        if ($block -match "(?m)^([ \t]+)<VerInfo_Keys>") {
+            $indent = $Matches[1]
+        }
+
+        # 2. Sync discrete elements: update in place where present, insert in
+        #    alphabetical position where absent.
+        foreach ($name in $script:DProjElementValues.Keys) {
+            $value = $script:DProjElementValues[$name]
+            $existing = [regex]::Match($block, "<$name>(.*?)</$name>", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+            if ($existing.Success) {
+                # Value already validated numeric (or empty) in the pre-scan above.
+                $block = $block.Remove($existing.Groups[1].Index, $existing.Groups[1].Length).Insert($existing.Groups[1].Index, "$value")
+            }
+            else {
+                # Insert before the first sibling element whose name sorts after
+                # this one (ordinal), matching the RAD Studio IDE's alphabetical
+                # serialization of the VerInfo_* block; otherwise before the
+                # closing </PropertyGroup>.
+                $lines = [System.Collections.Generic.List[string]]($block -split [regex]::Escape($eol))
+                $insertAt = -1
+                for ($li = 1; $li -lt $lines.Count; $li++) {
+                    $lm = [regex]::Match($lines[$li], '^\s*<([A-Za-z0-9_]+)[ >/]')
+                    if (-not $lm.Success) { continue }
+                    $sibName = $lm.Groups[1].Value
+                    if ($sibName -eq 'PropertyGroup') { continue }
+                    if ([string]::CompareOrdinal($sibName, $name) -gt 0) {
+                        $insertAt = $li
+                        break
+                    }
+                }
+                if ($insertAt -lt 0) {
+                    $insertAt = $lines.Count - 1
+                }
+                $lines.Insert($insertAt, "$indent<$name>$value</$name>")
+                $block = [string]::Join($eol, $lines)
+            }
+        }
+
+        return $block
+    }
+
+    $newContent = [regex]::Replace($Content, '<PropertyGroup\b.*?</PropertyGroup>', $evaluator, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+
     return @{
-        XmlDocument = $xml
-        OldVersion  = $oldVersionStr
-        NewVersion  = $newVersionStr
+        Content         = $newContent
+        OldVersion      = $oldVersionStr
+        NewVersion      = $newVersionStr
+        DiscreteVersion = $discreteVersionStr
     }
 }
 
@@ -590,25 +732,32 @@ try {
         exit $ExitSuccess
     }
     elseif ($resolvedTarget -eq 'DProj') {
-        # DProj target -- update FileVersion in all VerInfo_Keys elements
-        $updateResult = Update-DProjContent -FilePath $File -PartName $Part
+        # DProj target -- update FileVersion in all VerInfo_Keys elements and sync
+        # the discrete VerInfo_* elements in the same PropertyGroups.
+        $updateResult = Update-DProjContent -Content $content -FilePath $File -PartName $Part
         if ($null -eq $updateResult) {
             Write-Error "No VerInfo_Keys with FileVersion found in $File" -ErrorAction Continue
             Write-Result @{ file = $File; error = "VerInfo_Keys not found" }
             exit $ExitPatternNotFound
         }
 
-        # XmlDocument.Save writes UTF-8 with BOM, matching the Delphi IDE
-        $updateResult.XmlDocument.Save($File)
+        # Write bytes directly to preserve the file exactly: a real IDE .dproj is
+        # UTF-8 with a BOM, but honor whatever the input actually had. CRLF and
+        # indentation are already carried in the edited content string.
+        $dprojBytes  = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $File).Path)
+        $dprojHasBom = $dprojBytes.Length -ge 3 -and $dprojBytes[0] -eq 0xEF -and $dprojBytes[1] -eq 0xBB -and $dprojBytes[2] -eq 0xBF
+        $dprojEnc    = [System.Text.UTF8Encoding]::new($dprojHasBom)
+        [System.IO.File]::WriteAllText((Resolve-Path -LiteralPath $File).Path, $updateResult.Content, $dprojEnc)
         Write-Host "$($updateResult.OldVersion) -> $($updateResult.NewVersion)"
 
         Write-Result @{
-            file       = $File
-            target     = $resolvedTarget
-            style      = $resolvedStyle
-            part       = if ([string]::IsNullOrEmpty($Part)) { 'last' } else { $Part }
-            oldVersion = $updateResult.OldVersion
-            newVersion = $updateResult.NewVersion
+            file            = $File
+            target          = $resolvedTarget
+            style           = $resolvedStyle
+            part            = if ([string]::IsNullOrEmpty($Part)) { 'last' } else { $Part }
+            oldVersion      = $updateResult.OldVersion
+            newVersion      = $updateResult.NewVersion
+            discreteVersion = $updateResult.DiscreteVersion
         }
         exit $ExitSuccess
     }
