@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.5] - Unreleased
+- Fix `Codesign` Verify failing with "Parameter set cannot be resolved" when a
+  Verify job inherited Sign-only params (`metadataPath`/`envFile`/`dlibPath`),
+  e.g. from action-level codesign defaults. `Invoke-DelphiCodesign` now forwards
+  those params only for the Sign action.
+  [#13](https://github.com/continuous-delphi/delphi-powershell-ci/issues/13)
+
 ## [0.3.0] - Unreleased
 - Add `Codesign` pipeline action and `Invoke-DelphiCodesign`, bundling
   `delphi-codesign-azure.ps1` for Authenticode signing and verification

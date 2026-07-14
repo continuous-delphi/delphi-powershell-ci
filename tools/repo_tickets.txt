@@ -83,3 +83,67 @@ Acceptance criteria:
 - [ ] Codesign action works in delphi-ci.json pipeline
 - [ ] Bundled tool version reported by Get-DelphiCiVersionInfo
 - [ ] All Pester tests pass
+---
+Title: Codesign Verify fails when job inherits Sign-only params (metadataPath/envFile/dlibPath)
+Issue: #13
+Status: closed
+Labels: bug
+Body:
+`Invoke-DelphiCodesign` appends the bundled tool's Sign-only parameters
+(`-DlibPath`, `-MetadataPath`, `-EnvFile`) to the tool invocation whenever
+those values are non-empty -- regardless of the requested `-Action`. When a
+Verify job carries any of those values, the call fails with:
+
+    delphi-codesign-azure.ps1: Parameter set cannot be resolved using the
+    specified named parameters.
+
+## Root cause
+
+The bundled tool `delphi-codesign-azure.ps1` scopes `-DlibPath`,
+`-MetadataPath`, and `-EnvFile` to `ParameterSetName = 'Sign'` (they do not
+apply to verification, which only reads the embedded Authenticode signature
+via `signtool verify /pa`). That design is correct -- verify has no use for
+the Dlib, Azure metadata, or credentials.
+
+The defect is in the wrapper, `source/Public/Invoke-DelphiCodesign.ps1`
+(lines 59-62), which appends all four path params unconditionally:
+
+    if (-not [string]::IsNullOrEmpty($CodesignSignToolPath))  { ... }
+    if (-not [string]::IsNullOrEmpty($CodesignDlibPath))      { ... -DlibPath ... }
+    if (-not [string]::IsNullOrEmpty($CodesignMetadataPath))  { ... -MetadataPath ... }
+    if (-not [string]::IsNullOrEmpty($CodesignEnvFile))       { ... -EnvFile ... }
+
+`-SignToolPath` is safe because it belongs to both the Sign and Verify
+parameter sets; only `-DlibPath`/`-MetadataPath`/`-EnvFile` break parameter-set
+resolution on a Verify call.
+
+## Trigger
+
+Setting `metadataPath`/`envFile` at the Codesign action level (or in
+`defaults.codesign`) is a natural config shape for a Sign+Verify pipeline.
+The resolver merges action-level fields into every job, so the Verify job
+inherits them and the run fails. A downstream Sign+Verify config
+(radFormatterV2 `BuildSign-delphici.json`) hit this; the current workaround
+is to scope those paths to the Sign job only.
+
+## Fix
+
+Guard the Sign-only args behind the action in
+`source/Public/Invoke-DelphiCodesign.ps1`:
+
+    if (-not [string]::IsNullOrEmpty($CodesignSignToolPath)) { $toolArgs.Add('-SignToolPath'); $toolArgs.Add($CodesignSignToolPath) }
+    if ($Action -eq 'Sign') {
+        if (-not [string]::IsNullOrEmpty($CodesignDlibPath))     { $toolArgs.Add('-DlibPath');     $toolArgs.Add($CodesignDlibPath) }
+        if (-not [string]::IsNullOrEmpty($CodesignMetadataPath)) { $toolArgs.Add('-MetadataPath'); $toolArgs.Add($CodesignMetadataPath) }
+        if (-not [string]::IsNullOrEmpty($CodesignEnvFile))      { $toolArgs.Add('-EnvFile');      $toolArgs.Add($CodesignEnvFile) }
+    }
+
+No change is required in the `delphi-codesign-azure` repo -- its parameter
+sets are correct as-is.
+
+Acceptance criteria:
+- [ ] A Verify job that inherits metadataPath/envFile/dlibPath no longer fails parameter-set resolution
+- [ ] Sign action still passes -DlibPath/-MetadataPath/-EnvFile through to the bundled tool
+- [ ] Regression test in tests/pwsh/Invoke-DelphiCodesign.Tests.ps1 covers a Verify call with non-empty signing params
+- [ ] Action-level codesign defaults work for a combined Sign+Verify pipeline
+- [ ] All Pester tests pass

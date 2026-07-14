@@ -56,10 +56,16 @@ function Invoke-DelphiCodesign {
     $toolArgs.Add('-Format')
     $toolArgs.Add('text')
 
+    # -SignToolPath belongs to both the Sign and Verify parameter sets in the
+    # bundled tool, so it is always safe to pass. -DlibPath, -MetadataPath, and
+    # -EnvFile are Sign-only; passing them on a Verify call breaks the tool's
+    # parameter-set resolution, so gate them behind the Sign action.
     if (-not [string]::IsNullOrEmpty($CodesignSignToolPath))  { $toolArgs.Add('-SignToolPath');  $toolArgs.Add($CodesignSignToolPath) }
-    if (-not [string]::IsNullOrEmpty($CodesignDlibPath))      { $toolArgs.Add('-DlibPath');      $toolArgs.Add($CodesignDlibPath) }
-    if (-not [string]::IsNullOrEmpty($CodesignMetadataPath))  { $toolArgs.Add('-MetadataPath');  $toolArgs.Add($CodesignMetadataPath) }
-    if (-not [string]::IsNullOrEmpty($CodesignEnvFile))       { $toolArgs.Add('-EnvFile');       $toolArgs.Add($CodesignEnvFile) }
+    if ($Action -eq 'Sign') {
+        if (-not [string]::IsNullOrEmpty($CodesignDlibPath))      { $toolArgs.Add('-DlibPath');      $toolArgs.Add($CodesignDlibPath) }
+        if (-not [string]::IsNullOrEmpty($CodesignMetadataPath))  { $toolArgs.Add('-MetadataPath');  $toolArgs.Add($CodesignMetadataPath) }
+        if (-not [string]::IsNullOrEmpty($CodesignEnvFile))       { $toolArgs.Add('-EnvFile');       $toolArgs.Add($CodesignEnvFile) }
+    }
 
     $resultFile = [System.IO.Path]::GetTempFileName()
     $toolArgs.Add('-OutputFile')
