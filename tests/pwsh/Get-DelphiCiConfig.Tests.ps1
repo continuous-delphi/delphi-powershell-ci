@@ -311,6 +311,30 @@ Describe 'Get-DelphiCiConfig' {
             $config.Pipeline[0].Defaults['toolchain']['version'] | Should -Be 'Florence'
         }
 
+        It 'carries toolchain.rootDir from the config file through resolution' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ toolchain = @{ rootDir = 'G:\rad\rad-buildfiles-d28' } } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Defaults['toolchain']['rootDir'] | Should -Be 'G:\rad\rad-buildfiles-d28'
+            # version default is preserved by the shallow toolchain merge
+            $config.Pipeline[0].Defaults['toolchain']['version'] | Should -Be 'Latest'
+        }
+
+        It '-ToolchainRootDir overrides config file toolchain rootDir' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ build = @{ toolchain = @{ rootDir = 'G:\rad\old' } } }
+                pipeline = @(@{ action = 'Build' })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile -ToolchainRootDir 'G:\rad\new'
+            $config.Pipeline[0].Defaults['toolchain']['rootDir'] | Should -Be 'G:\rad\new'
+        }
+
         It '-BuildEngine overrides config file engine' {
             $cfgFile = Join-Path $TestDrive 'test.json'
             Set-Content -LiteralPath $cfgFile -Value (@{
@@ -383,6 +407,17 @@ Describe 'Get-DelphiCiConfig' {
         It '-BuildEngine overrides default engine' {
             $config = Get-DelphiCiConfig -BuildEngine 'DCCBuild'
             $config.Pipeline[1].Defaults['engine'] | Should -Be 'DCCBuild'
+        }
+
+        It '-ToolchainRootDir sets toolchain.rootDir while preserving version default' {
+            $config = Get-DelphiCiConfig -ToolchainRootDir 'G:\rad\rad-buildfiles-d28'
+            $config.Pipeline[1].Defaults['toolchain']['rootDir'] | Should -Be 'G:\rad\rad-buildfiles-d28'
+            $config.Pipeline[1].Defaults['toolchain']['version'] | Should -Be 'Latest'
+        }
+
+        It 'leaves toolchain.rootDir unset when -ToolchainRootDir is not supplied' {
+            $config = Get-DelphiCiConfig
+            $config.Pipeline[1].Defaults['toolchain'].ContainsKey('rootDir') | Should -Be $false
         }
 
         It '-Defines overrides default empty defines' {

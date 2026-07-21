@@ -1,43 +1,70 @@
 function Invoke-BuildPipeline {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [string[]]$InspectArgs,
+        # Inspect args drive registry-based toolchain detection. Not required
+        # when an explicit root is supplied via -ExplicitRootDir.
+        [string[]]$InspectArgs = @(),
 
         [Parameter(Mandatory)]
         [string[]]$BuildArgs,
 
         [Parameter(Mandatory)]
         [ValidateSet('MSBuild', 'DCCBuild')]
-        [string]$Engine
+        [string]$Engine,
+
+        # Explicit Delphi installation root. When non-empty, delphi-inspect is
+        # not run at all -- registry detection (and its readiness gating) is
+        # bypassed and this path is passed straight to the build tool's -RootDir.
+        [string]$ExplicitRootDir
     )
 
-    $inspectPath   = Join-Path $script:BundledToolsDir 'delphi-inspect.ps1'
     $buildToolName = if ($Engine -eq 'DCCBuild') { 'delphi-dccbuild.ps1' } else { 'delphi-msbuild.ps1' }
     $buildToolPath = Join-Path $script:BundledToolsDir $buildToolName
 
-    # Run inspect with JSON output so we can extract rootDir from it
-    $jsonArgs    = $InspectArgs + @('-Format', 'json')
-    $jsonOutput  = & $script:PowerShellExe -NoProfile -NonInteractive -File $inspectPath @jsonArgs 2>&1
-    $inspectExit = $LASTEXITCODE
-
-    if ($inspectExit -ne 0) {
-        Write-Error "delphi-inspect.ps1 exited with code $inspectExit"
-        return [PSCustomObject]@{ ExitCode = $inspectExit; Success = $false }
+    # Failure results must carry the full property set the caller reads
+    # (Warnings/Errors/ExeOutputDir/Output). The module runs under
+    # Set-StrictMode -Version Latest, so a partial object would throw when
+    # Invoke-DelphiBuild dereferences the missing properties.
+    $newFailure = {
+        param([int]$Code)
+        [PSCustomObject]@{ ExitCode = $Code; Success = $false; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
     }
 
-    try {
-        $parsed  = ($jsonOutput -join '') | ConvertFrom-Json
-        $rootDir = $parsed.result.installation.rootDir
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitRootDir)) {
+        # Explicit root: skip the inspect subprocess entirely. Fail fast with a
+        # clear error if the caller-supplied path does not exist.
+        if (-not (Test-Path -LiteralPath $ExplicitRootDir -PathType Container)) {
+            Write-Error "Toolchain rootDir does not exist: $ExplicitRootDir"
+            return & $newFailure 3
+        }
+        $rootDir = $ExplicitRootDir
     }
-    catch {
-        Write-Error "Failed to parse delphi-inspect.ps1 output as JSON: $($_.Exception.Message)"
-        return [PSCustomObject]@{ ExitCode = 3; Success = $false }
-    }
+    else {
+        $inspectPath = Join-Path $script:BundledToolsDir 'delphi-inspect.ps1'
 
-    if ([string]::IsNullOrWhiteSpace($rootDir)) {
-        Write-Error 'delphi-inspect.ps1 returned an empty rootDir'
-        return [PSCustomObject]@{ ExitCode = 3; Success = $false }
+        # Run inspect with JSON output so we can extract rootDir from it
+        $jsonArgs    = $InspectArgs + @('-Format', 'json')
+        $jsonOutput  = & $script:PowerShellExe -NoProfile -NonInteractive -File $inspectPath @jsonArgs 2>&1
+        $inspectExit = $LASTEXITCODE
+
+        if ($inspectExit -ne 0) {
+            Write-Error "delphi-inspect.ps1 exited with code $inspectExit"
+            return & $newFailure $inspectExit
+        }
+
+        try {
+            $parsed  = ($jsonOutput -join '') | ConvertFrom-Json
+            $rootDir = $parsed.result.installation.rootDir
+        }
+        catch {
+            Write-Error "Failed to parse delphi-inspect.ps1 output as JSON: $($_.Exception.Message)"
+            return & $newFailure 3
+        }
+
+        if ([string]::IsNullOrWhiteSpace($rootDir)) {
+            Write-Error 'delphi-inspect.ps1 returned an empty rootDir'
+            return & $newFailure 3
+        }
     }
 
     # Run the build tool with | Out-Host so build output streams to the terminal

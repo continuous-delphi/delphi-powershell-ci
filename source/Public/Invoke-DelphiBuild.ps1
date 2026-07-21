@@ -10,6 +10,13 @@ function Invoke-DelphiBuild {
 
         [string]$Toolchain = 'Latest',
 
+        # Explicit Delphi installation root. When supplied, registry detection
+        # (delphi-inspect) is skipped entirely and this path is passed straight
+        # to the build tool's -RootDir. Takes precedence over -Toolchain and
+        # opts out of inspect's readiness validation -- the caller is trusted to
+        # supply a usable root (bin/lib layout with a sourceable rsvars.bat).
+        [string]$ToolchainRootDir,
+
         [ValidateSet('MSBuild', 'DCCBuild')]
         [string]$BuildEngine = 'MSBuild',
 
@@ -65,14 +72,24 @@ function Invoke-DelphiBuild {
 
     Write-DelphiCiMessage -Level 'STEP' -Message "Build ($Platform|$Configuration) -- $ProjectFile"
 
-    # delphi-inspect uses 'DCC' for the DCC build system, not 'DCCBuild'
-    $buildSystem = if ($BuildEngine -eq 'DCCBuild') { 'DCC' } else { 'MSBuild' }
+    # An explicit rootDir bypasses registry-based toolchain detection entirely.
+    $useExplicitRoot = -not [string]::IsNullOrWhiteSpace($ToolchainRootDir)
 
-    $inspectArgs = if ($Toolchain -eq 'Latest') {
-        @('-DetectLatest', '-Platform', $Platform, '-BuildSystem', $buildSystem)
+    if ($useExplicitRoot -and $Toolchain -ne 'Latest') {
+        Write-DelphiCiMessage -Level 'WARN' -Message "Both -ToolchainRootDir and -Toolchain '$Toolchain' supplied; rootDir takes precedence and registry detection is skipped."
     }
-    else {
-        @('-Locate', '-Name', $Toolchain, '-Platform', $Platform, '-BuildSystem', $buildSystem)
+
+    # delphi-inspect uses 'DCC' for the DCC build system, not 'DCCBuild'.
+    # Skip building inspect args when an explicit root is supplied.
+    $inspectArgs = @()
+    if (-not $useExplicitRoot) {
+        $buildSystem = if ($BuildEngine -eq 'DCCBuild') { 'DCC' } else { 'MSBuild' }
+        $inspectArgs = if ($Toolchain -eq 'Latest') {
+            @('-DetectLatest', '-Platform', $Platform, '-BuildSystem', $buildSystem)
+        }
+        else {
+            @('-Locate', '-Name', $Toolchain, '-Platform', $Platform, '-BuildSystem', $buildSystem)
+        }
     }
 
     $buildArgs = [System.Collections.Generic.List[string]]@(
@@ -111,7 +128,17 @@ function Invoke-DelphiBuild {
     $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
 
     if ($PSCmdlet.ShouldProcess($ProjectFile, "Build ($Platform|$Configuration)")) {
-        $toolResult = Invoke-BuildPipeline -InspectArgs $inspectArgs -BuildArgs $buildArgs.ToArray() -Engine $BuildEngine
+        $pipelineParams = @{
+            BuildArgs = $buildArgs.ToArray()
+            Engine    = $BuildEngine
+        }
+        if ($useExplicitRoot) {
+            $pipelineParams['ExplicitRootDir'] = $ToolchainRootDir
+        }
+        else {
+            $pipelineParams['InspectArgs'] = $inspectArgs
+        }
+        $toolResult = Invoke-BuildPipeline @pipelineParams
     }
 
     $stopwatch.Stop()

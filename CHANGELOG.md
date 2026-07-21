@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.6] - Unreleased
+- Add explicit `toolchain.rootDir` (config) / `-ToolchainRootDir` (parameter) to
+  `Invoke-DelphiBuild` and `Invoke-DelphiCi`. When set, registry detection
+  (`delphi-inspect`) is skipped entirely and the path is passed straight to the
+  build tool's `-RootDir`, enabling builds against trimmed, non-registered
+  toolchains (e.g. `rad-buildfiles-d<NN>`). A non-existent root fails fast with
+  a clear error. Also adds `WARN` to `Write-DelphiCiMessage` and completes the
+  pipeline's failure-result shape, repairing a latent StrictMode crash.
+  [#14](https://github.com/continuous-delphi/delphi-powershell-ci/issues/14)
+
 ## [0.4.5] - Unreleased
 - Fix `Codesign` Verify failing with "Parameter set cannot be resolved" when a
   Verify job inherited Sign-only params (`metadataPath`/`envFile`/`dlibPath`),

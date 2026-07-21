@@ -784,6 +784,33 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'forwards toolchain.rootDir to Invoke-DelphiBuild as -ToolchainRootDir' {
+                $job = script:New-BuildJob
+                $job['toolchain'] = @{ version = 'Latest'; rootDir = 'G:\radprogrammer\rad-buildfiles-d28.11-Alexandria' }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @($job)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    $ToolchainRootDir -eq 'G:\radprogrammer\rad-buildfiles-d28.11-Alexandria'
+                }
+            }
+
+            It 'forwards an empty -ToolchainRootDir when the job has no toolchain.rootDir' {
+                $job = script:New-BuildJob
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @($job)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter {
+                    [string]::IsNullOrEmpty($ToolchainRootDir)
+                }
+            }
+
             It 'passes run job fields to Invoke-DelphiRun' {
                 $job = script:New-RunJob
                 $job['timeoutSeconds'] = 30

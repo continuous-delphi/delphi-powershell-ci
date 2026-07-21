@@ -33,8 +33,8 @@ NOTES
   -RootDir is the Delphi installation root (e.g. C:\RAD\Studio\23.0).
   rsvars.bat is expected at <RootDir>\bin\rsvars.bat.
   The compiler executable is located at:
-    <RootDir>\bin\dcc32.exe      (Win32, macOS32, iOS32, iOSSimulator32, Android32)
-    <RootDir>\bin64\dcc64.exe    (Win64, macOS64, macOSARM64, Linux64, etc.)
+    <RootDir>\bin\<compiler>.exe   (Win32, macOS32, iOS32, iOSSimulator32, Android32)
+    <RootDir>\bin64\<compiler>.exe (Win64, WinARM64EC, macOS64, macOSARM64, Linux64, etc.)
 
   When piped a delphi-inspect result object, RootDir is taken from the
   object's .rootDir property.  An explicit -RootDir parameter takes precedence.
@@ -45,6 +45,26 @@ NOTES
   -Config is passed to DCC as a conditional define (-D<CONFIG>).  Common
   values are Debug and Release; the define is uppercased automatically.
   Existing defines from the project's .cfg file are not affected.
+
+  -NoConfig passes --no-config so DCC does not auto-load <RootDir>\bin\dcc32.cfg.
+  Use it on portable/trimmed toolchains whose cfg carries stale library paths;
+  units and includes then resolve only from the paths this script supplies.
+
+  -ResourcePath adds resource compiler search paths (-R).  -BplOutputDir,
+  -DcpOutputDir, and -BpiOutputDir set the package output directories (-LE,
+  -LN, -NB).  -LinkPackage links runtime packages (-LU) and is strictly opt-in:
+  it makes the output depend on rtlNNN.bpl / vclNNN.bpl at load time, so the
+  default remains statically linked so standalone exes keep working.
+
+  -ExtraArgs is an escape hatch: each element is appended verbatim after all
+  modeled switches (no splitting or re-escaping) for dcc32 options this script
+  does not model (e.g. -$D0, -$L-, -JL, -V*).
+
+  -SkipRsvars bypasses the rsvars.bat requirement and sourcing.  The compiler
+  then runs against the current process environment (pre-set by the caller and
+  left untouched).  Use it for toolchains that predate rsvars.bat (Delphi
+  2/7/2005) or when the caller manages BDS/PATH itself.  rsvarsPath is null in
+  the result object when this switch is set.
 
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
@@ -60,7 +80,7 @@ NOTES
     0  success
     1  unexpected error
     2  reserved (invalid arguments)
-    3  rootDir missing/empty, directory not found, rsvars.bat absent, or compiler exe not found
+    3  rootDir missing/empty, directory not found, rsvars.bat absent (unless -SkipRsvars), or compiler exe not found
     4  project file not found
     5  DCC compiler failed (non-zero exit code)
 #>
@@ -81,7 +101,7 @@ param(
 
   [string]$RootDir,
 
-  [ValidateSet('Win32','Win64','macOS32','macOS64','macOSARM64','Linux64',
+  [ValidateSet('Win32','Win64','WinARM64EC','macOS32','macOS64','macOSARM64','Linux64',
                'iOS32','iOSSimulator32','iOS64','iOSSimulator64','Android32','Android64')]
   [string]$Platform = 'Win32',
 
@@ -118,6 +138,54 @@ param(
   # with semicolons and passed as a single -D argument.
   [string[]]$Define = @(),
 
+  # Additional resource search paths (-R flag).  Multiple paths are joined
+  # with semicolons and passed as a single -R argument.
+  [string[]]$ResourcePath = @(),
+
+  # Output directory for compiled runtime packages, .bpl (-LE flag).
+  [string]$BplOutputDir,
+
+  # Output directory for package .dcp files (-LN flag).
+  [string]$DcpOutputDir,
+
+  # Output directory for package .bpi files (-NB flag).
+  [string]$BpiOutputDir,
+
+  # Runtime packages to link against (-LU flag).  Multiple entries are joined
+  # with semicolons and passed as a single -LU argument.  STRICTLY OPT-IN:
+  # linking runtime packages makes the output depend on rtlNNN.bpl / vclNNN.bpl
+  # at load time.  Omit (the default) to statically link so standalone exes keep
+  # working -- an exe built with -LUrtl fails to load (0xC0000135) when
+  # rtlNNN.bpl is absent on the target.
+  [string[]]$LinkPackage = @(),
+
+  # Skip loading dcc32.cfg (--no-config).  By default DCC auto-loads
+  # <RootDir>\bin\dcc32.cfg, which on portable/trimmed toolchains can carry
+  # stale absolute or $(BDS)-relative library paths that silently inject wrong
+  # or duplicate -U/-I entries.  With -NoConfig, unit and include paths resolve
+  # only from what this script and its params supply.  Opt-in; omitting it
+  # preserves the current default (cfg auto-loaded).
+  [switch]$NoConfig,
+
+  # Extra arguments appended verbatim to the dcc32 command line after all the
+  # modeled switches.  Each array element is passed through as-is -- no
+  # splitting, re-escaping, or reordering -- so array boundaries are preserved.
+  # An escape hatch for switches this script does not model, e.g. the code-gen
+  # switches -$D0 / -$L- / -$C- / -$Y-, map-file options, -JL, or -V*.
+  # NOTE: this script places the project file first on the command line, so
+  # "after the modeled switches" means at the end of the argument list.
+  [string[]]$ExtraArgs = @(),
+
+  # Skip the rsvars.bat requirement and sourcing.  By default the script
+  # requires <RootDir>\bin\rsvars.bat and sources it to set BDS / PATH and
+  # related variables.  With -SkipRsvars, rsvars is neither required nor
+  # called: the compiler is run directly against the current process
+  # environment, which the caller is expected to have pre-set.  Enables the
+  # oldest toolchains (Delphi 2 / 7 / 2005) that predate rsvars.bat, and
+  # caller-managed environments.  Combine with -NoConfig and explicit -U/-I
+  # paths for a fully self-contained, reproducible build.
+  [switch]$SkipRsvars,
+
   [switch]$ShowOutput
 )
 
@@ -131,7 +199,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.0'
+$script:Version = '0.3.6'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -139,6 +207,7 @@ $script:Version = '0.3.0'
 $script:CompilerMap = @{
   'Win32'          = 'dcc32'
   'Win64'          = 'dcc64'
+  'WinARM64EC'     = 'dccarm64ec'
   'macOS32'        = 'dccosx'
   'macOS64'        = 'dccosx64'
   'macOSARM64'     = 'dccosxarm64'
@@ -223,7 +292,7 @@ function Get-CompilerName {
 # 64-bit compilers live in bin64; all others live in bin.
 function Get-CompilerBinFolder {
   param([string]$CompilerName)
-  if ($CompilerName.EndsWith('64')) { return 'bin64' }
+  if ($CompilerName.EndsWith('64') -or $CompilerName -eq 'dccarm64ec') { return 'bin64' }
   return 'bin'
 }
 
@@ -270,10 +339,20 @@ function Invoke-DccProject {
     [string[]]$IncludePath    = @(),
     [string[]]$Namespace      = @(),
     [string[]]$Define         = @(),
+    [string[]]$ResourcePath   = @(),
+    [string]$BplOutputDir,
+    [string]$DcpOutputDir,
+    [string]$BpiOutputDir,
+    [string[]]$LinkPackage    = @(),
+    [switch]$NoConfig,
+    [string[]]$ExtraArgs      = @(),
     [switch]$ShowOutput
   )
 
   $dccArgs = @($ProjectFile)
+
+  # Skip dcc32.cfg so only explicitly supplied paths are used (--no-config)
+  if ($NoConfig) { $dccArgs += '--no-config' }
 
   # Rebuild: force recompilation of all units
   if ($Target -eq 'Rebuild') { $dccArgs += '-B' }
@@ -289,15 +368,28 @@ function Invoke-DccProject {
   if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { $dccArgs += "-E$ExeOutputDir" }
   if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { $dccArgs += "-N0$DcuOutputDir" }
 
+  # Package output directories: .bpl (-LE), .dcp (-LN), .bpi (-NB)
+  if (-not [string]::IsNullOrWhiteSpace($BplOutputDir)) { $dccArgs += "-LE$BplOutputDir" }
+  if (-not [string]::IsNullOrWhiteSpace($DcpOutputDir)) { $dccArgs += "-LN$DcpOutputDir" }
+  if (-not [string]::IsNullOrWhiteSpace($BpiOutputDir)) { $dccArgs += "-NB$BpiOutputDir" }
+
   # Search paths: multiple entries joined with semicolons into a single flag
   if ($UnitSearchPath.Count -gt 0) { $dccArgs += "-U$($UnitSearchPath -join ';')" }
   if ($IncludePath.Count -gt 0)    { $dccArgs += "-I$($IncludePath -join ';')" }
+  if ($ResourcePath.Count -gt 0)   { $dccArgs += "-R$($ResourcePath -join ';')" }
 
   # Unit scope names: multiple entries joined with semicolons into a single -NS flag
   if ($Namespace.Count -gt 0) { $dccArgs += "-NS$($Namespace -join ';')" }
 
   # Additional defines: multiple entries joined with semicolons into a single -D flag
   if ($Define.Count -gt 0) { $dccArgs += "-D$($Define -join ';')" }
+
+  # Runtime packages to link (opt-in): joined with semicolons into a single -LU flag
+  if ($LinkPackage.Count -gt 0) { $dccArgs += "-LU$($LinkPackage -join ';')" }
+
+  # Extra pass-through args appended verbatim after all modeled switches.
+  # Adding the array with += preserves each element as a distinct argument.
+  if ($ExtraArgs.Count -gt 0) { $dccArgs += $ExtraArgs }
 
   return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -ShowOutput:$ShowOutput
 }
@@ -323,10 +415,16 @@ try {
     exit $ExitRootDirError
   }
 
-  $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
-  if (-not (Test-Path -LiteralPath $rsvarsPath)) {
-    Write-Error "rsvars.bat not found: $rsvarsPath" -ErrorAction Continue
-    exit $ExitRootDirError
+  # rsvars.bat is required and sourced unless -SkipRsvars bypasses it.
+  if ($SkipRsvars) {
+    $rsvarsPath = $null
+  }
+  else {
+    $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
+    if (-not (Test-Path -LiteralPath $rsvarsPath)) {
+      Write-Error "rsvars.bat not found: $rsvarsPath" -ErrorAction Continue
+      exit $ExitRootDirError
+    }
   }
 
   $compilerPath = Get-CompilerPath -RootDir $resolvedRootDir -Platform $Platform
@@ -341,7 +439,12 @@ try {
     exit $ExitProjectNotFound
   }
 
-  Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  # Source rsvars into the process environment unless the caller opted out.
+  # With -SkipRsvars the current environment (pre-set by the caller) is used
+  # as-is and left untouched.
+  if (-not $SkipRsvars) {
+    Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  }
 
   $buildResult = Invoke-DccProject `
     -CompilerPath    $compilerPath `
@@ -355,6 +458,13 @@ try {
     -IncludePath     $IncludePath `
     -Namespace       $Namespace `
     -Define          $Define `
+    -ResourcePath    $ResourcePath `
+    -BplOutputDir    $BplOutputDir `
+    -DcpOutputDir    $DcpOutputDir `
+    -BpiOutputDir    $BpiOutputDir `
+    -LinkPackage     $LinkPackage `
+    -NoConfig:$NoConfig `
+    -ExtraArgs       $ExtraArgs `
     -ShowOutput:$ShowOutput
 
   $resultObj = [pscustomobject]@{
@@ -363,6 +473,7 @@ try {
     platform       = $Platform
     config         = $Config
     target         = $Target
+    define         = $Define
     rootDir        = $resolvedRootDir
     rsvarsPath     = $rsvarsPath
     compilerPath   = $compilerPath
@@ -371,6 +482,14 @@ try {
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }
     includePath    = if ($IncludePath.Count    -eq 0) { $null } else { $IncludePath }
     namespace      = if ($Namespace.Count      -eq 0) { $null } else { $Namespace }
+    resourcePath   = if ($ResourcePath.Count   -eq 0) { $null } else { $ResourcePath }
+    bplOutputDir   = if ([string]::IsNullOrWhiteSpace($BplOutputDir)) { $null } else { $BplOutputDir }
+    dcpOutputDir   = if ([string]::IsNullOrWhiteSpace($DcpOutputDir)) { $null } else { $DcpOutputDir }
+    bpiOutputDir   = if ([string]::IsNullOrWhiteSpace($BpiOutputDir)) { $null } else { $BpiOutputDir }
+    linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
+    noConfig       = [bool]$NoConfig
+    extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
+    skipRsvars     = [bool]$SkipRsvars
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output

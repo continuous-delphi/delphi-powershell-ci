@@ -58,6 +58,22 @@ NOTES
   -Config is the RAD Studio MSBuild property name (/p:Config); common values
   are Debug and Release.
 
+  -BuildAllUnits (switch) sets /p:DCC_BuildAllUnits=true, and -EnvLibraryPath
+  sets /p:_EnvLibraryPath="..." -- two properties the batch build path relies
+  on.  Both are emitted before -Property, so a matching -Property entry still
+  overrides them.
+
+  -Property accepts a hashtable of arbitrary MSBuild properties, each passed
+  through as /p:Key=Value (e.g. -Property @{ DCC_BuildAllUnits = 'true' }).
+  These are appended after the built-in properties, so an entry overrides a
+  built-in property of the same name.  Values containing whitespace or
+  semicolons are quoted automatically.
+
+  -SkipRsvars builds using the caller's current process environment instead of
+  requiring and sourcing <RootDir>\bin\rsvars.bat.  With it, -RootDir is optional
+  metadata and is not validated.  -MsbuildPath invokes a specific msbuild.exe
+  instead of resolving one from PATH, for explicit per-era framework selection.
+
   MSBuild output is always captured and returned in the result object's
   .output property.  Use -ShowOutput to also stream output to the console in
   real time; .output is populated in both cases.
@@ -65,8 +81,9 @@ NOTES
   Exit codes:
     0  success
     1  unexpected error
-    2  reserved (invalid arguments)
+    2  invalid arguments (missing -ProjectFile, or -MsbuildPath does not exist)
     3  rootDir missing/empty, directory not found, or rsvars.bat not found
+       (not applicable when -SkipRsvars is set)
     4  project file not found
     5  MSBuild failed (non-zero exit code)
 #>
@@ -88,6 +105,17 @@ param(
   [string]$ProjectFile,
 
   [string]$RootDir,
+
+  # Skip the rsvars.bat requirement and sourcing; build using the caller's
+  # current process environment (BDS / PATH / FrameworkDir set by the caller,
+  # as _SetDelphiBuildPaths.bat does).  -RootDir becomes optional metadata and
+  # is not validated.
+  [switch]$SkipRsvars,
+
+  # Invoke this specific msbuild.exe instead of resolving msbuild.exe from PATH.
+  # Enables explicit per-era .NET Framework msbuild selection (v2.0.50727 / v3.5
+  # / v4.0.30319).  The path must exist or the script exits with code 2.
+  [string]$MsbuildPath,
 
   [ValidateSet('Win32','Win64','macOS32','macOS64','macOSARM64','Linux64',
                'iOS32','iOSSimulator32','iOS64','iOSSimulator64','Android32','Android64','WinARM64EC')]
@@ -114,6 +142,24 @@ param(
 
   [string[]]$Define = @(),
 
+  # Build every unit reachable from the project, not just those out of date
+  # (/p:DCC_BuildAllUnits=true).  First-class shortcut for a property the batch
+  # build path always sets; remains overridable via -Property.
+  [switch]$BuildAllUnits,
+
+  # Library path for the environment (/p:_EnvLibraryPath="...").  Used by the
+  # batch build path's Win32-only sub-path.  First-class shortcut; remains
+  # overridable via -Property.
+  [string]$EnvLibraryPath,
+
+  # Arbitrary MSBuild properties passed through as /p:Key=Value.  Provide a
+  # hashtable, e.g. -Property @{ DCC_BuildAllUnits = 'true'; DCC_ResourcePath = 'C:\res' }.
+  # Entries are appended AFTER the built-in properties (Config, Platform, and the
+  # DCC_* outputs/paths), so an entry here overrides a built-in of the same name --
+  # MSBuild uses the last /p: occurrence on the command line.  Values containing
+  # whitespace or semicolons are automatically quoted.
+  [hashtable]$Property = @{},
+
   [switch]$ShowOutput,
 
   # When set, the result object is written as compressed JSON to this file path.
@@ -139,7 +185,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '1.1.0'
+$script:Version = '1.2.5'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -201,19 +247,24 @@ function Invoke-RsvarsEnvironment {
   }
 }
 
-# Invoke msbuild.exe with the given arguments.
+# Invoke msbuild with the given arguments.
 # Returns [pscustomobject]@{ ExitCode; Output } where Output is always the
 # captured build text.  When -ShowOutput is set each output line is also
 # written to the host as MSBuild emits it.
+# When -MsbuildPath is supplied that exact binary is invoked; otherwise
+# msbuild.exe is resolved from PATH (the environment sourced from rsvars.bat).
 # Separated into its own function so tests can mock it.
 function Invoke-MsbuildExe {
   param(
     [string[]]$Arguments,
+    [string]$MsbuildPath,
     [switch]$ShowOutput
   )
 
+  $exe = if (-not [string]::IsNullOrWhiteSpace($MsbuildPath)) { $MsbuildPath } else { 'msbuild.exe' }
+
   $outputLines = New-Object System.Collections.Generic.List[string]
-  & msbuild.exe @Arguments 2>&1 | ForEach-Object {
+  & $exe @Arguments 2>&1 | ForEach-Object {
     $line = [string]$_
     [void]$outputLines.Add($line)
     if ($ShowOutput) { Write-Host $line }
@@ -239,6 +290,10 @@ function Invoke-MsbuildProject {
     [string]$DcuOutputDir,
     [string[]]$UnitSearchPath = @(),
     [string[]]$Define         = @(),
+    [switch]$BuildAllUnits,
+    [string]$EnvLibraryPath,
+    [hashtable]$Property      = @{},
+    [string]$MsbuildPath,
     [switch]$ShowOutput
   )
 
@@ -264,7 +319,27 @@ function Invoke-MsbuildProject {
     $msbuildArgs += "/p:DCC_Define=`"$defineValue`""
   }
 
-  return Invoke-MsbuildExe -Arguments $msbuildArgs -ShowOutput:$ShowOutput
+  # First-class shortcuts for two properties the batch build path relies on.
+  # Emitted before the generic pass-through so a matching -Property entry can
+  # still override them (MSBuild honours the last /p: occurrence).
+  if ($BuildAllUnits) { $msbuildArgs += "/p:DCC_BuildAllUnits=true" }
+  if (-not [string]::IsNullOrWhiteSpace($EnvLibraryPath)) { $msbuildArgs += "/p:_EnvLibraryPath=`"$EnvLibraryPath`"" }
+
+  # Generic /p: pass-through.  Appended last so an explicit -Property entry
+  # overrides a built-in property of the same name (MSBuild honours the last
+  # /p: occurrence).  Keys are sorted for deterministic argument ordering.
+  if ($Property.Count -gt 0) {
+    foreach ($key in ($Property.Keys | Sort-Object)) {
+      $value = [string]$Property[$key]
+      if ($value -match '[\s;]') {
+        $msbuildArgs += "/p:$key=`"$value`""
+      } else {
+        $msbuildArgs += "/p:$key=$value"
+      }
+    }
+  }
+
+  return Invoke-MsbuildExe -Arguments $msbuildArgs -MsbuildPath $MsbuildPath -ShowOutput:$ShowOutput
 }
 
 # Parse the dcc32.exe invocation line from captured msbuild output and extract
@@ -326,25 +401,40 @@ try {
     exit $ExitInvalidArguments
   }
 
+  if (-not [string]::IsNullOrWhiteSpace($MsbuildPath) -and -not (Test-Path -LiteralPath $MsbuildPath)) {
+    Write-Error "MSBuild executable not found: $MsbuildPath" -ErrorAction Continue
+    exit $ExitInvalidArguments
+  }
+
   $resolvedRootDir = Resolve-RootDir -ExplicitRootDir $RootDir -Installation $DelphiInstallation
+  $rsvarsPath      = $null
 
-  if ([string]::IsNullOrWhiteSpace($resolvedRootDir)) {
-    $msg = 'No Delphi root dir supplied. Provide -RootDir or pipe a delphi-inspect result object.'
-    if ($ShowOutput) { Write-Error $msg -ErrorAction Continue } else { Write-Error $msg -ErrorAction Continue }
-    exit $ExitRootDirError
-  }
+  if ($SkipRsvars) {
+    # Caller-managed environment: do not require or source rsvars.  -RootDir is
+    # optional metadata only; when supplied, derive rsvarsPath for the result
+    # object but neither validate nor source it.
+    if (-not [string]::IsNullOrWhiteSpace($resolvedRootDir)) {
+      $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
+    }
+  } else {
+    if ([string]::IsNullOrWhiteSpace($resolvedRootDir)) {
+      $msg = 'No Delphi root dir supplied. Provide -RootDir, pipe a delphi-inspect result object, or use -SkipRsvars.'
+      Write-Error $msg -ErrorAction Continue
+      exit $ExitRootDirError
+    }
 
-  if (-not (Test-Path -LiteralPath $resolvedRootDir)) {
-    $msg = "Delphi root dir not found on disk: $resolvedRootDir"
-    Write-Error $msg -ErrorAction Continue
-    exit $ExitRootDirError
-  }
+    if (-not (Test-Path -LiteralPath $resolvedRootDir)) {
+      $msg = "Delphi root dir not found on disk: $resolvedRootDir"
+      Write-Error $msg -ErrorAction Continue
+      exit $ExitRootDirError
+    }
 
-  $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
-  if (-not (Test-Path -LiteralPath $rsvarsPath)) {
-    $msg = "rsvars.bat not found: $rsvarsPath"
-    Write-Error $msg -ErrorAction Continue
-    exit $ExitRootDirError
+    $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
+    if (-not (Test-Path -LiteralPath $rsvarsPath)) {
+      $msg = "rsvars.bat not found: $rsvarsPath"
+      Write-Error $msg -ErrorAction Continue
+      exit $ExitRootDirError
+    }
   }
 
   $resolvedProjectFile = [System.IO.Path]::GetFullPath($ProjectFile)
@@ -354,7 +444,9 @@ try {
     exit $ExitProjectNotFound
   }
 
-  Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  if (-not $SkipRsvars) {
+    Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  }
 
   $buildResult = Invoke-MsbuildProject `
     -ProjectFile   $resolvedProjectFile `
@@ -366,6 +458,10 @@ try {
     -DcuOutputDir  $DcuOutputDir `
     -UnitSearchPath $UnitSearchPath `
     -Define        $Define `
+    -BuildAllUnits:$BuildAllUnits `
+    -EnvLibraryPath $EnvLibraryPath `
+    -Property      $Property `
+    -MsbuildPath   $MsbuildPath `
     -ShowOutput:$ShowOutput
 
   $parsedDirs = Get-BuildOutputDir `
@@ -381,8 +477,13 @@ try {
     config         = $Config
     target         = $Target
     define         = $Define
+    buildAllUnits  = [bool]$BuildAllUnits
+    envLibraryPath = if ([string]::IsNullOrWhiteSpace($EnvLibraryPath)) { $null } else { $EnvLibraryPath }
+    property       = if ($Property.Count -eq 0) { $null } else { $Property }
     rootDir        = $resolvedRootDir
     rsvarsPath     = $rsvarsPath
+    skipRsvars     = [bool]$SkipRsvars
+    msbuildPath    = if ([string]::IsNullOrWhiteSpace($MsbuildPath)) { $null } else { $MsbuildPath }
     exeOutputDir   = if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { $ExeOutputDir } else { $parsedDirs.ExeOutputDir }
     dcuOutputDir   = if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { $DcuOutputDir } else { $parsedDirs.DcuOutputDir }
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }

@@ -129,6 +129,10 @@
               "type": "string",
               "default": "Latest",
               "description": "Toolchain version or Latest."
+            },
+            "rootDir": {
+              "type": "string",
+              "description": "Explicit Delphi installation root. When set, registry detection is skipped and this path is passed to the build tool's -RootDir. Opts out of inspect's readiness validation and trusts the caller."
             }
           }
         },

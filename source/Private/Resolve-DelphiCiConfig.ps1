@@ -188,8 +188,12 @@ function Resolve-DelphiCiConfig {
     $buildCliLayer = @{}
     if ($Overrides.ContainsKey('BuildEngine') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['BuildEngine']))            { $buildCliLayer['engine']       = $Overrides['BuildEngine'] }
+    $toolchainCliLayer = @{}
     if ($Overrides.ContainsKey('Toolchain') -and
-        -not [string]::IsNullOrWhiteSpace($Overrides['Toolchain']))              { $buildCliLayer['toolchain']    = @{ version = $Overrides['Toolchain'] } }
+        -not [string]::IsNullOrWhiteSpace($Overrides['Toolchain']))              { $toolchainCliLayer['version'] = $Overrides['Toolchain'] }
+    if ($Overrides.ContainsKey('ToolchainRootDir') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['ToolchainRootDir']))       { $toolchainCliLayer['rootDir'] = $Overrides['ToolchainRootDir'] }
+    if ($toolchainCliLayer.Count -gt 0)                                          { $buildCliLayer['toolchain']    = $toolchainCliLayer }
     if ($Overrides.ContainsKey('Platform') -and
         -not [string]::IsNullOrWhiteSpace($Overrides['Platform']))               { $buildCliLayer['platform']     = $Overrides['Platform'] }
     if ($Overrides.ContainsKey('Configuration') -and

@@ -2,7 +2,7 @@ function Write-DelphiCiMessage {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('INFO', 'STEP', 'OK', 'ERROR')]
+        [ValidateSet('INFO', 'STEP', 'OK', 'WARN', 'ERROR')]
         [string]$Level,
 
         [Parameter(Mandatory)]

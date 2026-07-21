@@ -177,6 +177,48 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         }
 
+        Context 'explicit toolchain root' {
+
+            It 'forwards -ToolchainRootDir to the pipeline as ExplicitRootDir' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -ToolchainRootDir 'C:\Portable\D28'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $ExplicitRootDir -eq 'C:\Portable\D28'
+                }
+            }
+
+            It 'does not build or pass InspectArgs when ToolchainRootDir is set' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -ToolchainRootDir 'C:\Portable\D28'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $null -eq $InspectArgs -or $InspectArgs.Count -eq 0
+                }
+            }
+
+            It 'does not pass ExplicitRootDir when ToolchainRootDir is absent' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    [string]::IsNullOrEmpty($ExplicitRootDir)
+                }
+            }
+
+            It 'still passes InspectArgs when ToolchainRootDir is absent' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $InspectArgs -contains '-DetectLatest'
+                }
+            }
+
+            It 'warns when both -ToolchainRootDir and a specific -Toolchain are supplied' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -ToolchainRootDir 'C:\Portable\D28' -Toolchain 'VER370'
+                Should -Invoke Write-DelphiCiMessage -ParameterFilter { $Level -eq 'WARN' }
+            }
+
+            It 'does not warn when -ToolchainRootDir is supplied with default Toolchain' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -ToolchainRootDir 'C:\Portable\D28'
+                Should -Invoke Write-DelphiCiMessage -Times 0 -ParameterFilter { $Level -eq 'WARN' }
+            }
+
+        }
+
         Context 'build args' {
 
             It 'passes -ProjectFile to build tool' {
@@ -440,7 +482,93 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     }
 
+    Describe 'Invoke-BuildPipeline -- explicit root' {
+
+        BeforeAll {
+            Mock Write-Error {}
+        }
+
+        It 'fails fast with a clear error when the explicit rootDir does not exist' {
+            $missing = Join-Path $TestDrive 'no-such-root'
+
+            $result = Invoke-BuildPipeline `
+                -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dproj', '-ShowOutput') `
+                -Engine          'MSBuild' `
+                -ExplicitRootDir $missing
+
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Be 3
+            Should -Invoke Write-Error -Times 1 -ParameterFilter { $Message -like '*rootDir does not exist*' }
+        }
+
+        It 'skips the inspect subprocess and passes the explicit root to the build tool' {
+            $fakeDir = Join-Path $TestDrive 'explicit-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+
+            # A fake inspect that would leave a marker if it were ever invoked.
+            $marker = Join-Path $TestDrive 'inspect-was-called.txt'
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-inspect.ps1') `
+                -Value "Set-Content -LiteralPath '$marker' -Value 'called'; Write-Output '{}'"
+
+            # A fake build tool that records the -RootDir it received.
+            $rootArgFile = Join-Path $TestDrive 'build-rootdir.txt'
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-msbuild.ps1') -Value @"
+param([string]`$RootDir, [string]`$OutputFile, [Parameter(ValueFromRemainingArguments)]`$Rest)
+Set-Content -LiteralPath '$rootArgFile' -Value `$RootDir
+"@
+
+            # The explicit root must exist (Test-Path -PathType Container).
+            $explicitRoot = Join-Path $TestDrive 'portable-d28'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dproj', '-ShowOutput') `
+                    -Engine          'MSBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            $result.Success               | Should -Be $true
+            Test-Path -LiteralPath $marker | Should -Be $false   # inspect never ran
+            (Get-Content -LiteralPath $rootArgFile -Raw).Trim() | Should -Be $explicitRoot
+        }
+
+    }
+
     Describe 'Invoke-DelphiBuild -- integration' {
+
+        It 'fails fast with exit code 3 when -ToolchainRootDir does not exist' {
+            # Exercises the real (unmocked) pipeline: Test-Path rejects the root
+            # before any inspect/build subprocess runs, and the full failure
+            # shape survives StrictMode when Invoke-DelphiBuild wraps it.
+            $dproj = [System.IO.Path]::GetFullPath(
+                (Join-Path $PSScriptRoot '..\..' 'Examples\ConsoleProjectGroup\Source\ConsoleProject.dproj')
+            )
+            $result = Invoke-DelphiBuild -ProjectFile $dproj -ToolchainRootDir 'C:\no-such-delphi-root' -ErrorAction SilentlyContinue
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Be 3
+        }
+
+        It 'builds ConsoleProject.dproj against an explicit -ToolchainRootDir (registry bypassed)' {
+            # Reuses whichever root delphi-inspect would have found, but supplies
+            # it explicitly so the inspect subprocess is skipped entirely.
+            $dproj = [System.IO.Path]::GetFullPath(
+                (Join-Path $PSScriptRoot '..\..' 'Examples\ConsoleProjectGroup\Source\ConsoleProject.dproj')
+            )
+            $inspect = Join-Path $script:BundledToolsDir 'delphi-inspect.ps1'
+            $json    = & $script:PowerShellExe -NoProfile -NonInteractive -File $inspect -DetectLatest -Platform Win32 -BuildSystem MSBuild -Format json 2>&1
+            $root    = (($json -join '') | ConvertFrom-Json).result.installation.rootDir
+            $root | Should -Not -BeNullOrEmpty
+
+            $result = Invoke-DelphiBuild -ProjectFile $dproj -Platform 'Win32' -Configuration 'Debug' -ToolchainRootDir $root
+            $result.Success  | Should -Be $true
+            $result.ExitCode | Should -Be 0
+        }
 
         It 'builds ConsoleProject.dproj for Win32 Debug' {
             $dproj = [System.IO.Path]::GetFullPath(

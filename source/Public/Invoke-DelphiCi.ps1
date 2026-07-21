@@ -28,6 +28,9 @@ function Invoke-DelphiCi {
         [string]$Toolchain,
 
         [Parameter(ParameterSetName = 'Run')]
+        [string]$ToolchainRootDir,
+
+        [Parameter(ParameterSetName = 'Run')]
         [string]$BuildEngine,
 
         [Parameter(ParameterSetName = 'Run')]
@@ -302,6 +305,7 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('Platform'))                      { $overrides['Platform']                     = $Platform }
     if ($PSBoundParameters.ContainsKey('Configuration'))                 { $overrides['Configuration']                = $Configuration }
     if ($PSBoundParameters.ContainsKey('Toolchain'))                     { $overrides['Toolchain']                    = $Toolchain }
+    if ($PSBoundParameters.ContainsKey('ToolchainRootDir'))              { $overrides['ToolchainRootDir']             = $ToolchainRootDir }
     if ($PSBoundParameters.ContainsKey('BuildEngine'))                   { $overrides['BuildEngine']                  = $BuildEngine }
     if ($PSBoundParameters.ContainsKey('Defines'))                       { $overrides['Defines']                      = $Defines }
     if ($PSBoundParameters.ContainsKey('BuildVerbosity'))                { $overrides['BuildVerbosity']               = $BuildVerbosity }
@@ -452,11 +456,14 @@ function Invoke-DelphiCi {
                                 $label += "($plat|$cfg)"
                                 Write-DelphiCiMessage -Level 'INFO' -Message "Build job: $label"
 
+                                $toolchainRootDir = if ($job['toolchain'].ContainsKey('rootDir')) { $job['toolchain']['rootDir'] } else { '' }
+
                                 $result = Invoke-DelphiBuild `
-                                    -ProjectFile    $projectFile `
-                                    -Platform       $plat `
-                                    -Configuration  $cfg `
-                                    -Toolchain      $job['toolchain']['version'] `
+                                    -ProjectFile      $projectFile `
+                                    -Platform         $plat `
+                                    -Configuration    $cfg `
+                                    -Toolchain        $job['toolchain']['version'] `
+                                    -ToolchainRootDir $toolchainRootDir `
                                     -BuildEngine    $job['engine'] `
                                     -Defines        @($job['defines']) `
                                     -BuildVerbosity $job['verbosity'] `

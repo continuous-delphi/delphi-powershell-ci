@@ -10,6 +10,7 @@ function Get-DelphiCiConfig {
         [string]$Platform,
         [string]$Configuration,
         [string]$Toolchain,
+        [string]$ToolchainRootDir,
         [string]$BuildEngine,
         [string[]]$Defines,
         [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
@@ -112,6 +113,7 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('Platform'))                      { $overrides['Platform']                     = $Platform }
     if ($PSBoundParameters.ContainsKey('Configuration'))                 { $overrides['Configuration']                = $Configuration }
     if ($PSBoundParameters.ContainsKey('Toolchain'))                     { $overrides['Toolchain']                    = $Toolchain }
+    if ($PSBoundParameters.ContainsKey('ToolchainRootDir'))              { $overrides['ToolchainRootDir']             = $ToolchainRootDir }
     if ($PSBoundParameters.ContainsKey('BuildEngine'))                   { $overrides['BuildEngine']                  = $BuildEngine }
     if ($PSBoundParameters.ContainsKey('Defines'))                       { $overrides['Defines']                      = $Defines }
     if ($PSBoundParameters.ContainsKey('BuildVerbosity'))                { $overrides['BuildVerbosity']               = $BuildVerbosity }

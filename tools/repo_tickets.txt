@@ -147,3 +147,84 @@ Acceptance criteria:
 - [ ] Regression test in tests/pwsh/Invoke-DelphiCodesign.Tests.ps1 covers a Verify call with non-empty signing params
 - [ ] Action-level codesign defaults work for a combined Sign+Verify pipeline
 - [ ] All Pester tests pass
+---
+Title: Plumb explicit toolchain.rootDir / -ToolchainRootDir down to bundled tools' -RootDir
+Issue: #14
+Status: closed
+Labels: enhancement
+Body:
+Add an explicit `toolchain.rootDir` (config) / `-ToolchainRootDir` (parameter)
+that bypasses `delphi-inspect` registry resolution and passes the supplied
+directory straight through to the bundled build tool's already-capable
+`-RootDir`.
+
+## Background / motivation
+
+The module currently locates the Delphi compiler **exclusively through the
+Windows registry**: `Invoke-DelphiBuild` builds inspect args
+(`Invoke-DelphiBuild.ps1:71`), `Invoke-BuildPipeline` runs `delphi-inspect.ps1`
+(`Invoke-BuildPipeline.ps1:21`), extracts `.result.installation.rootDir`
+(`:31`), and forwards `@('-RootDir', $rootDir, ...) + $BuildArgs` (`:47`).
+
+That makes the module unusable against **trimmed, non-installed,
+non-registered per-version toolchains** -- e.g. the `rad-buildfiles-d<NN>`
+folders (`G:\radprogrammer\...`) used by the older batch build system, which
+have a `bin`/`lib` layout but no registry registration. There is no config key
+or parameter to point the module at such a root.
+
+The capability already exists one layer down: the bundled `delphi-msbuild.ps1`
+and `delphi-dccbuild.ps1` **accept an explicit `-RootDir`** and give it
+precedence over any piped inspect object (`Resolve-RootDir`). The gap is purely
+that the CI surface never lets a caller supply that root.
+
+## Concrete changes
+
+**1. Schema -- `schemas/delphi-ci.schema.json` (124-134).**
+The `toolchain` object is `"additionalProperties": false` with only `version`.
+Add an optional `rootDir`:
+
+    "rootDir": { "type": "string", "description": "Explicit Delphi installation root. When set, registry detection is skipped and this path is passed to the build tool's -RootDir." }
+
+The object is referenced by `$ref` from every action with a toolchain, so one
+edit covers them all.
+
+**2. `Invoke-DelphiBuild` -- `source/Public/Invoke-DelphiBuild.ps1` (11, 71).**
+Add a `[string]$ToolchainRootDir` parameter alongside `$Toolchain`. When it is
+non-empty, skip building `$inspectArgs` and signal the pipeline to use the
+explicit root. Precedence: `rootDir` wins over `version`; optionally warn if
+both are supplied.
+
+**3. `Invoke-BuildPipeline` -- `source/Private/Invoke-BuildPipeline.ps1` (21, 31, 47).**
+When an explicit root is provided, **skip the inspect subprocess entirely** and
+set `$rootDir` to the supplied path (after a `Test-Path` existence check), then
+forward it the same way. Everything downstream is unchanged because the bundled
+tools already honor `-RootDir`.
+
+**4. Config flow -- `Invoke-DelphiCi` / `Resolve-DelphiCiConfig` / `Merge-ActionConfig`.**
+Carry `toolchain.rootDir` through config merge (same merge semantics as
+`toolchain.version`) and pass it to `Invoke-DelphiBuild -ToolchainRootDir`.
+
+No change is required in the bundled build tools -- `-RootDir` is already
+supported.
+
+## Related considerations (call out, don't necessarily solve here)
+
+- **Readiness gating is bypassed by design.** Skipping inspect also skips its
+  registry / `EnvOptions.proj` readiness checks (`Get-MSBuildReadiness`) -- that
+  is the point; a portable root will never pass those. Document that an explicit
+  `rootDir` opts out of readiness validation and trusts the caller.
+- **Bundled tools still source `rsvars.bat`** (`<RootDir>\bin\rsvars.bat`). The
+  `rad-buildfiles-d<NN>` toolchains' rsvars have been made self-locating so this
+  works for D11..D29; full coverage of roots that lack rsvars depends on the
+  sibling `-SkipRsvars` feature requests filed against `delphi-dccbuild` /
+  `delphi-msbuild` (separate repos).
+- **Very old versions** (Delphi 2/3/4) have no registry `RootDir` at all, so an
+  explicit `rootDir` is the only way the module could ever target them.
+
+Acceptance criteria:
+- [ ] `delphi-ci.json` validates with a `build` job whose `toolchain` has `rootDir` set (and no `version`)
+- [ ] `Invoke-DelphiBuild -ProjectFile ... -ToolchainRootDir 'G:\radprogrammer\rad-buildfiles-d28.11-Alexandria'` builds without any registry lookup (inspect not invoked), passing that path as `-RootDir` to the chosen engine
+- [ ] A non-existent `rootDir` fails fast with a clear error (not an empty-rootDir error from inspect)
+- [ ] When `rootDir` is absent, behavior is byte-for-byte unchanged (registry path)
+- [ ] `Invoke-DelphiCi` end-to-end: a pipeline whose build job specifies `toolchain.rootDir` builds against that folder
+- [ ] Pester coverage for the explicit-root path (inspect skipped) and the fail-fast on missing root
