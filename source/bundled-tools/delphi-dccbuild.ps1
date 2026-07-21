@@ -66,6 +66,18 @@ NOTES
   2/7/2005) or when the caller manages BDS/PATH itself.  rsvarsPath is null in
   the result object when this switch is set.
 
+  -WorkingDirectory sets the directory the compiler runs in.  It defaults to the
+  resolved project file's folder so relative references the project author wrote
+  -- a uses clause like SomeUnit in '..\..\shared\SomeUnit.pas', {$I ..\defs.inc}
+  includes, and {$R ..\app.res} resources -- resolve as intended, matching the
+  legacy DelphiBuild.bat which cd's into the .dpr folder.  Pass an explicit path
+  to override, or pass your own current directory to reproduce the old
+  no-change behavior.  Relative -ExeOutputDir / -DcuOutputDir / -UnitSearchPath /
+  -IncludePath / -ResourcePath and the package output dirs are resolved to
+  absolute against the caller's original CWD before the change, so they land
+  where they did before.  The directory used is reported as workingDir in the
+  result object.
+
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
 
@@ -92,6 +104,8 @@ NOTES
   Justification='Script accepts at most one piped installation object; end-block semantics are correct.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-RsvarsEnvLines',
   Justification='Function returns multiple KEY=VALUE lines from cmd.exe set; plural noun is accurate.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Resolve-DccPaths',
+  Justification='Function resolves an array of paths; plural noun is accurate.')]
 param(
   [Parameter(ValueFromPipeline=$true)]
   [psobject]$DelphiInstallation,
@@ -186,6 +200,19 @@ param(
   # paths for a fully self-contained, reproducible build.
   [switch]$SkipRsvars,
 
+  # Working directory the compiler runs in.  Defaults to the folder of the
+  # resolved -ProjectFile so relative references the project author wrote --
+  # a uses clause like SomeUnit in '..\..\shared\SomeUnit.pas', {$I ..\defs.inc}
+  # includes, and {$R ..\app.res} resources -- resolve as intended (matching
+  # the legacy DelphiBuild.bat, which cd's into the .dpr folder).  Pass an
+  # explicit path to override; pass the caller's own CWD to reproduce the old
+  # no-change behavior.  Relative output/search paths (-ExeOutputDir,
+  # -DcuOutputDir, -UnitSearchPath, -IncludePath, -ResourcePath, and the
+  # package output dirs) are resolved to absolute against the caller's original
+  # CWD before the change, so existing callers see no change in where those
+  # outputs land.
+  [string]$WorkingDirectory,
+
   [switch]$ShowOutput
 )
 
@@ -199,7 +226,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.6'
+$script:Version = '0.4.7'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -304,24 +331,88 @@ function Get-CompilerPath {
   return Join-Path (Join-Path $RootDir $folder) "$name.exe"
 }
 
+# Resolve the working directory the compiler will run in.
+# An explicit -WorkingDirectory (relative or absolute) is resolved to a full
+# path against the current process CWD.  When omitted, defaults to the folder
+# of the already-resolved (absolute) project file so relative in / {$I} / {$R}
+# references resolve as the project author intended.
+function Resolve-WorkingDirectory {
+  param(
+    [string]$WorkingDirectory,
+    [string]$ProjectFile
+  )
+  if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+    return [System.IO.Path]::GetFullPath($WorkingDirectory)
+  }
+  return [System.IO.Path]::GetDirectoryName($ProjectFile)
+}
+
+# Resolve a single possibly-relative path to an absolute path against the
+# current process CWD.  Null/empty/whitespace passes through unchanged so the
+# corresponding switch is simply omitted downstream.  Must be called before the
+# compiler's working directory is changed so relative paths anchor to the
+# caller's original CWD (preserving pre-cd behavior).
+function Resolve-DccPath {
+  param([string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
+  return [System.IO.Path]::GetFullPath($Path)
+}
+
+# Resolve each entry of a path array to absolute (see Resolve-DccPath).
+# Entries that are empty/whitespace pass through unchanged.  Always returns an
+# array so the .Count checks in Invoke-DccProject behave.
+function Resolve-DccPaths {
+  param([string[]]$Paths)
+  if ($null -eq $Paths -or $Paths.Count -eq 0) { return @() }
+  return @($Paths | ForEach-Object { Resolve-DccPath -Path $_ })
+}
+
 # Invoke the DCC compiler with the given arguments.
 # Returns [pscustomobject]@{ ExitCode; Output } where Output is $null when
 # -ShowOutput is set (output streams to stdout instead of being captured).
 # Separated into its own function so tests can mock it.
+#
+# When -WorkingDirectory is supplied the compiler runs with that directory as
+# its current directory, restored afterward even on failure.  IMPORTANT: a
+# native child process inherits [System.Environment]::CurrentDirectory (the
+# .NET process CWD), which on Windows PowerShell 5.1 does NOT track
+# Set-Location / $PWD.  Both are set here so the compiler's working directory
+# is correct on every host, and both are restored in the finally block.
 function Invoke-DccExe {
   param(
     [string]$CompilerPath,
     [string[]]$Arguments,
+    [string]$WorkingDirectory,
     [switch]$ShowOutput
   )
 
-  if ($ShowOutput) {
-    & $CompilerPath @Arguments | Out-Host
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $null }
-  }
+  $changeDir      = -not [string]::IsNullOrWhiteSpace($WorkingDirectory)
+  $originalEnvCwd = [System.Environment]::CurrentDirectory
+  $pushed         = $false
 
-  $output = & $CompilerPath @Arguments 2>&1 | Out-String
-  return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+  try {
+    if ($changeDir) {
+      # Push-Location first so a bad directory fails before we mutate the
+      # process CWD; $pushed guards the matching Pop-Location in finally.
+      Push-Location -LiteralPath $WorkingDirectory -ErrorAction Stop
+      $pushed = $true
+      [System.Environment]::CurrentDirectory = $WorkingDirectory
+    }
+
+    if ($ShowOutput) {
+      & $CompilerPath @Arguments | Out-Host
+      return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $null }
+    }
+
+    $output = & $CompilerPath @Arguments 2>&1 | Out-String
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+  }
+  finally {
+    if ($changeDir) {
+      [System.Environment]::CurrentDirectory = $originalEnvCwd
+      if ($pushed) { Pop-Location }
+    }
+  }
 }
 
 # Assemble DCC arguments and invoke the compiler.
@@ -346,8 +437,24 @@ function Invoke-DccProject {
     [string[]]$LinkPackage    = @(),
     [switch]$NoConfig,
     [string[]]$ExtraArgs      = @(),
+    [string]$WorkingDirectory,
     [switch]$ShowOutput
   )
+
+  # Resolve relative output/search paths to absolute against the CURRENT CWD
+  # before Invoke-DccExe changes the compiler's working directory.  This keeps
+  # these outputs anchored to the caller's CWD (pre-cd behavior) rather than
+  # having them silently follow the compiler into the project folder.  The
+  # project file, defines, namespaces, link packages, and -ExtraArgs are left
+  # untouched (already absolute, or not paths, or a verbatim escape hatch).
+  $ExeOutputDir   = Resolve-DccPath  -Path  $ExeOutputDir
+  $DcuOutputDir   = Resolve-DccPath  -Path  $DcuOutputDir
+  $BplOutputDir   = Resolve-DccPath  -Path  $BplOutputDir
+  $DcpOutputDir   = Resolve-DccPath  -Path  $DcpOutputDir
+  $BpiOutputDir   = Resolve-DccPath  -Path  $BpiOutputDir
+  $UnitSearchPath = @(Resolve-DccPaths -Paths $UnitSearchPath)
+  $IncludePath    = @(Resolve-DccPaths -Paths $IncludePath)
+  $ResourcePath   = @(Resolve-DccPaths -Paths $ResourcePath)
 
   $dccArgs = @($ProjectFile)
 
@@ -391,7 +498,7 @@ function Invoke-DccProject {
   # Adding the array with += preserves each element as a distinct argument.
   if ($ExtraArgs.Count -gt 0) { $dccArgs += $ExtraArgs }
 
-  return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -ShowOutput:$ShowOutput
+  return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -WorkingDirectory $WorkingDirectory -ShowOutput:$ShowOutput
 }
 
 # Guard: skip top-level execution when the script is dot-sourced for testing.
@@ -439,6 +546,11 @@ try {
     exit $ExitProjectNotFound
   }
 
+  # Working directory the compiler runs in: explicit -WorkingDirectory, else the
+  # resolved project file's folder.  Computed while CWD is still the caller's so
+  # a relative -WorkingDirectory anchors there.
+  $resolvedWorkingDir = Resolve-WorkingDirectory -WorkingDirectory $WorkingDirectory -ProjectFile $resolvedProjectFile
+
   # Source rsvars into the process environment unless the caller opted out.
   # With -SkipRsvars the current environment (pre-set by the caller) is used
   # as-is and left untouched.
@@ -447,24 +559,25 @@ try {
   }
 
   $buildResult = Invoke-DccProject `
-    -CompilerPath    $compilerPath `
-    -ProjectFile     $resolvedProjectFile `
-    -Config          $Config `
-    -Target          $Target `
-    -Verbosity       $Verbosity `
-    -ExeOutputDir    $ExeOutputDir `
-    -DcuOutputDir    $DcuOutputDir `
-    -UnitSearchPath  $UnitSearchPath `
-    -IncludePath     $IncludePath `
-    -Namespace       $Namespace `
-    -Define          $Define `
-    -ResourcePath    $ResourcePath `
-    -BplOutputDir    $BplOutputDir `
-    -DcpOutputDir    $DcpOutputDir `
-    -BpiOutputDir    $BpiOutputDir `
-    -LinkPackage     $LinkPackage `
+    -CompilerPath      $compilerPath `
+    -ProjectFile       $resolvedProjectFile `
+    -Config            $Config `
+    -Target            $Target `
+    -Verbosity         $Verbosity `
+    -ExeOutputDir      $ExeOutputDir `
+    -DcuOutputDir      $DcuOutputDir `
+    -UnitSearchPath    $UnitSearchPath `
+    -IncludePath       $IncludePath `
+    -Namespace         $Namespace `
+    -Define            $Define `
+    -ResourcePath      $ResourcePath `
+    -BplOutputDir      $BplOutputDir `
+    -DcpOutputDir      $DcpOutputDir `
+    -BpiOutputDir      $BpiOutputDir `
+    -LinkPackage       $LinkPackage `
     -NoConfig:$NoConfig `
-    -ExtraArgs       $ExtraArgs `
+    -ExtraArgs         $ExtraArgs `
+    -WorkingDirectory  $resolvedWorkingDir `
     -ShowOutput:$ShowOutput
 
   $resultObj = [pscustomobject]@{
@@ -490,6 +603,7 @@ try {
     noConfig       = [bool]$NoConfig
     extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
     skipRsvars     = [bool]$SkipRsvars
+    workingDir     = $resolvedWorkingDir
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output
