@@ -66,10 +66,11 @@ NOTES
   -Property accepts a hashtable of arbitrary MSBuild properties, each passed
   through as /p:Key=Value (e.g. -Property @{ DCC_BuildAllUnits = 'true' }).
   These are appended after the built-in properties, so an entry overrides a
-  built-in property of the same name.  Argument quoting is left to PowerShell's
-  native-command argument passing -- values are never hand-quoted, so a value
-  ending in a backslash is passed through intact (see Get-PathWithoutTrailingSeparator
-  and the arg-assembly notes in Invoke-MsbuildProject).
+  built-in property of the same name.  The whole /p: set is written to a
+  temporary MSBuild response file and passed as @file, so a value may contain
+  whitespace, semicolons, or a trailing backslash and reach MSBuild intact under
+  both Windows PowerShell 5.1 and PowerShell 7 (see Get-MsbuildResponseLines and
+  ConvertTo-MsbuildResponseValue).
 
   -SkipRsvars builds using the caller's current process environment instead of
   requiring and sourcing <RootDir>\bin\rsvars.bat.  With it, -RootDir is optional
@@ -98,6 +99,8 @@ NOTES
   Justification='Script accepts at most one piped installation object; end-block semantics are correct.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-RsvarsEnvLines',
   Justification='Function returns multiple KEY=VALUE lines from cmd.exe set; plural noun is accurate.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Get-MsbuildResponseLines',
+  Justification='Function returns the full set of /p: response-file lines; plural noun is accurate.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
   Justification='Write-Host is intentional: -ShowOutput streams build text directly to the console host.')]
 param(
@@ -190,7 +193,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '1.2.7'
+$script:Version = '1.2.9'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -238,17 +241,106 @@ function Get-PathWithoutTrailingSeparator {
   return $trimmed
 }
 
-# Returns $true when an MSBuild property value cannot be passed to a native exe
-# without corruption under Windows PowerShell 5.1's argument quoting: the value
-# both contains whitespace (so PS 5.1 wraps it in double quotes) AND ends in a
-# backslash (so that trailing backslash escapes the closing quote, merging the
-# next argument).  PowerShell 7+ quotes such values correctly, so this risk is
-# specific to the 5.1 host; the caller gates the warning on the PS version.
-# Path-typed inputs are trimmed via Get-PathWithoutTrailingSeparator before they
-# reach here, so this only fires for arbitrary -Property values.
-function Test-NativeQuotingRisk {
+# Encode a single MSBuild /p: value for inclusion in a response file.
+# A response file is read by MSBuild's own tokenizer, not by CommandLineToArgvW,
+# so quoting applied here reaches MSBuild identically regardless of the PowerShell
+# host (Windows PowerShell 5.1 vs PowerShell 7).  That is what makes whitespace,
+# semicolons, and trailing backslashes safe -- the command-line-quoting hazards
+# that motivated #24 do not apply to a response file (see #25).
+#
+# Quoting rules, verified against msbuild.exe:
+#   * The value is wrapped in double quotes when it is empty or contains whitespace,
+#     a semicolon (which MSBuild's /p: switch parser splits on -- even inside a
+#     response file), or a double quote.  A value with none of these is emitted
+#     verbatim; a trailing backslash is then harmless because there is no closing
+#     quote for it to escape.
+#   * When quoting, backslashes follow the Windows CommandLineToArgvW rules MSBuild's
+#     tokenizer honours: a run of backslashes immediately before a double quote
+#     (including the closing delimiter) is doubled, and an embedded double quote is
+#     escaped with an extra backslash.  Without this, a trailing '\' would escape the
+#     closing quote and corrupt the value.
+function ConvertTo-MsbuildResponseValue {
   param([string]$Value)
-  return ($Value -match '\s') -and ($Value -match '\\+$')
+
+  if ($null -eq $Value) { $Value = '' }
+  if ($Value.Length -gt 0 -and $Value -notmatch '[\s;"]') {
+    return $Value
+  }
+
+  $sb = [System.Text.StringBuilder]::new()
+  [void]$sb.Append('"')
+  $backslashes = 0
+  foreach ($ch in $Value.ToCharArray()) {
+    if ($ch -eq '\') {
+      $backslashes++
+    }
+    elseif ($ch -eq '"') {
+      [void]$sb.Append('\' * (($backslashes * 2) + 1))
+      [void]$sb.Append('"')
+      $backslashes = 0
+    }
+    else {
+      if ($backslashes -gt 0) {
+        [void]$sb.Append('\' * $backslashes)
+        $backslashes = 0
+      }
+      [void]$sb.Append($ch)
+    }
+  }
+  if ($backslashes -gt 0) {
+    [void]$sb.Append('\' * ($backslashes * 2))
+  }
+  [void]$sb.Append('"')
+  return $sb.ToString()
+}
+
+# Assemble the ordered set of /p:Key=Value response-file lines for a build.
+# Config and Platform come first, then the DCC_* outputs/paths, the two batch-path
+# shortcuts (DCC_BuildAllUnits / _EnvLibraryPath), and finally the generic -Property
+# pass-through in sorted key order.  -Property is emitted LAST so an explicit entry
+# overrides a built-in of the same name -- MSBuild honours the last /p: occurrence,
+# and a response file preserves line order.  Each value is encoded once, in one
+# place, by ConvertTo-MsbuildResponseValue.
+function Get-MsbuildResponseLines {
+  param(
+    [string]$Config,
+    [string]$Platform,
+    [string]$ExeOutputDir,
+    [string]$DcuOutputDir,
+    [string[]]$UnitSearchPath = @(),
+    [string[]]$Define         = @(),
+    [switch]$BuildAllUnits,
+    [string]$EnvLibraryPath,
+    [hashtable]$Property      = @{}
+  )
+
+  $pairs = New-Object System.Collections.Generic.List[object]
+  [void]$pairs.Add(@{ K = 'Config';   V = $Config })
+  [void]$pairs.Add(@{ K = 'Platform'; V = $Platform })
+  if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { [void]$pairs.Add(@{ K = 'DCC_ExeOutput'; V = $ExeOutputDir }) }
+  if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { [void]$pairs.Add(@{ K = 'DCC_DcuOutput'; V = $DcuOutputDir }) }
+
+  if ($UnitSearchPath.Count -gt 0) {
+    $trimmedPaths = @($UnitSearchPath | ForEach-Object { Get-PathWithoutTrailingSeparator $_ })
+    [void]$pairs.Add(@{ K = 'DCC_UnitSearchPath'; V = ('$(DCC_UnitSearchPath);' + ($trimmedPaths -join ';')) })
+  }
+  if ($Define.Count -gt 0) {
+    [void]$pairs.Add(@{ K = 'DCC_Define'; V = ('$(DCC_Define);' + ($Define -join ';')) })
+  }
+
+  if ($BuildAllUnits) { [void]$pairs.Add(@{ K = 'DCC_BuildAllUnits'; V = 'true' }) }
+  if (-not [string]::IsNullOrWhiteSpace($EnvLibraryPath)) {
+    [void]$pairs.Add(@{ K = '_EnvLibraryPath'; V = (Get-PathWithoutTrailingSeparator $EnvLibraryPath) })
+  }
+
+  if ($Property.Count -gt 0) {
+    foreach ($key in ($Property.Keys | Sort-Object)) {
+      [void]$pairs.Add(@{ K = $key; V = [string]$Property[$key] })
+    }
+  }
+
+  $lines = foreach ($p in $pairs) { '/p:' + $p.K + '=' + (ConvertTo-MsbuildResponseValue $p.V) }
+  return @($lines)
 }
 
 # Invoke cmd.exe to source rsvars.bat and capture the resulting environment.
@@ -332,72 +424,45 @@ function Invoke-MsbuildProject {
     [switch]$ShowOutput
   )
 
-  $msbuildArgs = @(
+  # Only the project file and the non-/p: switches travel as direct command-line
+  # arguments.  The entire /p: set goes through a temporary MSBuild response file
+  # (assembled by Get-MsbuildResponseLines), which MSBuild reads with its own
+  # tokenizer rather than via CommandLineToArgvW.  This delivers every property
+  # value identically under Windows PowerShell 5.1 and PowerShell 7 -- whitespace,
+  # semicolons, and trailing backslashes are all safe (see #24 / #25).
+  $directArgs = @(
     $ProjectFile,
     "/t:$Target",
-    "/p:Config=$Config",
-    "/p:Platform=$Platform",
     "/nologo",
     "/v:$Verbosity"
   )
 
-  if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { $msbuildArgs += "/p:DCC_ExeOutput=$ExeOutputDir" }
-  if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { $msbuildArgs += "/p:DCC_DcuOutput=$DcuOutputDir" }
+  $responseLines = Get-MsbuildResponseLines `
+    -Config          $Config `
+    -Platform        $Platform `
+    -ExeOutputDir    $ExeOutputDir `
+    -DcuOutputDir    $DcuOutputDir `
+    -UnitSearchPath  $UnitSearchPath `
+    -Define          $Define `
+    -BuildAllUnits:$BuildAllUnits `
+    -EnvLibraryPath  $EnvLibraryPath `
+    -Property        $Property
 
-  # /p: values are NEVER hand-quoted.  Each array element is passed to the native
-  # msbuild.exe as a single argument; PowerShell performs the command-line quoting
-  # (auto-quoting elements that contain spaces).  Hand-embedding double quotes here
-  # breaks when a value ends in a backslash: the emitted \" is parsed by
-  # CommandLineToArgvW as an escaped literal quote, merging the next argument into
-  # this value.  A semicolon inside a single argv element does not need quoting --
-  # MSBuild splits properties on argv boundaries, not on ';'.
-  if ($UnitSearchPath.Count -gt 0) {
-    $trimmedPaths    = @($UnitSearchPath | ForEach-Object { Get-PathWithoutTrailingSeparator $_ })
-    $unitSearchValue = '$(DCC_UnitSearchPath);' + ($trimmedPaths -join ';')
-    $msbuildArgs += "/p:DCC_UnitSearchPath=$unitSearchValue"
+  # Write the response file as UTF-8 without a BOM so it is read correctly by every
+  # MSBuild version (a BOM confuses older .NET-Framework msbuild).  Delete it in the
+  # finally regardless of build outcome.
+  $responseFile = [System.IO.Path]::GetTempFileName()
+  try {
+    $content = ($responseLines -join [Environment]::NewLine)
+    if ($responseLines.Count -gt 0) { $content += [Environment]::NewLine }
+    [System.IO.File]::WriteAllText($responseFile, $content, [System.Text.UTF8Encoding]::new($false))
+
+    $msbuildArgs = $directArgs + @("@$responseFile")
+    return Invoke-MsbuildExe -Arguments $msbuildArgs -MsbuildPath $MsbuildPath -ShowOutput:$ShowOutput
   }
-
-  if ($Define.Count -gt 0) {
-    $defineValue = '$(DCC_Define);' + ($Define -join ';')
-    $msbuildArgs += "/p:DCC_Define=$defineValue"
+  finally {
+    Remove-Item -LiteralPath $responseFile -Force -ErrorAction SilentlyContinue
   }
-
-  # First-class shortcuts for two properties the batch build path relies on.
-  # Emitted before the generic pass-through so a matching -Property entry can
-  # still override them (MSBuild honours the last /p: occurrence).
-  if ($BuildAllUnits) { $msbuildArgs += "/p:DCC_BuildAllUnits=true" }
-  if (-not [string]::IsNullOrWhiteSpace($EnvLibraryPath)) {
-    $envLibValue = Get-PathWithoutTrailingSeparator $EnvLibraryPath
-    $msbuildArgs += "/p:_EnvLibraryPath=$envLibValue"
-  }
-
-  # Generic /p: pass-through.  Appended last so an explicit -Property entry
-  # overrides a built-in property of the same name (MSBuild honours the last
-  # /p: occurrence).  Keys are sorted for deterministic argument ordering.
-  # Values are passed verbatim (no hand-quoting) for the reasons above; a generic
-  # value that both contains whitespace and ends in a backslash is still subject to
-  # Windows PowerShell 5.1's own native-quoting limitation (correct on PS 7).  Such
-  # a value is detected and warned about below so the corruption is not silent.
-  #
-  # Future hardening (see #25): write the full /p: set to an MSBuild response file
-  # (@args.rsp, one property per line, no quoting) and pass @file to msbuild.exe.
-  # MSBuild reads a response file line-by-line, so a response file bypasses
-  # command-line quoting entirely -- making arbitrary values (whitespace, trailing
-  # backslashes, quotes) bulletproof on both PS 5.1 and PS 7, and removing the need
-  # for the warning below.
-  if ($Property.Count -gt 0) {
-    foreach ($key in ($Property.Keys | Sort-Object)) {
-      $value = [string]$Property[$key]
-      if (($PSVersionTable.PSVersion.Major -lt 7) -and (Test-NativeQuotingRisk $value)) {
-        Write-Warning ("-Property '$key' value '$value' contains whitespace and ends in a backslash; " +
-          'Windows PowerShell 5.1 cannot pass it to msbuild.exe without corrupting the argument boundary ' +
-          "(the trailing backslash escapes the closing quote).  Remove the trailing '\' or run under PowerShell 7+.")
-      }
-      $msbuildArgs += "/p:$key=$value"
-    }
-  }
-
-  return Invoke-MsbuildExe -Arguments $msbuildArgs -MsbuildPath $MsbuildPath -ShowOutput:$ShowOutput
 }
 
 # Parse the dcc32.exe invocation line from captured msbuild output and extract

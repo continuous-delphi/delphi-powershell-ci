@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.14]
+- Bump bundled `delphi-msbuild` to 1.2.8: fixes a regression where an MSBuild
+  build with more than a base `-Define` (or `-UnitSearchPath`) failed with
+  `MSB1006: Property is not valid. Switch: CI` -- the unquoted
+  `/p:DCC_Define=$(DCC_Define);CI` was split by MSBuild on the semicolon.
+  Properties now travel via a temporary response file, so semicolons, spaces, and
+  trailing backslashes reach MSBuild intact on both Windows PowerShell 5.1 and 7.
+  [delphi-msbuild #25](https://github.com/continuous-delphi/delphi-msbuild/issues/25)
+
+---
 ## [0.4.13] - Unreleased
 - Surface the DCCBuild `-NoConfig` switch (dcc32 `--no-config`) end-to-end:
   `Invoke-DelphiBuild`, `Invoke-DelphiCi`, `Get-DelphiCiConfig`, the config
