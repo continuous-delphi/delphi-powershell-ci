@@ -22,6 +22,7 @@ function Get-DelphiCiConfig {
         [string[]]$UnitSearchPath,
         [string[]]$IncludePath,
         [string[]]$Namespace,
+        [switch]$NoConfig,
 
         # Clean defaults
         [ValidateSet('basic', 'standard', 'deep')]
@@ -123,6 +124,7 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('UnitSearchPath'))                { $overrides['UnitSearchPath']               = $UnitSearchPath }
     if ($PSBoundParameters.ContainsKey('IncludePath'))                   { $overrides['IncludePath']                  = $IncludePath }
     if ($PSBoundParameters.ContainsKey('Namespace'))                     { $overrides['Namespace']                    = $Namespace }
+    if ($PSBoundParameters.ContainsKey('NoConfig'))                      { $overrides['NoConfig']                     = [bool]$NoConfig }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                    { $overrides['CleanLevel']                   = $CleanLevel }
     if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))              { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))       { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }

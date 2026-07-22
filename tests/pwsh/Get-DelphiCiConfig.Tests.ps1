@@ -77,6 +77,16 @@ Describe 'Get-DelphiCiConfig' {
             $config.Pipeline[1].Defaults['target'] | Should -Be 'Build'
         }
 
+        It 'returns false as default build noConfig' {
+            $config = Get-DelphiCiConfig
+            $config.Pipeline[1].Defaults['noConfig'] | Should -Be $false
+        }
+
+        It 'sets build noConfig true when -NoConfig is supplied' {
+            $config = Get-DelphiCiConfig -NoConfig
+            $config.Pipeline[1].Defaults['noConfig'] | Should -Be $true
+        }
+
         It 'sets root to the current working directory' {
             $config = Get-DelphiCiConfig
             $expected = [System.IO.Path]::GetFullPath((Get-Location).Path)
@@ -200,6 +210,21 @@ Describe 'Get-DelphiCiConfig' {
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
             $config.Pipeline[0].Jobs[0]['defines'] | Should -Be @('ONLY')
+        }
+
+        It 'resolves a job-level noConfig true from a config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = @{
+                pipeline = @(
+                    @{ action = 'Build'; engine = 'DCCBuild'; jobs = @(
+                        @{ projectFile = 'src/App.dpr'; noConfig = $true }
+                    )}
+                )
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['noConfig'] | Should -Be $true
         }
 
     }

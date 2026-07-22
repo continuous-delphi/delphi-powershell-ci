@@ -105,7 +105,8 @@ InModuleScope 'Delphi.PowerShell.CI' {
             [string]$Name = 'App build',
             [string]$ProjectFile = 'C:\Fake\Source\App.dproj',
             [string[]]$Platform = @('Win32'),
-            [string[]]$Configuration = @('Debug')
+            [string[]]$Configuration = @('Debug'),
+            [bool]$NoConfig = $false
         )
         @{
             name           = $Name
@@ -122,6 +123,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             unitSearchPath = @()
             includePath    = @()
             namespace      = @()
+            noConfig       = $NoConfig
         }
     }
 
@@ -674,6 +676,30 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win32' -and $Configuration -eq 'Release' }
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' -and $Configuration -eq 'Debug' }
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter { $Platform -eq 'Win64' -and $Configuration -eq 'Release' }
+            }
+
+            It 'propagates a job noConfig=true to Invoke-DelphiBuild' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -NoConfig $true
+                        )
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { $NoConfig -eq $true }
+            }
+
+            It 'passes NoConfig false when the job does not set it' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob
+                        )
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -ParameterFilter { -not $NoConfig }
             }
 
             It 'runs multiple build jobs in sequence' {

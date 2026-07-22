@@ -23,6 +23,7 @@ Invoke-DelphiBuild
     [-UnitSearchPath <String[]>]
     [-IncludePath <String[]>]
     [-Namespace <String[]>]
+    [-NoConfig]
     [-WhatIf]
     [<CommonParameters>]
 ```
@@ -206,6 +207,21 @@ flag). Required for modern Delphi projects that use namespaced RTL units
 Type:     String[]
 Required: No
 Default:  (empty)
+```
+
+### -NoConfig
+
+Skip loading the toolchain's `dcc32.cfg` (dcc32 `--no-config`). Use when the
+cfg carries actively wrong entries -- stale or incorrect `-U`/`-I` library
+paths or options (not merely a nonexistent dir); with it, units and includes
+resolve only from the paths supplied to this command. **DCCBuild-only** --
+rejected with a clear error when `BuildEngine` is `MSBuild` (MSBuild has no
+`dcc32.cfg`).
+
+```
+Type:     SwitchParameter
+Required: No
+Default:  (off; dcc32.cfg auto-loaded)
 ```
 
 ### -WhatIf

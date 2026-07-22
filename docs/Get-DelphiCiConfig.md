@@ -32,6 +32,7 @@ Get-DelphiCiConfig
     [-UnitSearchPath <string[]>]
     [-IncludePath <string[]>]
     [-Namespace <string[]>]
+    [-NoConfig]
     [-CleanLevel <string>]
     [-CleanOutputLevel <string>]
     [-CleanIncludeFilePattern <string[]>]

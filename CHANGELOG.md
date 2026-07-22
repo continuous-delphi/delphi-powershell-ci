@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.13] - Unreleased
+- Surface the DCCBuild `-NoConfig` switch (dcc32 `--no-config`) end-to-end:
+  `Invoke-DelphiBuild`, `Invoke-DelphiCi`, `Get-DelphiCiConfig`, the config
+  resolver, and the JSON schema (`noConfig` build key). Skips loading a
+  toolchain's `dcc32.cfg` when it carries actively wrong paths/options.
+  DCCBuild-only; rejected for MSBuild with a clear error.
+  [#16](https://github.com/continuous-delphi/delphi-powershell-ci/issues/16)
+- Bundled `delphi-dccbuild.ps1`: tee compiler output (always capture, also
+  stream under `-ShowOutput`) so the `warnings`/`errors` counts populate on the
+  module's build path, which always passes `-ShowOutput`. Counts are parsed
+  from locale-invariant dcc32 message codes (W#### / E#### / F####).
+
 ## [0.4.11] - Unreleased
 - Fix `Invoke-DelphiBuild` array parameters (`-Namespace`, `-UnitSearchPath`,
   `-IncludePath`, `-Defines`) failing to bind when 2+ values were supplied.

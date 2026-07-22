@@ -41,6 +41,13 @@ function Invoke-DelphiBuild {
         # outside the IDE without a project .cfg file. DCCBuild-only.
         [string[]]$Namespace = @(),
 
+        # Skip loading the toolchain's dcc32.cfg (DCC --no-config). DCCBuild-only.
+        # Use when the cfg carries actively wrong entries -- stale or incorrect
+        # -U/-I library paths or options (not merely a nonexistent dir). With it,
+        # units and includes resolve only from the paths supplied here. MSBuild
+        # has no dcc32.cfg, so it is rejected for that engine.
+        [switch]$NoConfig,
+
         [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
         [string]$BuildVerbosity = 'normal',
 
@@ -59,6 +66,9 @@ function Invoke-DelphiBuild {
     }
     if ($BuildEngine -eq 'MSBuild' -and $Namespace.Count -gt 0) {
         throw "Namespace is supported only by the DCCBuild engine. With MSBuild, configure unit scope names via the project's PropertyGroups."
+    }
+    if ($BuildEngine -eq 'MSBuild' -and $NoConfig) {
+        throw "NoConfig is supported only by the DCCBuild engine. MSBuild does not use dcc32.cfg."
     }
 
     # Normalise project file extension to what the engine expects.
@@ -123,6 +133,9 @@ function Invoke-DelphiBuild {
     foreach ($d in $Defines) {
         $buildArgs.Add('-Define')
         $buildArgs.Add($d)
+    }
+    if ($NoConfig) {
+        $buildArgs.Add('-NoConfig')
     }
 
     $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }

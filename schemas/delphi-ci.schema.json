@@ -203,6 +203,11 @@
         "namespace!": {
           "$ref": "#/$defs/stringArray",
           "description": "Replace inherited namespace values instead of appending."
+        },
+        "noConfig": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip loading the toolchain's dcc32.cfg (DCC --no-config). DCCBuild-only; MSBuild rejects this field."
         }
       }
     },
@@ -663,7 +668,8 @@
         "includePath": { "$ref": "#/$defs/buildConfig/properties/includePath" },
         "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
         "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
-        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" }
+        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" },
+        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" }
       }
     },
     "runJob": {
@@ -826,7 +832,8 @@
         "includePath": { "$ref": "#/$defs/buildConfig/properties/includePath" },
         "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
         "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
-        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" }
+        "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" },
+        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" }
       }
     },
     "runAction": {

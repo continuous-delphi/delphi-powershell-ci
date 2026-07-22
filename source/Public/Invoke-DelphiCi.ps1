@@ -59,6 +59,9 @@ function Invoke-DelphiCi {
         [Parameter(ParameterSetName = 'Run')]
         [string[]]$Namespace,
 
+        [Parameter(ParameterSetName = 'Run')]
+        [switch]$NoConfig,
+
         # --- Clean defaults (CLI shorthand) ---
 
         [Parameter(ParameterSetName = 'Run')]
@@ -315,6 +318,7 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('UnitSearchPath'))                { $overrides['UnitSearchPath']               = $UnitSearchPath }
     if ($PSBoundParameters.ContainsKey('IncludePath'))                   { $overrides['IncludePath']                  = $IncludePath }
     if ($PSBoundParameters.ContainsKey('Namespace'))                     { $overrides['Namespace']                    = $Namespace }
+    if ($PSBoundParameters.ContainsKey('NoConfig'))                      { $overrides['NoConfig']                     = [bool]$NoConfig }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                    { $overrides['CleanLevel']                   = $CleanLevel }
     if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))              { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))       { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
@@ -472,7 +476,8 @@ function Invoke-DelphiCi {
                                     -DcuOutputDir   $job['dcuOutputDir'] `
                                     -UnitSearchPath @($job['unitSearchPath']) `
                                     -IncludePath    @($job['includePath']) `
-                                    -Namespace      @($job['namespace'])
+                                    -Namespace      @($job['namespace']) `
+                                    -NoConfig:([bool]$job['noConfig'])
 
                                 $stepResults.Add($result)
                                 if (-not $result.Success) {

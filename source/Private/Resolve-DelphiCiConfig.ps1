@@ -31,6 +31,7 @@ function Resolve-DelphiCiConfig {
             unitSearchPath = @()
             includePath    = @()
             namespace      = @()
+            noConfig       = $false
         }
         run = @{
             timeoutSeconds = 10
@@ -216,6 +217,8 @@ function Resolve-DelphiCiConfig {
         $null -ne $Overrides['IncludePath'])                                     { $buildCliLayer['includePath!'] = @($Overrides['IncludePath']) }
     if ($Overrides.ContainsKey('Namespace') -and
         $null -ne $Overrides['Namespace'])                                       { $buildCliLayer['namespace!']   = @($Overrides['Namespace']) }
+    if ($Overrides.ContainsKey('NoConfig') -and
+        $null -ne $Overrides['NoConfig'])                                        { $buildCliLayer['noConfig']     = [bool]$Overrides['NoConfig'] }
     if ($buildCliLayer.Count -gt 0) {
         $effectiveDefaults['build'] = Merge-ActionConfig -Base $effectiveDefaults['build'] -Layer $buildCliLayer
     }

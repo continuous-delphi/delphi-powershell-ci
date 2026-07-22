@@ -413,6 +413,25 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     Should -Throw -ExpectedMessage '*Namespace*DCCBuild*'
             }
 
+            It 'does not pass -NoConfig when omitted' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -notcontains '-NoConfig'
+                }
+            }
+
+            It 'passes -NoConfig when set (DCCBuild)' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -NoConfig
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-NoConfig'
+                }
+            }
+
+            It 'rejects -NoConfig for MSBuild engine' {
+                { Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -NoConfig } |
+                    Should -Throw -ExpectedMessage '*NoConfig*DCCBuild*'
+            }
+
         }
 
         Context 'engine routing' {
@@ -647,6 +666,43 @@ param(
             $result.Success        | Should -Be $true
             $received = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
             @($received.namespace) | Should -Be @('System')
+        }
+
+        It 'forwards the -NoConfig switch as a bound switch parameter' {
+            $fakeDir = Join-Path $TestDrive 'noconfig-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+
+            $recordFile = Join-Path $TestDrive 'received-noconfig.json'
+            $recordLiteral = $recordFile -replace "'", "''"
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-dccbuild.ps1') -Value @"
+param(
+  [string]`$RootDir,
+  [string]`$OutputFile,
+  [string]`$ProjectFile,
+  [switch]`$NoConfig,
+  [switch]`$ShowOutput
+)
+[PSCustomObject]@{ noConfig = [bool]`$NoConfig } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+"@
+
+            $explicitRoot = Join-Path $TestDrive 'fake-root-noconfig'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dpr', '-NoConfig', '-ShowOutput') `
+                    -Engine          'DCCBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            $result.Success | Should -Be $true
+            $received = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
+            $received.noConfig | Should -Be $true
         }
 
     }

@@ -29,6 +29,7 @@ Invoke-DelphiCi
     [-UnitSearchPath <String[]>]
     [-IncludePath <String[]>]
     [-Namespace <String[]>]
+    [-NoConfig]
     [-CleanLevel <String>]
     [-CleanOutputLevel <String>]
     [-CleanIncludeFilePattern <String[]>]
@@ -151,10 +152,11 @@ Action types to include in the pipeline. Valid values: `Clean`, `Build`,
 
 CLI shorthand: creates a single build job with this project file.
 
-### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace
+### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace, -NoConfig
 
 Build defaults. Apply to all build jobs through the merge chain.
-See `Invoke-DelphiBuild` for descriptions.
+See `Invoke-DelphiBuild` for descriptions. `-NoConfig` (DCCBuild-only) skips
+loading the toolchain's `dcc32.cfg`.
 
 ### -CleanLevel, -CleanOutputLevel, -CleanIncludeFilePattern, -CleanExcludeDirectoryPattern, -CleanConfigFile, -CleanRecycleBin, -CleanCheck
 

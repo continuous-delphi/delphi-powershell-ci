@@ -280,3 +280,52 @@ IncludePath, and Defines, for both engines.
 - [ ] A test exercises the real bundled-tool invocation (not a mock) with multi-value arrays
 
 ---
+Title: Surface DCCBuild -NoConfig through Invoke-DelphiBuild and the CI config layer
+Issue: #16
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+The bundled `delphi-dccbuild.ps1` exposes a `-NoConfig` switch (dcc32
+`--no-config`) that skips auto-loading `<RootDir>\bin\dcc32.cfg`. This matters
+when a toolchain's cfg carries actively wrong entries -- stale or incorrect
+`-U`/`-I` library paths or options, not merely a nonexistent dir. With
+`-NoConfig`, units and includes resolve only from the paths the caller supplies.
+
+Today `Invoke-DelphiBuild` has no parameter for it, so neither direct callers
+nor config/YAML-driven CI (`Invoke-DelphiCi`) can request it. This is the first
+real use of the DCCBuild engine, so the option needs to be reachable.
+
+## Proposed
+
+Plumb `-NoConfig` with full parity to the other DCCBuild-only build options
+(`Namespace`, `IncludePath`):
+
+- `Invoke-DelphiBuild`: add `[switch]$NoConfig`; forward as `-NoConfig` to the
+  build args; reject for the MSBuild engine (MSBuild has no dcc32.cfg) with a
+  clear error, mirroring the Namespace/IncludePath guards.
+- `Invoke-DelphiCi`: add `[switch]$NoConfig` (Run parameter set); record as an
+  override; forward per build job to `Invoke-DelphiBuild`.
+- `Get-DelphiCiConfig`: add `[switch]$NoConfig`; record as an override.
+- `Resolve-DelphiCiConfig`: add `noConfig = $false` to the build built-in
+  defaults; map the CLI override into the build layer as a scalar bool (no `!`
+  array suffix).
+- `schemas/delphi-ci.schema.json`: add a boolean `noConfig` property to
+  `buildConfig` (default false, DCCBuild-only note) and reference it in the
+  action-level and job-level build blocks.
+- Docs: note `noConfig` in the DCCBuild-only section (README + Get-DelphiCiConfig).
+
+`Invoke-BuildPipeline` needs no change -- its flat-token to splat conversion
+already forwards a valueless `-NoConfig` switch correctly (issue #15).
+
+## Acceptance criteria
+
+- [ ] `Invoke-DelphiBuild -BuildEngine DCCBuild -NoConfig` forwards `-NoConfig` to the bundled tool
+- [ ] `Invoke-DelphiBuild -BuildEngine MSBuild -NoConfig` throws a clear DCCBuild-only error
+- [ ] A build job with `noConfig: true` in a config file reaches `Invoke-DelphiBuild` with the switch set
+- [ ] `Invoke-DelphiCi -NoConfig` (CLI) propagates to build jobs
+- [ ] The schema validates `noConfig` at both action and job level and rejects a non-bool
+- [ ] Default (omitted) behavior is unchanged: dcc32.cfg still auto-loads
+
+---

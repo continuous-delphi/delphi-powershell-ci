@@ -218,9 +218,11 @@ be string or array, producing a cross product of builds.
 }
 ```
 
-`includePath` and `namespace` are DCCBuild-only. When `engine` is `MSBuild`,
-the build step rejects those fields with a clear error; configure equivalent
-settings in the project's MSBuild property groups instead.
+`includePath`, `namespace`, and `noConfig` are DCCBuild-only. When `engine` is
+`MSBuild`, the build step rejects those fields with a clear error; configure
+equivalent settings in the project's MSBuild property groups instead. `noConfig`
+skips loading the toolchain's `dcc32.cfg` (dcc32 `--no-config`) -- use it when
+that cfg carries actively wrong `-U`/`-I` paths or options.
 
 When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
 Without a config file, `Invoke-DelphiCi` generates a pipeline from `-Steps`
