@@ -228,3 +228,55 @@ Acceptance criteria:
 - [ ] When `rootDir` is absent, behavior is byte-for-byte unchanged (registry path)
 - [ ] `Invoke-DelphiCi` end-to-end: a pipeline whose build job specifies `toolchain.rootDir` builds against that folder
 - [ ] Pester coverage for the explicit-root path (inspect skipped) and the fail-fast on missing root
+
+---
+Title: Array build params fail when more than one value is supplied (repeated -Param forwarding)
+Issue: #15
+Status: closed
+Labels: bug
+Body:
+## Problem
+
+`Invoke-DelphiBuild` forwards array parameters to the bundled tool as repeated
+named arguments -- e.g. `foreach ($n in $Namespace) { $buildArgs += '-Namespace'; $buildArgs += $n }`
+(same for `-UnitSearchPath`, `-IncludePath`, `-Defines`). Those args are passed
+to the bundled `delphi-dccbuild.ps1` / `delphi-msbuild.ps1` via
+`pwsh -NoProfile -NonInteractive -File ... @allBuildArgs` in `Invoke-BuildPipeline`.
+
+Under `-File`, a `[string[]]` parameter cannot be specified more than once, so
+any array param with 2+ values fails:
+
+  delphi-dccbuild.ps1: Cannot bind parameter because parameter 'Namespace' is
+  specified more than once. ... use the array syntax ... value1,value2,value3
+
+Observed building a namespaced Delphi (10.3 Rio / 10.4 Sydney) project, which
+needs several unit-scope namespaces (Winapi;System;...). A single value per
+array param happens to work (one `-Namespace`), which is why existing
+single-value tests/usage pass; multi-value never has.
+
+Note: passing a single comma-/semicolon-joined string does NOT work either --
+`pwsh -File` does not split it, and the bundled tools join their `[string[]]`
+with `;`, so the delimiter ends up literal inside one `-NS`/`-U` token.
+
+## Proposed
+
+Forward array parameters so the bundled tool receives a real multi-element
+array. Options:
+
+- Invoke the bundled tool in-process by splatting a hashtable with array values
+  (`& $buildToolPath @params`) instead of `-File @flatargs` (trade-off: loses
+  the current separate-process isolation), OR
+- Keep the subprocess but pass each array as a single delimited value and have
+  the bundled tools split it into their `[string[]]` params.
+
+Apply the chosen approach consistently for Namespace, UnitSearchPath,
+IncludePath, and Defines, for both engines.
+
+## Acceptance criteria
+
+- [ ] A build with 2+ namespaces succeeds (each reaches dcc32 as a distinct `-NS` entry)
+- [ ] A build with 2+ unit search paths / include paths / defines succeeds for both engines
+- [ ] Single-value array params continue to work
+- [ ] A test exercises the real bundled-tool invocation (not a mock) with multi-value arrays
+
+---

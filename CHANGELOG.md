@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.11] - Unreleased
+- Fix `Invoke-DelphiBuild` array parameters (`-Namespace`, `-UnitSearchPath`,
+  `-IncludePath`, `-Defines`) failing to bind when 2+ values were supplied.
+  `Invoke-BuildPipeline` now splats the build tool's parameters in the child
+  process (via a serialized hashtable) instead of `pwsh -File`, so multi-value
+  arrays reach `delphi-dccbuild.ps1` / `delphi-msbuild.ps1` as distinct
+  elements. Also hardens the result read so the DCCBuild engine's result shape
+  (no warnings/errors) no longer trips StrictMode.
+  [#15](https://github.com/continuous-delphi/delphi-powershell-ci/issues/15)
+
 ## [0.4.6] - Unreleased
 - Add explicit `toolchain.rootDir` (config) / `-ToolchainRootDir` (parameter) to
   `Invoke-DelphiBuild` and `Invoke-DelphiCi`. When set, registry detection

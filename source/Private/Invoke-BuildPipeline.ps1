@@ -72,8 +72,51 @@ function Invoke-BuildPipeline {
     # caller without interfering with the streamed output.
     $resultFile   = [System.IO.Path]::GetTempFileName()
     $allBuildArgs = @('-RootDir', $rootDir, '-OutputFile', $resultFile) + $BuildArgs
+
+    # Convert the flat -Name/value token list into a splat hashtable so array
+    # parameters survive the child-process boundary. Invoking the tool via
+    # `-File @flatArgs` cannot carry a multi-value [string[]] param: a repeated
+    # -Namespace fails to bind ("specified more than once") and a single
+    # delimited string is not split. We coalesce repeated names into real arrays
+    # and splat them in the child, which binds -Namespace / -UnitSearchPath /
+    # -IncludePath / -Define as genuine multi-element arrays (see issue #15).
+    #
+    # In this argument set a value never begins with '-', so a token that starts
+    # with '-' and is followed by another '-' token (or the end of the list) is a
+    # valueless switch (e.g. -ShowOutput); anything else is a -Name value pair.
+    $paramTable = @{}
+    for ($i = 0; $i -lt $allBuildArgs.Count; $i++) {
+        $token = $allBuildArgs[$i]
+        if ($token -notlike '-*') { continue }   # defensive: skip a stray value
+        $name     = $token.Substring(1)
+        $hasValue = ($i + 1 -lt $allBuildArgs.Count) -and ($allBuildArgs[$i + 1] -notlike '-*')
+        if (-not $hasValue) {
+            $paramTable[$name] = $true            # switch parameter
+            continue
+        }
+        $value = $allBuildArgs[$i + 1]
+        $i++
+        if ($paramTable.ContainsKey($name)) {
+            $paramTable[$name] = @($paramTable[$name]) + $value   # repeated -> array
+        }
+        else {
+            $paramTable[$name] = $value
+        }
+    }
+
+    # Serialise the params to a temp file and splat them in the child. Only our
+    # own generated paths are embedded in the command string (single-quote
+    # escaped); every caller/user value travels as data inside the Clixml file,
+    # never as executable code.
+    $paramFile = [System.IO.Path]::GetTempFileName()
+    $paramTable | Export-Clixml -LiteralPath $paramFile
+
+    $toolPathLiteral  = "'" + ($buildToolPath -replace "'", "''") + "'"
+    $paramFileLiteral = "'" + ($paramFile     -replace "'", "''") + "'"
+    $childCommand = "`$p = Import-Clixml -LiteralPath $paramFileLiteral; & $toolPathLiteral @p; exit `$LASTEXITCODE"
+
     try {
-        & $script:PowerShellExe -NoProfile -NonInteractive -File $buildToolPath @allBuildArgs | Out-Host
+        & $script:PowerShellExe -NoProfile -NonInteractive -Command $childCommand | Out-Host
         $buildExit = $LASTEXITCODE
 
         $toolResult = $null
@@ -83,16 +126,27 @@ function Invoke-BuildPipeline {
         }
         catch { <# result file missing or malformed; fall back to exit-code only #> }
 
+        # Read result properties defensively: the two engines emit different
+        # result shapes -- delphi-msbuild carries warnings/errors, delphi-dccbuild
+        # does not. Under Set-StrictMode a direct $toolResult.warnings dereference
+        # throws when the property is absent, so probe for each property and fall
+        # back to a default when the engine (or a malformed file) omits it.
+        $getProp = {
+            param($Obj, [string]$Name, $Default)
+            if ($null -ne $Obj -and $null -ne $Obj.PSObject.Properties[$Name]) { $Obj.PSObject.Properties[$Name].Value } else { $Default }
+        }
+
         return [PSCustomObject]@{
             ExitCode     = $buildExit
             Success      = ($buildExit -eq 0)
-            Warnings     = if ($null -ne $toolResult) { [int]$toolResult.warnings    } else { 0 }
-            Errors       = if ($null -ne $toolResult) { [int]$toolResult.errors      } else { 0 }
-            ExeOutputDir = if ($null -ne $toolResult) { $toolResult.exeOutputDir     } else { $null }
-            Output       = if ($null -ne $toolResult) { $toolResult.output           } else { $null }
+            Warnings     = [int](& $getProp $toolResult 'warnings' 0)
+            Errors       = [int](& $getProp $toolResult 'errors' 0)
+            ExeOutputDir = & $getProp $toolResult 'exeOutputDir' $null
+            Output       = & $getProp $toolResult 'output' $null
         }
     }
     finally {
         Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $paramFile  -Force -ErrorAction SilentlyContinue
     }
 }

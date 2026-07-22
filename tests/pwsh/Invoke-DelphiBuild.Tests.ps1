@@ -540,6 +540,117 @@ Set-Content -LiteralPath '$rootArgFile' -Value `$RootDir
 
     }
 
+    Describe 'Invoke-BuildPipeline -- multi-value array forwarding' {
+
+        # Exercises the REAL (unmocked) pipeline against a fake build tool that
+        # records the array parameters it actually received. This proves the
+        # flat -Name/value token list is forwarded so 2+ array values arrive as
+        # distinct [string[]] elements rather than failing to bind (issue #15).
+
+        BeforeAll {
+            Mock Write-Error {}
+        }
+
+        It 'forwards 2+ values for each array param as distinct elements' {
+            $fakeDir = Join-Path $TestDrive 'multiarray-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+
+            $recordFile = Join-Path $TestDrive 'received-arrays.json'
+
+            # Fake dccbuild that captures its [string[]] params to JSON. Escape
+            # the record path so it survives embedding in the here-string.
+            $recordLiteral = $recordFile -replace "'", "''"
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-dccbuild.ps1') -Value @"
+param(
+  [string]`$RootDir,
+  [string]`$OutputFile,
+  [string]`$ProjectFile,
+  [string[]]`$UnitSearchPath = @(),
+  [string[]]`$IncludePath    = @(),
+  [string[]]`$Namespace      = @(),
+  [string[]]`$Define         = @(),
+  [switch]`$ShowOutput
+)
+[PSCustomObject]@{
+  unitSearchPath = `$UnitSearchPath
+  includePath    = `$IncludePath
+  namespace      = `$Namespace
+  define         = `$Define
+} | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+"@
+
+            $explicitRoot = Join-Path $TestDrive 'fake-root'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $buildArgs = @(
+                '-ProjectFile', 'C:\Fake\App.dpr',
+                '-UnitSearchPath', 'C:\Libs\A', '-UnitSearchPath', 'C:\Libs\B',
+                '-IncludePath', 'C:\Inc\A', '-IncludePath', 'C:\Inc\B',
+                '-Namespace', 'Winapi', '-Namespace', 'System', '-Namespace', 'Data',
+                '-Define', 'CI', '-Define', 'RELEASE_BUILD',
+                '-ShowOutput'
+            )
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       $buildArgs `
+                    -Engine          'DCCBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            $result.Success | Should -Be $true
+
+            $received = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
+            @($received.namespace)      | Should -Be @('Winapi', 'System', 'Data')
+            @($received.unitSearchPath) | Should -Be @('C:\Libs\A', 'C:\Libs\B')
+            @($received.includePath)    | Should -Be @('C:\Inc\A', 'C:\Inc\B')
+            @($received.define)         | Should -Be @('CI', 'RELEASE_BUILD')
+        }
+
+        It 'forwards a single array value as a one-element array' {
+            $fakeDir = Join-Path $TestDrive 'singlearray-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+
+            $recordFile = Join-Path $TestDrive 'received-single.json'
+            $recordLiteral = $recordFile -replace "'", "''"
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-dccbuild.ps1') -Value @"
+param(
+  [string]`$RootDir,
+  [string]`$OutputFile,
+  [string]`$ProjectFile,
+  [string[]]`$Namespace = @(),
+  [switch]`$ShowOutput
+)
+[PSCustomObject]@{ namespace = `$Namespace } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+"@
+
+            $explicitRoot = Join-Path $TestDrive 'fake-root-single'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dpr', '-Namespace', 'System', '-ShowOutput') `
+                    -Engine          'DCCBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            $result.Success        | Should -Be $true
+            $received = Get-Content -LiteralPath $recordFile -Raw | ConvertFrom-Json
+            @($received.namespace) | Should -Be @('System')
+        }
+
+    }
+
     Describe 'Invoke-DelphiBuild -- integration' {
 
         It 'fails fast with exit code 3 when -ToolchainRootDir does not exist' {

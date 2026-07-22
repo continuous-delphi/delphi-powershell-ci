@@ -88,6 +88,13 @@ NOTES
   .output property.  Use -ShowOutput to stream output to stdout in real time;
   in that case .output is null and errors are written via Write-Error.
 
+  -OutputFile writes the full result object as compressed JSON to the given
+  path.  -Format json emits the result object as a single compressed JSON line
+  to the pipeline; -Format object (the default) emits the PSCustomObject
+  unchanged.  Both match delphi-msbuild.ps1 so delphi-powershell-ci can marshal
+  either engine's result uniformly.  Omitting both preserves the current
+  default (object to the pipeline).
+
   Exit codes:
     0  success
     1  unexpected error
@@ -213,7 +220,22 @@ param(
   # outputs land.
   [string]$WorkingDirectory,
 
-  [switch]$ShowOutput
+  [switch]$ShowOutput,
+
+  # When set, the result object is written as compressed JSON to this file path.
+  # Used by delphi-powershell-ci's Invoke-BuildPipeline to capture structured
+  # results from the subprocess while still streaming build output to the
+  # console.  Matches delphi-msbuild.ps1's -OutputFile contract so the CI module
+  # can read either engine's result uniformly.
+  [string]$OutputFile,
+
+  # Output format for the result object.
+  # object (default) -- emits a PSCustomObject to the pipeline (current behavior).
+  # json             -- emits a single compressed JSON line; used by
+  #                     Invoke-BuildPipeline to capture structured results from
+  #                     the subprocess.  Matches delphi-msbuild.ps1.
+  [ValidateSet('object', 'json')]
+  [string]$Format = 'object'
 )
 
 Set-StrictMode -Version Latest
@@ -226,7 +248,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.4.7'
+$script:Version = '0.4.9'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -501,6 +523,32 @@ function Invoke-DccProject {
   return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -WorkingDirectory $WorkingDirectory -ShowOutput:$ShowOutput
 }
 
+# Emit the build result object.
+# When OutputFile is a non-empty path, the result is written there as a single
+# compressed JSON line (UTF-8).  When Format is 'json' the result is emitted to
+# the pipeline as compressed JSON; otherwise (the 'object' default) the
+# PSCustomObject is emitted unchanged.  These mirror delphi-msbuild.ps1 so
+# delphi-powershell-ci can marshal either engine's result uniformly.  Separated
+# into its own function so tests can exercise the file/format contract without
+# invoking a compiler.
+function Write-DccResult {
+  param(
+    [psobject]$ResultObject,
+    [string]$OutputFile,
+    [string]$Format = 'object'
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
+    Set-Content -LiteralPath $OutputFile -Value ($ResultObject | ConvertTo-Json -Depth 5 -Compress) -Encoding UTF8
+  }
+
+  if ($Format -eq 'json') {
+    Write-Output ($ResultObject | ConvertTo-Json -Depth 5 -Compress)
+  } else {
+    Write-Output $ResultObject
+  }
+}
+
 # Guard: skip top-level execution when the script is dot-sourced for testing.
 if ($MyInvocation.InvocationName -eq '.') { return }
 
@@ -609,7 +657,7 @@ try {
     output         = $buildResult.Output
   }
 
-  Write-Output $resultObj
+  Write-DccResult -ResultObject $resultObj -OutputFile $OutputFile -Format $Format
 
   if ($buildResult.ExitCode -ne 0) {
     if ($ShowOutput) {
