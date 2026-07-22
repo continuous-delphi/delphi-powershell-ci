@@ -103,8 +103,17 @@ NOTES
   Codes are counted rather than the localized severity words so the tally holds
   under non-English toolchains.  Because output is always captured (even under
   -ShowOutput, which tees rather than suppresses), the counts are populated on
-  every code path.  Only -Verbosity quiet legitimately drives them toward 0, by
-  telling dcc32 not to emit hints/warnings in the first place.
+  every code path.  -Verbosity quiet (-Q) suppresses hints and warnings (so
+  .warnings drops toward 0) but not errors, which are still counted.
+
+  Any supplied output directory (-ExeOutputDir, -DcuOutputDir, -BplOutputDir,
+  -DcpOutputDir, -BpiOutputDir) is created before the compiler runs if it does
+  not already exist.  dcc32, invoked directly, does not create a missing output
+  directory -- it fails with an I/O error -- unlike MSBuild's DCC targets, which
+  run a MakeDir task.  Creation is idempotent (an existing directory is left
+  untouched) and anchors relative dirs to the caller's original CWD.  If a
+  directory cannot be created (invalid path, permission denied, a file already
+  occupies the path) the build fails fast with exit code 6 before dcc32 runs.
 
   Exit codes:
     0  success
@@ -113,6 +122,7 @@ NOTES
     3  rootDir missing/empty, directory not found, rsvars.bat absent (unless -SkipRsvars), or compiler exe not found
     4  project file not found
     5  DCC compiler failed (non-zero exit code)
+    6  an output directory could not be created
 #>
 
 [CmdletBinding()]
@@ -260,8 +270,9 @@ $ExitInvalidArguments = 2
 $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
+$ExitOutputDirError   = 6
 
-$script:Version = '0.4.11'
+$script:Version = '0.4.13'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -400,6 +411,37 @@ function Resolve-DccPaths {
   param([string[]]$Paths)
   if ($null -eq $Paths -or $Paths.Count -eq 0) { return @() }
   return @($Paths | ForEach-Object { Resolve-DccPath -Path $_ })
+}
+
+# Ensure the supplied output directories exist, creating any that are missing.
+# dcc32 does not create a missing output directory (it fails with an I/O error),
+# unlike MSBuild's DCC targets which run a MakeDir task; so this fills that gap.
+# Each path is expected already resolved to absolute (Resolve-DccPath) against
+# the caller's original CWD, and must be created BEFORE Invoke-DccExe changes the
+# compiler's working directory so a relative dir lands where the caller expects.
+# Empty/whitespace entries are skipped (their switch was not supplied).  An
+# existing directory is left untouched (idempotent).  On failure (invalid path,
+# permission denied, or a file already occupying the path) this throws so the
+# caller can fail fast with the dedicated output-dir exit code.  Separated into
+# its own function so tests can mock it and exercise the fail-fast contract.
+function New-DccOutputDirectory {
+  [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+    Justification='Internal helper that idempotently creates build output dirs (New-Item -Force); a non-interactive build tool has no use for -WhatIf/-Confirm here.')]
+  param([string[]]$Directories)
+  foreach ($dir in $Directories) {
+    if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+    if (Test-Path -LiteralPath $dir -PathType Container) { continue }
+    # A file occupying the path is not reliably rejected by New-Item -Force
+    # across hosts, so detect it explicitly and fail with a clear message.
+    if (Test-Path -LiteralPath $dir -PathType Leaf) {
+      throw "Failed to create output directory: $dir -- a file already exists at that path"
+    }
+    try {
+      $null = New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop
+    } catch {
+      throw "Failed to create output directory: $dir -- $($_.Exception.Message)"
+    }
+  }
 }
 
 # Invoke the DCC compiler with the given arguments.
@@ -564,8 +606,15 @@ function Invoke-DccProject {
 # ("Warning:", "Fatal:") are localized.  FATAL (F####) is folded into Errors
 # for parity with MSBuild's error tally; hints (H####) count as neither.
 #
-# When output is null/empty (e.g. -ShowOutput streamed it and did not capture),
-# both counts are 0 -- the same limitation delphi-msbuild's Get-BuildCount has.
+# Output is always captured by Invoke-DccExe (it tees under -ShowOutput rather
+# than streaming without capture), so these counts are populated on every code
+# path.  When output is empty -- e.g. -Verbosity quiet (-Q) told dcc32 not to
+# emit hints/warnings -- both counts are 0.
+#
+# Heuristic caveat: the code patterns match on word boundaries, so a token that
+# is literally a code (e.g. a file named W1035.pas echoed in the output) would
+# be counted.  Harmless in practice -- dcc32 does not echo such names -- and far
+# simpler than anchoring to the full "File.pas(line): Wnnnn " diagnostic shape.
 function Get-DccBuildCount {
   param([string]$Output)
 
@@ -645,6 +694,26 @@ try {
   # resolved project file's folder.  Computed while CWD is still the caller's so
   # a relative -WorkingDirectory anchors there.
   $resolvedWorkingDir = Resolve-WorkingDirectory -WorkingDirectory $WorkingDirectory -ProjectFile $resolvedProjectFile
+
+  # Create any supplied output directories before invoking the compiler.  dcc32
+  # does not create a missing output dir (it fails with an I/O error), unlike
+  # MSBuild's DCC targets.  Resolve to absolute against the caller's CWD here --
+  # while it is still the caller's, before Invoke-DccExe cd's into the working
+  # dir -- so a relative dir lands where the caller expects (matching how
+  # Invoke-DccProject resolves the same paths for the compiler switches).  A
+  # creation failure fails fast with a dedicated exit code, before dcc32 runs.
+  try {
+    New-DccOutputDirectory -Directories @(
+      (Resolve-DccPath -Path $ExeOutputDir),
+      (Resolve-DccPath -Path $DcuOutputDir),
+      (Resolve-DccPath -Path $BplOutputDir),
+      (Resolve-DccPath -Path $DcpOutputDir),
+      (Resolve-DccPath -Path $BpiOutputDir)
+    )
+  } catch {
+    Write-Error $_.Exception.Message -ErrorAction Continue
+    exit $ExitOutputDirError
+  }
 
   # Source rsvars into the process environment unless the caller opted out.
   # With -SkipRsvars the current environment (pre-set by the caller) is used
