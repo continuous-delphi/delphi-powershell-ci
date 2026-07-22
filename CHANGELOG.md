@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.15]
+- Bump bundled `delphi-msbuild` to 1.2.9: `-Define` / `-UnitSearchPath` no longer
+  clobber the project's config-scoped defines/paths. They were passed as
+  `/p:DCC_Define="$(DCC_Define);CI"` global properties, which override the project's
+  `<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>` config assignment -- dropping `DEBUG`
+  and leaving a stray `$` define. They now travel as the `DCC_Define` /
+  `DCC_UnitSearchPath` environment variables, so the project's defines/paths are
+  preserved and the supplied values appended.
+  [delphi-msbuild #26](https://github.com/continuous-delphi/delphi-msbuild/issues/26)
+
+---
 ## [0.4.14]
 - Bump bundled `delphi-msbuild` to 1.2.8: fixes a regression where an MSBuild
   build with more than a base `-Define` (or `-UnitSearchPath`) failed with

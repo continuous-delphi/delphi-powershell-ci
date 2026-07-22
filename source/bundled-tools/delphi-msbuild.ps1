@@ -141,11 +141,15 @@ param(
   # Output directory for compiled DCU files (/p:DCC_DcuOutput property).
   [string]$DcuOutputDir,
 
-  # Additional unit search paths (/p:DCC_UnitSearchPath property).  Multiple paths are
-  # joined with semicolons and appended to the paths already set by the project's
-  # PropertyGroups.
+  # Additional unit search paths.  Passed via the DCC_UnitSearchPath environment
+  # variable (not /p:) so the project's config PropertyGroup extends rather than is
+  # overridden by them; multiple paths are joined with semicolons and each trailing
+  # separator is trimmed.  See Get-DccAppendEnv / #26.
   [string[]]$UnitSearchPath = @(),
 
+  # Additional compiler defines.  Passed via the DCC_Define environment variable (not
+  # /p:) so the project's config defines (DEBUG/RELEASE) are preserved and these are
+  # appended.  See Get-DccAppendEnv / #26.
   [string[]]$Define = @(),
 
   # Build every unit reachable from the project, not just those out of date
@@ -193,7 +197,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '1.2.9'
+$script:Version = '1.2.10'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -295,20 +299,23 @@ function ConvertTo-MsbuildResponseValue {
 }
 
 # Assemble the ordered set of /p:Key=Value response-file lines for a build.
-# Config and Platform come first, then the DCC_* outputs/paths, the two batch-path
+# Config and Platform come first, then the DCC_* outputs, the two batch-path
 # shortcuts (DCC_BuildAllUnits / _EnvLibraryPath), and finally the generic -Property
 # pass-through in sorted key order.  -Property is emitted LAST so an explicit entry
 # overrides a built-in of the same name -- MSBuild honours the last /p: occurrence,
 # and a response file preserves line order.  Each value is encoded once, in one
 # place, by ConvertTo-MsbuildResponseValue.
+#
+# NOTE: the two APPEND-style properties (DCC_Define, DCC_UnitSearchPath) are NOT here.
+# They are passed as environment variables (see Invoke-MsbuildProject) because a /p:
+# global property overrides -- rather than extends -- a project's config-scoped
+# <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define> assignment (see #26).
 function Get-MsbuildResponseLines {
   param(
     [string]$Config,
     [string]$Platform,
     [string]$ExeOutputDir,
     [string]$DcuOutputDir,
-    [string[]]$UnitSearchPath = @(),
-    [string[]]$Define         = @(),
     [switch]$BuildAllUnits,
     [string]$EnvLibraryPath,
     [hashtable]$Property      = @{}
@@ -319,14 +326,6 @@ function Get-MsbuildResponseLines {
   [void]$pairs.Add(@{ K = 'Platform'; V = $Platform })
   if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { [void]$pairs.Add(@{ K = 'DCC_ExeOutput'; V = $ExeOutputDir }) }
   if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { [void]$pairs.Add(@{ K = 'DCC_DcuOutput'; V = $DcuOutputDir }) }
-
-  if ($UnitSearchPath.Count -gt 0) {
-    $trimmedPaths = @($UnitSearchPath | ForEach-Object { Get-PathWithoutTrailingSeparator $_ })
-    [void]$pairs.Add(@{ K = 'DCC_UnitSearchPath'; V = ('$(DCC_UnitSearchPath);' + ($trimmedPaths -join ';')) })
-  }
-  if ($Define.Count -gt 0) {
-    [void]$pairs.Add(@{ K = 'DCC_Define'; V = ('$(DCC_Define);' + ($Define -join ';')) })
-  }
 
   if ($BuildAllUnits) { [void]$pairs.Add(@{ K = 'DCC_BuildAllUnits'; V = 'true' }) }
   if (-not [string]::IsNullOrWhiteSpace($EnvLibraryPath)) {
@@ -404,6 +403,32 @@ function Invoke-MsbuildExe {
   return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
 }
 
+# Compute the environment variables that carry the APPEND-style DCC properties
+# (DCC_Define, DCC_UnitSearchPath).  These are passed as environment variables rather
+# than /p: global properties: an environment-derived property has the LOWEST MSBuild
+# precedence, so the project's config-scoped PropertyGroup
+# (e.g. <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>) still runs and its $(...)
+# self-reference resolves against this value -- preserving the project's own defines
+# and search paths and appending ours.  A /p: global property would OVERRIDE that
+# assignment entirely, dropping the project's values and leaving the self-reference
+# unresolved (see #26).  Only supplied (non-empty) values are returned; UnitSearchPath
+# entries have their trailing separator trimmed first.
+function Get-DccAppendEnv {
+  param(
+    [string[]]$Define         = @(),
+    [string[]]$UnitSearchPath = @()
+  )
+  $envVars = [ordered]@{}
+  if ($Define.Count -gt 0) {
+    $envVars['DCC_Define'] = ($Define -join ';')
+  }
+  if ($UnitSearchPath.Count -gt 0) {
+    $trimmed = @($UnitSearchPath | ForEach-Object { Get-PathWithoutTrailingSeparator $_ })
+    $envVars['DCC_UnitSearchPath'] = ($trimmed -join ';')
+  }
+  return $envVars
+}
+
 # Assemble MSBuild arguments and invoke the build.
 # Returns the result object from Invoke-MsbuildExe.
 function Invoke-MsbuildProject {
@@ -425,11 +450,15 @@ function Invoke-MsbuildProject {
   )
 
   # Only the project file and the non-/p: switches travel as direct command-line
-  # arguments.  The entire /p: set goes through a temporary MSBuild response file
-  # (assembled by Get-MsbuildResponseLines), which MSBuild reads with its own
-  # tokenizer rather than via CommandLineToArgvW.  This delivers every property
-  # value identically under Windows PowerShell 5.1 and PowerShell 7 -- whitespace,
-  # semicolons, and trailing backslashes are all safe (see #24 / #25).
+  # arguments.  The OVERRIDE-style /p: set goes through a temporary MSBuild response
+  # file (assembled by Get-MsbuildResponseLines), which MSBuild reads with its own
+  # tokenizer rather than via CommandLineToArgvW.  This delivers every property value
+  # identically under Windows PowerShell 5.1 and PowerShell 7 -- whitespace, semicolons,
+  # and trailing backslashes are all safe (see #24 / #25).
+  #
+  # The APPEND-style properties (DCC_Define, DCC_UnitSearchPath) are NOT in the response
+  # file; they are set as environment variables so the project's config PropertyGroup can
+  # extend rather than be overridden by them (see Get-DccAppendEnv / #26).
   $directArgs = @(
     $ProjectFile,
     "/t:$Target",
@@ -442,17 +471,24 @@ function Invoke-MsbuildProject {
     -Platform        $Platform `
     -ExeOutputDir    $ExeOutputDir `
     -DcuOutputDir    $DcuOutputDir `
-    -UnitSearchPath  $UnitSearchPath `
-    -Define          $Define `
     -BuildAllUnits:$BuildAllUnits `
     -EnvLibraryPath  $EnvLibraryPath `
     -Property        $Property
 
+  $appendEnv = Get-DccAppendEnv -Define $Define -UnitSearchPath $UnitSearchPath
+
   # Write the response file as UTF-8 without a BOM so it is read correctly by every
-  # MSBuild version (a BOM confuses older .NET-Framework msbuild).  Delete it in the
-  # finally regardless of build outcome.
+  # MSBuild version (a BOM confuses older .NET-Framework msbuild).  Set the append-style
+  # env vars (saving any prior value) around the build.  Both the file and the env vars
+  # are restored/removed in the finally regardless of build outcome.
   $responseFile = [System.IO.Path]::GetTempFileName()
+  $savedEnv = @{}
   try {
+    foreach ($name in $appendEnv.Keys) {
+      $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+      [Environment]::SetEnvironmentVariable($name, $appendEnv[$name], 'Process')
+    }
+
     $content = ($responseLines -join [Environment]::NewLine)
     if ($responseLines.Count -gt 0) { $content += [Environment]::NewLine }
     [System.IO.File]::WriteAllText($responseFile, $content, [System.Text.UTF8Encoding]::new($false))
@@ -462,6 +498,9 @@ function Invoke-MsbuildProject {
   }
   finally {
     Remove-Item -LiteralPath $responseFile -Force -ErrorAction SilentlyContinue
+    foreach ($name in $savedEnv.Keys) {
+      [Environment]::SetEnvironmentVariable($name, $savedEnv[$name], 'Process')
+    }
   }
 }
 
