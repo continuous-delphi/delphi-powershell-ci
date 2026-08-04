@@ -197,7 +197,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '1.2.10'
+$script:Version = '1.3.12'
 
 # Resolve the Delphi root dir from the explicit -RootDir parameter or from a
 # piped delphi-inspect result object (.rootDir property).
@@ -504,8 +504,11 @@ function Invoke-MsbuildProject {
   }
 }
 
-# Parse the dcc32.exe invocation line from captured msbuild output and extract
-# the exe output dir (-E flag) and DCU output dir (-NO flag).
+# Parse the Delphi command-line compiler invocation from captured msbuild output
+# and extract the exe output dir (-E flag) and DCU output dir (-NO flag).
+# MSBuild invokes a platform-specific compiler per target -- dcc32.exe (Win32),
+# dcc64.exe (Win64), dcclinux64.exe, dccosx64.exe, dccosxarm64.exe, etc. -- so the
+# line filter matches any dcc<target>.exe, not just the Win32 compiler.
 # Paths are resolved to absolute using the project file directory as base.
 # Returns [pscustomobject]@{ ExeOutputDir; DcuOutputDir } -- either may be $null.
 function Get-BuildOutputDir {
@@ -517,17 +520,17 @@ function Get-BuildOutputDir {
   $result = [pscustomobject]@{ ExeOutputDir = $null; DcuOutputDir = $null }
   if ([string]::IsNullOrWhiteSpace($Output)) { return $result }
 
-  $dcc32Line = ($Output -split "`n") |
-    Where-Object { $_ -match '[/\\]dcc32\.exe\s' } |
+  $dccLine = ($Output -split "`n") |
+    Where-Object { $_ -match '[/\\]dcc[^\s\\/]*\.exe\s' } |
     Select-Object -First 1
-  if (-not $dcc32Line) { return $result }
+  if (-not $dccLine) { return $result }
 
-  if ($dcc32Line -match '\s-E(\S+)') {
+  if ($dccLine -match '\s-E(\S+)') {
     $result.ExeOutputDir = [System.IO.Path]::GetFullPath(
       [System.IO.Path]::Combine($ProjectFileDir, $Matches[1]))
   }
 
-  if ($dcc32Line -match '\s-NO(\S+)') {
+  if ($dccLine -match '\s-NO(\S+)') {
     $result.DcuOutputDir = [System.IO.Path]::GetFullPath(
       [System.IO.Path]::Combine($ProjectFileDir, $Matches[1]))
   }
