@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.19]
+- Integrate the bundled `delphi-format` tool and expose `Invoke-DelphiFormat`,
+  a Format step wrapping the pluggable formatting engine (formatter.exe /
+  radFormatter). Supports `-FormatCheck` for audit-only CI gates. Registered
+  with `Get-BundledToolInfo` so its version is reported by
+  `Invoke-DelphiCi -VersionInfo`.
+  [#17](https://github.com/continuous-delphi/delphi-powershell-ci/issues/17)
+
+---
 ## [0.4.15]
 - Bump bundled `delphi-msbuild` to 1.2.9: `-Define` / `-UnitSearchPath` no longer
   clobber the project's config-scoped defines/paths. They were passed as

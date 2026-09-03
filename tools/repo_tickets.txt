@@ -329,3 +329,156 @@ already forwards a valueless `-NoConfig` switch correctly (issue #15).
 - [ ] Default (omitted) behavior is unchanged: dcc32.cfg still auto-loads
 
 ---
+Title: Integrate bundled delphi-format tool with Invoke-DelphiFormat wrapper
+Issue: #17
+Status: closed
+Labels: enhancement
+Body:
+Wire the newly bundled `source/bundled-tools/delphi-format.ps1` into the CI
+module the same way the other bundled tools are integrated, and expose a
+public `Invoke-DelphiFormat` command.
+
+## Background
+
+`delphi-format.ps1` (tool version 0.6.1) is a Delphi source formatter
+orchestrator with pluggable engine support (RAD Studio `formatter.exe` and
+`radFormatter.exe`). It already implements the standard bundled-tool contract:
+the `-Version -Format json` API, structured `-Json` / `-PassThru` output, a
+`-Check` (no-change) mode with distinct exit codes (0 clean / 1 dirty / 2
+partial failure / 3 fatal), config-file hierarchy resolution, and `-WhatIf`
+support. The file was copied into `source/bundled-tools/` but is not registered
+or exposed anywhere in the module yet.
+
+Scope: full module integration + public wrapper. This ticket does NOT add a
+Format step to the `Invoke-DelphiCi` pipeline or the `delphi-ci.schema.json`
+(that is deliberately deferred -- see the note at the end).
+
+## Design
+
+### Registry: source/Private/Get-BundledToolInfo.ps1
+
+Add an entry to `$toolDefs`:
+
+    [PSCustomObject]@{ FileName = 'delphi-format.ps1'; SupportsVersionApi = $true }
+
+`delphi-format` supports `-Version -Format json`, so the subprocess version
+probe path applies. This raises the bundled-tool count from 8 to 9, which
+breaks the hard-coded `@($info).Count | Should -Be 8` assertion in
+`Invoke-DelphiCi.VersionInfo.Tests.ps1` -- update it to 9.
+
+### Public command: Invoke-DelphiFormat
+
+New `source/Public/Invoke-DelphiFormat.ps1`, modeled on
+`Invoke-DelphiClean.ps1`, using the established `<Action><Param>` naming
+convention and forwarding to the bundled tool via `Invoke-BundledTool`. Return
+the standard step-result object (`StepName`, `Success`, `Duration`, `ExitCode`,
+`Tool`, `Message`, `ProjectFile`). Use `[CmdletBinding(SupportsShouldProcess)]`
+and forward `-Check` when the caller requests audit-only.
+
+Parameters (forwarded to the corresponding delphi-format.ps1 params):
+
+- `-FormatRoot` -> `-RootPath` (default `(Get-Location).Path`)
+- `-FormatEngine` -> `-Engine` (ValidateSet `formatter`, `radFormatter`; default `formatter`)
+- `-FormatEnginePath` -> `-EnginePath`
+- `-FormatEngineConfigFile` -> `-EngineConfigFile`
+- `-FormatPath` -> `-Path` (string[])
+- `-FormatIncludeFilePattern` -> `-IncludeFilePattern` (string[])
+- `-FormatExcludeDirectoryPattern` -> `-ExcludeDirectoryPattern` (string[])
+- `-FormatEncoding` -> `-Encoding`
+- `-FormatCreateBackups` (switch) -> `-CreateBackups`
+- `-FormatOutputLevel` -> `-OutputLevel` (ValidateSet `detailed`, `summary`, `quiet`; default `detailed`)
+- `-FormatConfigFile` -> `-ConfigFile`
+- `-FormatCheck` (switch) -> `-Check` (audit-only; non-zero exit when files need formatting)
+
+### Manifest: source/Delphi.PowerShell.CI.psd1
+
+- Add `Invoke-DelphiFormat` to `FunctionsToExport`.
+- Extend the module `Description` to list delphi-format among the bundled tools.
+
+### Files to modify / add
+
+| File | What to add |
+|------|-------------|
+| `source/bundled-tools/delphi-format.ps1` | Already copied |
+| `source/Public/Invoke-DelphiFormat.ps1` | New wrapper function |
+| `source/Private/Get-BundledToolInfo.ps1` | Register delphi-format (SupportsVersionApi = true) |
+| `source/Delphi.PowerShell.CI.psd1` | Export Invoke-DelphiFormat; update Description |
+| `tests/pwsh/Invoke-DelphiFormat.Tests.ps1` | New wrapper tests (arg forwarding, Check, ShouldProcess, result shape) |
+| `tests/pwsh/Invoke-DelphiCi.VersionInfo.Tests.ps1` | Bump real-tool count assertion 8 -> 9; add an "includes delphi-format" case |
+| `README.md` | Document Invoke-DelphiFormat and the delphi-format bundled tool |
+| `CHANGELOG.md` | Entry under the release version |
+
+## Deferred (out of scope; file separately if wanted)
+
+A `Format` / `FormatCheck` step wired into the `Invoke-DelphiCi` pipeline and
+`schemas/delphi-ci.schema.json` (so formatting can run/verify as a CI action) is
+deliberately NOT part of this ticket. If that capability is desired it must live
+in its own open ticket rather than being folded in silently.
+
+Acceptance criteria:
+- [ ] `Invoke-DelphiFormat` is exported and formats files via the bundled tool
+- [ ] `Invoke-DelphiFormat -FormatCheck` runs audit-only and surfaces a non-zero exit when files need formatting
+- [ ] `Invoke-DelphiFormat -WhatIf` makes no changes
+- [ ] Array params (`-FormatPath`/`-FormatIncludeFilePattern`/`-FormatExcludeDirectoryPattern`) forward each value as a repeated argument
+- [ ] `Get-BundledToolInfo` reports delphi-format with its version (via the -Version json API) and returns 9 entries
+- [ ] `Invoke-DelphiCi -VersionInfo` lists delphi-format
+- [ ] README and CHANGELOG updated
+- [ ] All Pester tests pass
+
+---
+Title: Add a Format/FormatCheck step to the Invoke-DelphiCi pipeline
+Issue: #18
+Labels: enhancement
+Body:
+Wire the bundled `delphi-format` tool into the `Invoke-DelphiCi` pipeline as a
+first-class `Format` action, so formatting (and audit-only format checking) can
+run as part of a CI run driven by `delphi-ci.json`. This is the deferred
+follow-up to #17, which added the standalone `Invoke-DelphiFormat` wrapper and
+registry integration but deliberately left the pipeline/schema work out of scope.
+
+## Background
+
+#17 integrated `delphi-format` as a bundled tool and exposed
+`Invoke-DelphiFormat` (a `Format` step returning the standard step-result
+object), plus registry reporting via `Get-BundledToolInfo`. What it did NOT do
+is make `Format` a selectable step inside `Invoke-DelphiCi` or add a `Format`
+action to the JSON config schema. As a result, a `delphi-ci.json` pipeline
+cannot currently run formatting; only direct `Invoke-DelphiFormat` calls can.
+
+## Concrete changes
+
+Follow the same pattern used for the Clean and Codesign actions:
+
+- `source/Public/Invoke-DelphiCi.ps1` -- add `Format` to the steps/dispatch;
+  collect the Format* CLI overrides; dispatch to `Invoke-DelphiFormat` per job.
+- `source/Public/Get-DelphiCiConfig.ps1` -- add the Format* CLI params and
+  override collection.
+- `source/Private/Resolve-DelphiCiConfig.ps1` -- built-in defaults + validation
+  for a `format` config block (engine, check, includeFilePattern,
+  excludeDirectoryPattern, encoding, createBackups, engineConfigFile, path).
+- `schemas/delphi-ci.schema.json` -- a `Format` action definition (jobs with the
+  fields above; `check` boolean for the audit-only gate).
+- `tests/pwsh/Invoke-DelphiCi.Tests.ps1` -- integration coverage for a Format
+  job (both format and check modes), including the failing-exit behavior when
+  `check` finds unformatted files.
+- `README.md` / examples -- document the Format action and a `delphi-ci.json`
+  example.
+
+## Design notes
+
+- The `-FormatCheck` gate is the natural CI use: a Format job with `check: true`
+  should fail the pipeline (non-zero) when any file needs formatting, mirroring
+  how a lint/verify step behaves. Confirm how a failing Format-check job maps to
+  overall run success in `Invoke-DelphiCi`'s result aggregation.
+- Reuse the `Invoke-DelphiFormat` wrapper rather than re-implementing arg
+  forwarding, so the pipeline and direct-call paths stay in sync.
+
+Acceptance criteria:
+- [ ] A `delphi-ci.json` with a `Format` action validates against the schema
+- [ ] `Invoke-DelphiCi` runs a Format job in place via `Invoke-DelphiFormat`
+- [ ] A Format job with `check: true` fails the run when files need formatting, and passes when clean
+- [ ] Format* overrides supplied on the `Invoke-DelphiCi` CLI reach the Format jobs
+- [ ] README/examples document the Format action
+- [ ] All Pester tests pass
+
+---

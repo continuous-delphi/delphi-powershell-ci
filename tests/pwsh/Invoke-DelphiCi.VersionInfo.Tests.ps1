@@ -139,7 +139,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 # The integration test below exercises the real path.
                 # Here we verify the function returns entries for all bundled tools.
                 $info = Get-BundledToolInfo
-                @($info).Count | Should -Be 8
+                @($info).Count | Should -Be 9
+            }
+
+            It 'includes delphi-format' {
+                $info = Get-BundledToolInfo
+                $info | Where-Object { $_.Name -eq 'delphi-format' } | Should -Not -BeNullOrEmpty
             }
 
             It 'uses the module-selected PowerShell executable for version API probes' {

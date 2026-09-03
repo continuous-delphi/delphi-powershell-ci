@@ -11,6 +11,7 @@ function Get-BundledToolInfo {
         [PSCustomObject]@{ FileName = 'delphi-coverage.ps1'; SupportsVersionApi = $true }
         [PSCustomObject]@{ FileName = 'delphi-callgraph.ps1'; SupportsVersionApi = $true }
         [PSCustomObject]@{ FileName = 'delphi-codesign-azure.ps1'; SupportsVersionApi = $true }
+        [PSCustomObject]@{ FileName = 'delphi-format.ps1'; SupportsVersionApi = $true }
     )
 
     $results = [System.Collections.Generic.List[object]]::new()

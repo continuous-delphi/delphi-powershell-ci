@@ -27,6 +27,7 @@ a single opinionated command surface for local and CI use.
 | [delphi-incver](https://github.com/continuous-delphi/delphi-incver) | Increments version numbers in RC and text files |
 | [delphi-coverage](https://github.com/continuous-delphi/delphi-coverage) | Code coverage orchestrator for Delphi projects |
 | [delphi-callgraph](https://github.com/continuous-delphi/delphi-callgraph) | Call graph and dependency graph analyzer |
+| [delphi-format](https://github.com/continuous-delphi/delphi-format) | Formats Delphi source with a pluggable engine (formatter.exe / radFormatter) |
 
 The standalone tools remain individually usable and separately versioned.
 This repo packages compatible versions together and provides a simpler
@@ -270,6 +271,12 @@ Invoke-DelphiClean
 # Clean with standard level
 Invoke-DelphiClean -CleanLevel standard -CleanRoot .\source
 
+# Format source in place with the default engine (formatter.exe)
+Invoke-DelphiFormat -FormatRoot .\source
+
+# CI gate -- audit only, non-zero exit when any file needs formatting
+Invoke-DelphiFormat -FormatRoot .\source -FormatEngine radFormatter -FormatCheck
+
 # Build only -- latest Delphi, Win32 Debug
 Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj
 
@@ -350,8 +357,8 @@ Result shape:
 | `Duration` | TimeSpan | Wall-clock time for the run |
 | `Steps` | Object[] | One result per job that ran |
 
-Clean step results have `StepName`, `Success`, `Duration`, `ExitCode`,
-`Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
+Clean and Format step results have `StepName`, `Success`, `Duration`,
+`ExitCode`, `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
 `Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
 `ProjectFile`. Coverage results add `Execute`, `CoveragePercent`,
@@ -374,6 +381,7 @@ tools (included, no install needed)
   delphi-incver.ps1
   delphi-coverage.ps1
   delphi-callgraph.ps1
+  delphi-format.ps1
 source/                 PowerShell module source
   Delphi.PowerShell.CI.psm1
   bundled-tools/        Packaged standalone
@@ -409,6 +417,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiCompress` | Compress step (create .zip archives with optional SHA256 sidecar) |
 | `Invoke-DelphiCopy` | Copy step (collect build outputs with glob, flatten, and checksum) |
 | `Invoke-DelphiCoverage` | Coverage step (code coverage with threshold and badge generation) |
+| `Invoke-DelphiFormat` | Format step (format Delphi source, or audit-only with `-FormatCheck`) |
 | `Invoke-DelphiCallGraph` | CallGraph step (call graph and dependency graph analysis) |
 | `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC, DProj, or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |

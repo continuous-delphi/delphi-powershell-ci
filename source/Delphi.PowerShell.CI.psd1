@@ -5,7 +5,7 @@
 @{
     # Module identity
     RootModule        = 'Delphi.PowerShell.CI.psm1'
-    ModuleVersion     = '0.4.18'
+    ModuleVersion     = '0.4.19'
     GUID              = '2cd8a9b8-b45b-44aa-9622-da80a9c1ac52'
 
     # Authorship
@@ -14,7 +14,7 @@
     Copyright         = '(c) Continuous Delphi. All rights reserved.'
 
     # Description
-    Description       = 'Bundled PowerShell CI orchestration layer for Delphi projects. Packages delphi-inspect, delphi-clean, delphi-msbuild, delphi-dccbuild, delphi-incver, delphi-coverage, delphi-callgraph, and delphi-codesign-azure into a single opinionated command surface for local and CI use.'
+    Description       = 'Bundled PowerShell CI orchestration layer for Delphi projects. Packages delphi-inspect, delphi-clean, delphi-msbuild, delphi-dccbuild, delphi-incver, delphi-coverage, delphi-callgraph, delphi-codesign-azure, and delphi-format into a single opinionated command surface for local and CI use.'
 
     # PowerShell version requirement
     PowerShellVersion = '5.1'
@@ -30,6 +30,7 @@
         'Invoke-DelphiCompress'
         'Invoke-DelphiCopy'
         'Invoke-DelphiCoverage'
+        'Invoke-DelphiFormat'
         'Invoke-DelphiIncVer'
         'Invoke-DelphiRun'
     )
