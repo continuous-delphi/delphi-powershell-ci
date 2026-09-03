@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.27]
+- Expose the `-ToolchainRootDir` and `-NoConfig` build shorthands in the
+  `tools/delphi-ci.ps1` CLI wrapper (they were reachable only via `-ConfigFile`).
+  The data-heavy actions (IncVer, Copy, Compress, Coverage, CallGraph, Codesign)
+  remain `-ConfigFile`-only by design; the wrapper help and README now document
+  that boundary.
+  [#22](https://github.com/continuous-delphi/delphi-powershell-ci/issues/22)
+
+---
 ## [0.4.26]
 - Test: add a skip-if-engine-absent integration test for the delphi-format step.
   Runs the real bundled `delphi-format.ps1` in check mode against the demo source

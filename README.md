@@ -360,9 +360,12 @@ Or use the included wrapper, which does this automatically:
 .\tools\delphi-ci.ps1 -ProjectFile .\source\MyApp.dproj
 ```
 
-The wrapper exposes the common Clean, Build, Run, and Format shorthands directly
-(everything else is reachable via `-ConfigFile`). A format-check gate that fails
-the build when source is unformatted is a one-liner:
+The wrapper exposes shorthand parameters for the common steps -- Clean, Build
+(including `-ToolchainRootDir` and `-NoConfig`), Run, and Format. The data-heavy
+actions (IncVer, Copy, Compress, Coverage, CallGraph, Codesign) are intentionally
+**not** exposed as wrapper shorthands; drive them through a pipeline config with
+`-ConfigFile .\delphi-ci.json`. A format-check gate that fails the build when
+source is unformatted is a one-liner:
 
 ```powershell
 .\tools\delphi-ci.ps1 -Steps Format -FormatCheck $true -Root C:\MyRepo

@@ -8,6 +8,13 @@ Convenience wrapper -- imports Delphi.PowerShell.CI and calls Invoke-DelphiCi.
 Lets callers use a single script path instead of managing module imports.
 All parameters are forwarded to Invoke-DelphiCi unchanged.
 
+Parameter surface (by design): this wrapper exposes shorthand parameters only for
+the common steps -- Clean, Build (including -ToolchainRootDir and -NoConfig), Run,
+and Format. The data-heavy actions -- IncVer, Copy, Compress, Coverage, CallGraph,
+and Codesign -- are intentionally NOT exposed as CLI shorthands here; drive them
+through a pipeline config with -ConfigFile .\delphi-ci.json. This keeps the
+wrapper from duplicating (and drifting behind) the full Invoke-DelphiCi surface.
+
 Run from any directory; the module path is resolved relative to this script.
 
 Run mode: progress is written to the host (console). Exits 0 on success,
@@ -63,6 +70,9 @@ param(
     [string]$Toolchain,
 
     [Parameter(ParameterSetName = 'Run')]
+    [string]$ToolchainRootDir,
+
+    [Parameter(ParameterSetName = 'Run')]
     [string]$BuildEngine,
 
     [Parameter(ParameterSetName = 'Run')]
@@ -90,6 +100,9 @@ param(
 
     [Parameter(ParameterSetName = 'Run')]
     [string[]]$Namespace,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [switch]$NoConfig,
 
     [Parameter(ParameterSetName = 'Run')]
     [ValidateSet('basic', 'standard', 'deep')]

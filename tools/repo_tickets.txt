@@ -614,6 +614,7 @@ Acceptance criteria:
 ---
 Title: Sync tools/delphi-ci.ps1 shorthands with Invoke-DelphiCi (ToolchainRootDir, NoConfig, other actions)
 Issue: #22
+Status: closed
 Body:
 `tools/delphi-ci.ps1` is the documented single-script CI entry point. It exposes
 shorthand parameters for the common steps but has drifted from `Invoke-DelphiCi`.
