@@ -441,22 +441,9 @@ Full parameter reference and examples for each command are in `docs/`.
 
 ---
 
-## Maturity
+## Continuous-Delphi
 
-This repository is currently `incubator`. Both implementations are under active development.
-It will graduate to `stable` once:
-
-- At least one downstream consumer exists.
-
-Until graduation, breaking changes may occur
+This tool is part of the [Continuous-Delphi](https://github.com/continuous-delphi)
+ecosystem, focused on strengthening Delphi's continued success
 
 ![continuous-delphi logo](https://continuous-delphi.github.io/assets/logos/continuous-delphi-480x270.png)
-
-## Part of the Continuous Delphi Organization
-
-This repository follows the Continuous Delphi organization taxonomy. See
-[cd-meta-org](https://github.com/continuous-delphi/cd-meta-org) for navigation and governance.
-
-- `docs/org-taxonomy.md` -- naming and tagging conventions
-- `docs/versioning-policy.md` -- release and versioning rules
-- `docs/repo-lifecycle.md` -- lifecycle states and graduation criteria
