@@ -104,7 +104,22 @@ function Get-DelphiCiConfig {
         [string]$CodesignSignToolPath,
         [string]$CodesignDlibPath,
         [string]$CodesignMetadataPath,
-        [string]$CodesignEnvFile
+        [string]$CodesignEnvFile,
+
+        # Format defaults
+        [ValidateSet('formatter', 'radFormatter')]
+        [string]$FormatEngine,
+        [string]$FormatEnginePath,
+        [string]$FormatEngineConfigFile,
+        [string[]]$FormatPath,
+        [string[]]$FormatIncludeFilePattern,
+        [string[]]$FormatExcludeDirectoryPattern,
+        [string]$FormatEncoding,
+        [bool]$FormatCreateBackups,
+        [ValidateSet('detailed', 'summary', 'quiet')]
+        [string]$FormatOutputLevel,
+        [string]$FormatConfigFile,
+        [bool]$FormatCheck
     )
 
     $overrides = @{}
@@ -190,6 +205,18 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('CodesignDlibPath'))             { $overrides['CodesignDlibPath']             = $CodesignDlibPath }
     if ($PSBoundParameters.ContainsKey('CodesignMetadataPath'))         { $overrides['CodesignMetadataPath']         = $CodesignMetadataPath }
     if ($PSBoundParameters.ContainsKey('CodesignEnvFile'))              { $overrides['CodesignEnvFile']              = $CodesignEnvFile }
+
+    if ($PSBoundParameters.ContainsKey('FormatEngine'))                  { $overrides['FormatEngine']                  = $FormatEngine }
+    if ($PSBoundParameters.ContainsKey('FormatEnginePath'))             { $overrides['FormatEnginePath']             = $FormatEnginePath }
+    if ($PSBoundParameters.ContainsKey('FormatEngineConfigFile'))       { $overrides['FormatEngineConfigFile']       = $FormatEngineConfigFile }
+    if ($PSBoundParameters.ContainsKey('FormatPath'))                   { $overrides['FormatPath']                   = $FormatPath }
+    if ($PSBoundParameters.ContainsKey('FormatIncludeFilePattern'))     { $overrides['FormatIncludeFilePattern']      = $FormatIncludeFilePattern }
+    if ($PSBoundParameters.ContainsKey('FormatExcludeDirectoryPattern')) { $overrides['FormatExcludeDirectoryPattern'] = $FormatExcludeDirectoryPattern }
+    if ($PSBoundParameters.ContainsKey('FormatEncoding'))              { $overrides['FormatEncoding']               = $FormatEncoding }
+    if ($PSBoundParameters.ContainsKey('FormatCreateBackups'))          { $overrides['FormatCreateBackups']          = $FormatCreateBackups }
+    if ($PSBoundParameters.ContainsKey('FormatOutputLevel'))            { $overrides['FormatOutputLevel']            = $FormatOutputLevel }
+    if ($PSBoundParameters.ContainsKey('FormatConfigFile'))            { $overrides['FormatConfigFile']             = $FormatConfigFile }
+    if ($PSBoundParameters.ContainsKey('FormatCheck'))                  { $overrides['FormatCheck']                  = $FormatCheck }
 
     Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 }

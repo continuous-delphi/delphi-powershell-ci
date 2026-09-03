@@ -90,6 +90,22 @@ InModuleScope 'Delphi.PowerShell.CI' {
                         timeoutSeconds    = 300
                     }
                 }
+                'format' {
+                    @{
+                        root                    = 'C:\Fake'
+                        engine                  = 'formatter'
+                        enginePath              = ''
+                        engineConfigFile        = ''
+                        path                    = @()
+                        includeFilePattern      = @()
+                        excludeDirectoryPattern = @()
+                        encoding                = ''
+                        createBackups           = $false
+                        outputLevel             = 'detailed'
+                        configFile              = ''
+                        check                   = $false
+                    }
+                }
                 default { @{} }
             }
         }
@@ -367,6 +383,43 @@ InModuleScope 'Delphi.PowerShell.CI' {
         }
     }
 
+    function script:New-FormatJob {
+        param(
+            [string]$Name  = 'Format source',
+            [string]$Root  = '',
+            [bool]$Check   = $false,
+            [string]$Engine = 'formatter'
+        )
+        @{
+            name                    = $Name
+            root                    = $Root
+            engine                  = $Engine
+            enginePath              = ''
+            engineConfigFile        = ''
+            path                    = @()
+            includeFilePattern      = @()
+            excludeDirectoryPattern = @()
+            encoding                = ''
+            createBackups           = $false
+            outputLevel             = 'detailed'
+            configFile              = ''
+            check                   = $Check
+        }
+    }
+
+    function script:New-FormatResult {
+        param([bool]$Success = $true)
+        [PSCustomObject]@{
+            StepName    = 'Format'
+            Success     = $Success
+            Duration    = [timespan]::Zero
+            ExitCode    = if ($Success) { 0 } else { 1 }
+            Tool        = 'delphi-format.ps1'
+            Message     = if ($Success) { 'Format completed' } else { 'Exit code 1' }
+            ProjectFile = $null
+        }
+    }
+
     # ---------------------------------------------------------------------------
 
     Describe 'Invoke-DelphiCi -- unit' {
@@ -383,6 +436,7 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Mock Invoke-DelphiCompress   { script:New-CompressResult }
             Mock Invoke-DelphiCoverage   { script:New-CoverageResult }
             Mock Invoke-DelphiCallGraph  { script:New-CallGraphResult }
+            Mock Invoke-DelphiFormat     { script:New-FormatResult }
             Mock Write-DelphiCiMessage   {}
         }
 
@@ -505,6 +559,62 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiCallGraph -Times 1
             }
 
+            It 'runs Invoke-DelphiFormat when pipeline contains Format' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Format' -Jobs @(script:New-FormatJob)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiFormat -Times 1
+            }
+
+            It 'runs Invoke-DelphiFormat with a default job when Format has no jobs' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Format'
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiFormat -Times 1
+            }
+
+            It 'forwards -FormatRoot from the resolved CI root for a default Format job' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Format'
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiFormat -ParameterFilter {
+                    $FormatRoot -eq 'C:\Fake'
+                }
+            }
+
+            It 'forwards -FormatCheck when the Format job is in check mode' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Format' -Jobs @(script:New-FormatJob -Check $true)
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiFormat -ParameterFilter {
+                    $FormatCheck -eq $true
+                }
+            }
+
+            It 'resolves a relative Format job root against the CI root' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Format' -Jobs @(script:New-FormatJob -Root 'source')
+                    )
+                }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiFormat -ParameterFilter {
+                    $FormatRoot -like '*C:\Fake*source*'
+                }
+            }
+
             It 'does not run Clean when pipeline is only Build' {
                 Mock Resolve-DelphiCiConfig {
                     script:New-MockConfig -Pipeline @(
@@ -557,6 +667,18 @@ InModuleScope 'Delphi.PowerShell.CI' {
                     )
                 }
                 Mock Invoke-DelphiIncver { script:New-IncVerResult -Success $false }
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiBuild -Times 0
+            }
+
+            It 'does not run Build when a Format check fails' {
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Format' -Jobs @(script:New-FormatJob -Check $true)),
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(script:New-BuildJob))
+                    )
+                }
+                Mock Invoke-DelphiFormat { script:New-FormatResult -Success $false }
                 Invoke-DelphiCi
                 Should -Invoke Invoke-DelphiBuild -Times 0
             }

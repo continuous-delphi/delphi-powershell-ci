@@ -271,7 +271,44 @@ function Invoke-DelphiCi {
         [string]$CodesignMetadataPath,
 
         [Parameter(ParameterSetName = 'Run')]
-        [string]$CodesignEnvFile
+        [string]$CodesignEnvFile,
+
+        # --- Format defaults (CLI shorthand for single-job use) ---
+
+        [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('formatter', 'radFormatter')]
+        [string]$FormatEngine,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$FormatEnginePath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$FormatEngineConfigFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$FormatPath,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$FormatIncludeFilePattern,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string[]]$FormatExcludeDirectoryPattern,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$FormatEncoding,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$FormatCreateBackups,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [ValidateSet('detailed', 'summary', 'quiet')]
+        [string]$FormatOutputLevel,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [string]$FormatConfigFile,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [bool]$FormatCheck
     )
 
     # ---------------------------------------------------------------------------
@@ -385,6 +422,18 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('CodesignMetadataPath'))         { $overrides['CodesignMetadataPath']         = $CodesignMetadataPath }
     if ($PSBoundParameters.ContainsKey('CodesignEnvFile'))              { $overrides['CodesignEnvFile']              = $CodesignEnvFile }
 
+    if ($PSBoundParameters.ContainsKey('FormatEngine'))                  { $overrides['FormatEngine']                  = $FormatEngine }
+    if ($PSBoundParameters.ContainsKey('FormatEnginePath'))             { $overrides['FormatEnginePath']             = $FormatEnginePath }
+    if ($PSBoundParameters.ContainsKey('FormatEngineConfigFile'))       { $overrides['FormatEngineConfigFile']       = $FormatEngineConfigFile }
+    if ($PSBoundParameters.ContainsKey('FormatPath'))                   { $overrides['FormatPath']                   = $FormatPath }
+    if ($PSBoundParameters.ContainsKey('FormatIncludeFilePattern'))     { $overrides['FormatIncludeFilePattern']      = $FormatIncludeFilePattern }
+    if ($PSBoundParameters.ContainsKey('FormatExcludeDirectoryPattern')) { $overrides['FormatExcludeDirectoryPattern'] = $FormatExcludeDirectoryPattern }
+    if ($PSBoundParameters.ContainsKey('FormatEncoding'))              { $overrides['FormatEncoding']               = $FormatEncoding }
+    if ($PSBoundParameters.ContainsKey('FormatCreateBackups'))          { $overrides['FormatCreateBackups']          = $FormatCreateBackups }
+    if ($PSBoundParameters.ContainsKey('FormatOutputLevel'))            { $overrides['FormatOutputLevel']            = $FormatOutputLevel }
+    if ($PSBoundParameters.ContainsKey('FormatConfigFile'))            { $overrides['FormatConfigFile']             = $FormatConfigFile }
+    if ($PSBoundParameters.ContainsKey('FormatCheck'))                  { $overrides['FormatCheck']                  = $FormatCheck }
+
     $config = Resolve-DelphiCiConfig -ConfigFile $ConfigFile -Overrides $overrides
 
     $actions = $config.Pipeline | ForEach-Object { $_.Action }
@@ -427,6 +476,57 @@ function Invoke-DelphiCi {
                             -CleanConfigFile              $job['configFile'] `
                             -CleanRecycleBin:             $job['recycleBin'] `
                             -CleanCheck:                  $job['check']
+
+                        $stepResults.Add($result)
+                        if (-not $result.Success) {
+                            $overallSuccess = $false
+                            break pipeline
+                        }
+                    }
+                }
+
+                'format' {
+                    $jobs = $entry.Jobs
+                    # When no jobs are defined, create a default job from the
+                    # action defaults + the resolved root (mirrors Clean).
+                    if ($jobs.Count -eq 0) {
+                        $defaultJob = $entry.Defaults.Clone()
+                        if (-not $defaultJob.ContainsKey('root')) {
+                            $defaultJob['root'] = $config.Root
+                        }
+                        if (-not $defaultJob.ContainsKey('name')) {
+                            $defaultJob['name'] = ''
+                        }
+                        $jobs = @($defaultJob)
+                    }
+
+                    foreach ($job in $jobs) {
+                        if (-not [string]::IsNullOrWhiteSpace($job['name'])) {
+                            Write-DelphiCiMessage -Level 'INFO' -Message "Format job: $($job['name'])"
+                        }
+
+                        # Resolve the format root relative to the CI root.
+                        $formatRoot = $job['root']
+                        if ([string]::IsNullOrWhiteSpace($formatRoot)) {
+                            $formatRoot = $config.Root
+                        }
+                        elseif (-not [System.IO.Path]::IsPathRooted($formatRoot)) {
+                            $formatRoot = Join-Path $config.Root $formatRoot
+                        }
+
+                        $result = Invoke-DelphiFormat `
+                            -FormatRoot                    $formatRoot `
+                            -FormatEngine                  $job['engine'] `
+                            -FormatEnginePath              $job['enginePath'] `
+                            -FormatEngineConfigFile        $job['engineConfigFile'] `
+                            -FormatPath                    @($job['path']) `
+                            -FormatIncludeFilePattern      @($job['includeFilePattern']) `
+                            -FormatExcludeDirectoryPattern @($job['excludeDirectoryPattern']) `
+                            -FormatEncoding                $job['encoding'] `
+                            -FormatCreateBackups:          ([bool]$job['createBackups']) `
+                            -FormatOutputLevel             $job['outputLevel'] `
+                            -FormatConfigFile              $job['configFile'] `
+                            -FormatCheck:                  ([bool]$job['check'])
 
                         $stepResults.Add($result)
                         if (-not $result.Success) {

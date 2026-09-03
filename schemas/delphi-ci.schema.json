@@ -28,7 +28,8 @@
         "compress": { "$ref": "#/$defs/compressConfig" },
         "coverage": { "$ref": "#/$defs/coverageConfig" },
         "callgraph": { "$ref": "#/$defs/callgraphConfig" },
-        "codesign": { "$ref": "#/$defs/codesignConfig" }
+        "codesign": { "$ref": "#/$defs/codesignConfig" },
+        "format": { "$ref": "#/$defs/formatConfig" }
       }
     },
     "pipeline": {
@@ -615,6 +616,107 @@
         }
       }
     },
+    "formatConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "description": "Format root. Relative paths are resolved from the CI root. Defaults to the CI root."
+        },
+        "engine": {
+          "type": "string",
+          "enum": ["formatter", "radFormatter"],
+          "default": "formatter",
+          "description": "Formatting engine: RAD Studio formatter.exe or radFormatter.exe."
+        },
+        "enginePath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to the formatting engine executable. Auto-discovered from PATH if empty."
+        },
+        "engineConfigFile": {
+          "type": "string",
+          "default": "",
+          "description": "Engine-specific configuration file passed through to the engine."
+        },
+        "path": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Explicit files or directories to format. Relative paths resolve from the format root. Empty scans the whole root. Arrays append across merge levels."
+        },
+        "path!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited path values instead of appending."
+        },
+        "includeFilePattern": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Additional file glob patterns to include. Arrays append across merge levels."
+        },
+        "includeFilePattern!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited includeFilePattern values instead of appending."
+        },
+        "excludeDirectoryPattern": {
+          "$ref": "#/$defs/stringArray",
+          "default": [],
+          "description": "Directory glob patterns to exclude. Arrays append across merge levels."
+        },
+        "excludeDirectoryPattern!": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Replace inherited excludeDirectoryPattern values instead of appending."
+        },
+        "encoding": {
+          "type": "string",
+          "default": "",
+          "description": "File encoding passed through to the engine. Empty uses the engine default."
+        },
+        "createBackups": {
+          "type": "boolean",
+          "default": false,
+          "description": "Write a backup of each modified file before formatting."
+        },
+        "outputLevel": {
+          "type": "string",
+          "enum": ["detailed", "summary", "quiet"],
+          "default": "detailed",
+          "description": "Amount of format output to emit."
+        },
+        "configFile": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit delphi-format config file."
+        },
+        "check": {
+          "type": "boolean",
+          "default": false,
+          "description": "Audit formatting without modifying files. Fails the run when any file needs formatting."
+        }
+      }
+    },
+    "formatJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Human-readable job name." },
+        "root": { "$ref": "#/$defs/formatConfig/properties/root" },
+        "engine": { "$ref": "#/$defs/formatConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/formatConfig/properties/enginePath" },
+        "engineConfigFile": { "$ref": "#/$defs/formatConfig/properties/engineConfigFile" },
+        "path": { "$ref": "#/$defs/formatConfig/properties/path" },
+        "path!": { "$ref": "#/$defs/formatConfig/properties/path!" },
+        "includeFilePattern": { "$ref": "#/$defs/formatConfig/properties/includeFilePattern" },
+        "includeFilePattern!": { "$ref": "#/$defs/formatConfig/properties/includeFilePattern!" },
+        "excludeDirectoryPattern": { "$ref": "#/$defs/formatConfig/properties/excludeDirectoryPattern" },
+        "excludeDirectoryPattern!": { "$ref": "#/$defs/formatConfig/properties/excludeDirectoryPattern!" },
+        "encoding": { "$ref": "#/$defs/formatConfig/properties/encoding" },
+        "createBackups": { "$ref": "#/$defs/formatConfig/properties/createBackups" },
+        "outputLevel": { "$ref": "#/$defs/formatConfig/properties/outputLevel" },
+        "configFile": { "$ref": "#/$defs/formatConfig/properties/configFile" },
+        "check": { "$ref": "#/$defs/formatConfig/properties/check" }
+      }
+    },
     "codesignJob": {
       "type": "object",
       "additionalProperties": false,
@@ -787,7 +889,8 @@
         { "$ref": "#/$defs/compressAction" },
         { "$ref": "#/$defs/coverageAction" },
         { "$ref": "#/$defs/callgraphAction" },
-        { "$ref": "#/$defs/codesignAction" }
+        { "$ref": "#/$defs/codesignAction" },
+        { "$ref": "#/$defs/formatAction" }
       ]
     },
     "cleanAction": {
@@ -967,6 +1070,30 @@
         "envFile": { "$ref": "#/$defs/codesignConfig/properties/envFile" },
         "files": { "$ref": "#/$defs/codesignConfig/properties/files" },
         "filePath": { "$ref": "#/$defs/codesignConfig/properties/filePath" }
+      }
+    },
+    "formatAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "enum": ["Format", "format"] },
+        "jobs": { "type": "array", "items": { "$ref": "#/$defs/formatJob" } },
+        "root": { "$ref": "#/$defs/formatConfig/properties/root" },
+        "engine": { "$ref": "#/$defs/formatConfig/properties/engine" },
+        "enginePath": { "$ref": "#/$defs/formatConfig/properties/enginePath" },
+        "engineConfigFile": { "$ref": "#/$defs/formatConfig/properties/engineConfigFile" },
+        "path": { "$ref": "#/$defs/formatConfig/properties/path" },
+        "path!": { "$ref": "#/$defs/formatConfig/properties/path!" },
+        "includeFilePattern": { "$ref": "#/$defs/formatConfig/properties/includeFilePattern" },
+        "includeFilePattern!": { "$ref": "#/$defs/formatConfig/properties/includeFilePattern!" },
+        "excludeDirectoryPattern": { "$ref": "#/$defs/formatConfig/properties/excludeDirectoryPattern" },
+        "excludeDirectoryPattern!": { "$ref": "#/$defs/formatConfig/properties/excludeDirectoryPattern!" },
+        "encoding": { "$ref": "#/$defs/formatConfig/properties/encoding" },
+        "createBackups": { "$ref": "#/$defs/formatConfig/properties/createBackups" },
+        "outputLevel": { "$ref": "#/$defs/formatConfig/properties/outputLevel" },
+        "configFile": { "$ref": "#/$defs/formatConfig/properties/configFile" },
+        "check": { "$ref": "#/$defs/formatConfig/properties/check" }
       }
     }
   }

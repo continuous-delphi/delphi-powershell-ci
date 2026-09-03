@@ -97,6 +97,19 @@ function Resolve-DelphiCiConfig {
             metadataPath = ''
             envFile      = ''
         }
+        format = @{
+            engine                  = 'formatter'
+            enginePath              = ''
+            engineConfigFile        = ''
+            path                    = @()
+            includeFilePattern      = @()
+            excludeDirectoryPattern = @()
+            encoding                = ''
+            createBackups           = $false
+            outputLevel             = 'detailed'
+            configFile              = ''
+            check                   = $false
+        }
     }
 
     # -------------------------------------------------------------------------
@@ -363,6 +376,34 @@ function Resolve-DelphiCiConfig {
         $effectiveDefaults['codesign'] = Merge-ActionConfig -Base $effectiveDefaults['codesign'] -Layer $codesignCliLayer
     }
 
+    # --- Format CLI layer ---
+    $formatCliLayer = @{}
+    if ($Overrides.ContainsKey('FormatEngine') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatEngine']))               { $formatCliLayer['engine']           = $Overrides['FormatEngine'] }
+    if ($Overrides.ContainsKey('FormatEnginePath') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatEnginePath']))           { $formatCliLayer['enginePath']       = $Overrides['FormatEnginePath'] }
+    if ($Overrides.ContainsKey('FormatEngineConfigFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatEngineConfigFile']))     { $formatCliLayer['engineConfigFile'] = $Overrides['FormatEngineConfigFile'] }
+    if ($Overrides.ContainsKey('FormatPath') -and
+        $null -ne $Overrides['FormatPath'])                                          { $formatCliLayer['path!']            = @($Overrides['FormatPath']) }
+    if ($Overrides.ContainsKey('FormatIncludeFilePattern') -and
+        $null -ne $Overrides['FormatIncludeFilePattern'])                            { $formatCliLayer['includeFilePattern!'] = @($Overrides['FormatIncludeFilePattern']) }
+    if ($Overrides.ContainsKey('FormatExcludeDirectoryPattern') -and
+        $null -ne $Overrides['FormatExcludeDirectoryPattern'])                       { $formatCliLayer['excludeDirectoryPattern!'] = @($Overrides['FormatExcludeDirectoryPattern']) }
+    if ($Overrides.ContainsKey('FormatEncoding') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatEncoding']))             { $formatCliLayer['encoding']         = $Overrides['FormatEncoding'] }
+    if ($Overrides.ContainsKey('FormatCreateBackups') -and
+        $null -ne $Overrides['FormatCreateBackups'])                                 { $formatCliLayer['createBackups']    = [bool]$Overrides['FormatCreateBackups'] }
+    if ($Overrides.ContainsKey('FormatOutputLevel') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatOutputLevel']))          { $formatCliLayer['outputLevel']      = $Overrides['FormatOutputLevel'] }
+    if ($Overrides.ContainsKey('FormatConfigFile') -and
+        -not [string]::IsNullOrWhiteSpace($Overrides['FormatConfigFile']))           { $formatCliLayer['configFile']       = $Overrides['FormatConfigFile'] }
+    if ($Overrides.ContainsKey('FormatCheck') -and
+        $null -ne $Overrides['FormatCheck'])                                         { $formatCliLayer['check']            = [bool]$Overrides['FormatCheck'] }
+    if ($formatCliLayer.Count -gt 0) {
+        $effectiveDefaults['format'] = Merge-ActionConfig -Base $effectiveDefaults['format'] -Layer $formatCliLayer
+    }
+
     # -------------------------------------------------------------------------
     # Generate pipeline from CLI params when no config file was supplied.
     # -------------------------------------------------------------------------
@@ -414,6 +455,7 @@ function Resolve-DelphiCiConfig {
             'coverage' { Assert-CoverageConfig $actionDefaults }
             'callgraph' { Assert-CallGraphConfig $actionDefaults }
             'codesign'  { Assert-CodesignConfig  $actionDefaults }
+            'format'    { Assert-FormatConfig    $actionDefaults }
         }
 
         # Resolve jobs
@@ -446,7 +488,7 @@ function Resolve-DelphiCiConfig {
 
         # Build the action defaults output object (for orchestrator fallback when no jobs)
         $actionDefaultsOutput = $actionDefaults.Clone()
-        if ($actionType -eq 'clean' -and -not $actionDefaultsOutput.ContainsKey('root')) {
+        if (($actionType -eq 'clean' -or $actionType -eq 'format') -and -not $actionDefaultsOutput.ContainsKey('root')) {
             $actionDefaultsOutput['root'] = $root
         }
 
@@ -779,5 +821,23 @@ function Assert-CodesignConfig {
     }
     if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
         throw "Invalid codesign engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
+    }
+}
+
+function Assert-FormatConfig {
+    <#
+    .SYNOPSIS
+        Validates enum-like fields in a resolved format configuration.
+    #>
+    param([hashtable]$Config)
+
+    $validEngines      = @('formatter', 'radFormatter')
+    $validOutputLevels = @('detailed', 'summary', 'quiet')
+
+    if ($Config.ContainsKey('engine') -and $Config['engine'] -notin $validEngines) {
+        throw "Invalid format engine '$($Config['engine'])'. Valid values: $($validEngines -join ', ')"
+    }
+    if ($Config.ContainsKey('outputLevel') -and $Config['outputLevel'] -notin $validOutputLevels) {
+        throw "Invalid format output level '$($Config['outputLevel'])'. Valid values: $($validOutputLevels -join ', ')"
     }
 }

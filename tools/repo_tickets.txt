@@ -428,6 +428,7 @@ Acceptance criteria:
 ---
 Title: Add a Format/FormatCheck step to the Invoke-DelphiCi pipeline
 Issue: #18
+Status: closed
 Labels: enhancement
 Body:
 Wire the bundled `delphi-format` tool into the `Invoke-DelphiCi` pipeline as a

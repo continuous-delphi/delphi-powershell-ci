@@ -798,6 +798,113 @@ Describe 'Get-DelphiCiConfig' {
 
     }
 
+    Context 'format defaults and pipeline resolution' {
+
+        It 'format action gets correct defaults' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Format' })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $defaults = $config.Pipeline[0].Defaults
+            $defaults['engine']        | Should -Be 'formatter'
+            $defaults['outputLevel']   | Should -Be 'detailed'
+            $defaults['createBackups'] | Should -Be $false
+            $defaults['check']         | Should -Be $false
+        }
+
+        It 'injects the CI root as the format action default root' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{ pipeline = @(@{ action = 'Format' }) } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Defaults['root'] | Should -Be ([System.IO.Path]::GetFullPath($TestDrive))
+        }
+
+        It 'format defaults section merges into job' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                defaults = @{ format = @{ engine = 'radFormatter'; check = $true } }
+                pipeline = @(@{ action = 'Format'; jobs = @(@{ name = 'src' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $job = $config.Pipeline[0].Jobs[0]
+            $job['engine'] | Should -Be 'radFormatter'
+            $job['check']  | Should -Be $true
+        }
+
+        It 'job-level format properties override action-level' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Format'; engine = 'formatter'; jobs = @(@{ engine = 'radFormatter' }) })
+            } | ConvertTo-Json -Depth 5)
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['engine'] | Should -Be 'radFormatter'
+        }
+
+        It 'format includeFilePattern arrays append across merge levels' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = @{
+                defaults = @{ format = @{ includeFilePattern = @('*.pas') } }
+                pipeline = @(@{ action = 'Format'; includeFilePattern = @('*.inc'); jobs = @(@{ includeFilePattern = @('*.dpr') }) })
+            } | ConvertTo-Json -Depth 5
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['includeFilePattern'] | Should -Be @('*.pas', '*.inc', '*.dpr')
+        }
+
+    }
+
+    Context 'format CLI overrides' {
+
+        It '-FormatEngine overrides default engine' {
+            $config = Get-DelphiCiConfig -Steps 'Format' -FormatEngine 'radFormatter'
+            $config.Pipeline[0].Defaults['engine'] | Should -Be 'radFormatter'
+        }
+
+        It '-FormatCheck sets the check flag' {
+            $config = Get-DelphiCiConfig -Steps 'Format' -FormatCheck $true
+            $config.Pipeline[0].Defaults['check'] | Should -Be $true
+        }
+
+        It '-FormatOutputLevel overrides default output level' {
+            $config = Get-DelphiCiConfig -Steps 'Format' -FormatOutputLevel 'quiet'
+            $config.Pipeline[0].Defaults['outputLevel'] | Should -Be 'quiet'
+        }
+
+        It '-FormatPath replaces the path list' {
+            $config = Get-DelphiCiConfig -Steps 'Format' -FormatPath 'source', 'tests'
+            $config.Pipeline[0].Defaults['path'] | Should -Be @('source', 'tests')
+        }
+
+    }
+
+    Context 'format validation' {
+
+        It 'throws on an invalid format engine' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Format'; engine = 'astyle' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid format engine*'
+        }
+
+        It 'throws on an invalid format output level' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            Set-Content -LiteralPath $cfgFile -Value (@{
+                pipeline = @(@{ action = 'Format'; outputLevel = 'verbose' })
+            } | ConvertTo-Json -Depth 5)
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Invalid format output level*'
+        }
+
+    }
+
     Context 'validation' {
 
         It 'throws on an invalid clean level in config file' {

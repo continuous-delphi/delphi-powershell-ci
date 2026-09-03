@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.20]
+- Add a `Format` action to the `Invoke-DelphiCi` pipeline and `delphi-ci.schema.json`,
+  wired to the `Invoke-DelphiFormat` wrapper. Formatting (and audit-only
+  `check` mode, which fails the run when files need formatting) can now run as a
+  CI step via config file or the `Format*` CLI shorthands. Follow-up to #17.
+  [#18](https://github.com/continuous-delphi/delphi-powershell-ci/issues/18)
+
+---
 ## [0.4.19]
 - Integrate the bundled `delphi-format` tool and expose `Invoke-DelphiFormat`,
   a Format step wrapping the pluggable formatting engine (formatter.exe /

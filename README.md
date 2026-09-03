@@ -88,6 +88,16 @@ Invoke-DelphiCi -Steps Clean -Root C:\MyRepo
 Invoke-DelphiCi -Steps Build -ProjectFile .\source\MyApp.dproj
 ```
 
+### Format check as a CI gate
+
+```powershell
+Invoke-DelphiCi -Steps Format -FormatCheck $true -Root C:\MyRepo
+```
+
+Runs the formatter in audit-only mode and fails the run when any source file
+needs formatting. Drop `-FormatCheck` to format in place. Select the engine with
+`-FormatEngine formatter|radFormatter`.
+
 ### Pin the Delphi version
 
 ```powershell
@@ -190,6 +200,7 @@ be string or array, producing a cross product of builds.
   },
   "pipeline": [
     { "action": "Clean", "level": "deep" },
+    { "action": "Format", "engine": "radFormatter", "check": true },
     { "action": "IncVer",
       "jobs": [
         { "name": "Bump RC version",
