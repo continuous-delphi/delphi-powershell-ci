@@ -258,4 +258,81 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
     }
 
+    Describe 'Invoke-DelphiFormat -- integration' {
+
+        BeforeAll {
+            $script:DemoSource = [System.IO.Path]::GetFullPath(
+                (Join-Path $PSScriptRoot '..\..' 'Examples\ConsoleProjectGroup\Source')
+            )
+            $script:SourceExtensions = @('.pas', '.dpr', '.dpk', '.dpkw', '.inc')
+        }
+
+        # These exercise the REAL bundled delphi-format.ps1 end-to-end. A
+        # formatting engine (formatter.exe / radFormatter.exe) is not guaranteed
+        # on CI runners, so each case skips -- rather than fails -- when its
+        # engine is absent. Repository source is only ever read in check mode;
+        # the clean-path case works on a throwaway copy under $TestDrive.
+
+        It 'flags unformatted source and returns the Format step shape -- <_>' -ForEach @('formatter', 'radFormatter') {
+            $engine = $_
+            if (-not (Get-Command "$engine.exe" -ErrorAction SilentlyContinue)) {
+                Set-ItResult -Skipped -Because "$engine.exe is not on PATH"
+                return
+            }
+
+            $result = Invoke-DelphiFormat -FormatRoot $script:DemoSource -FormatEngine $engine -FormatCheck -FormatOutputLevel quiet
+
+            $result.StepName    | Should -Be 'Format'
+            $result.Tool        | Should -Be 'delphi-format.ps1'
+            $result.ProjectFile | Should -BeNullOrEmpty
+            # The demo sources are intentionally unformatted -> dirty (exit 1).
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Be 1
+        }
+
+        It 'never modifies repository source in check mode -- <_>' -ForEach @('formatter', 'radFormatter') {
+            $engine = $_
+            if (-not (Get-Command "$engine.exe" -ErrorAction SilentlyContinue)) {
+                Set-ItResult -Skipped -Because "$engine.exe is not on PATH"
+                return
+            }
+
+            $files = @(Get-ChildItem -LiteralPath $script:DemoSource -Recurse -File |
+                Where-Object { $_.Extension -in $script:SourceExtensions })
+            $before = @{}
+            foreach ($f in $files) { $before[$f.FullName] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash }
+
+            Invoke-DelphiFormat -FormatRoot $script:DemoSource -FormatEngine $engine -FormatCheck -FormatOutputLevel quiet | Out-Null
+
+            foreach ($f in $files) {
+                (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash | Should -Be $before[$f.FullName] -Because "$($f.Name) must be untouched by a check run"
+            }
+        }
+
+        It 'reports a clean tree (Success, exit 0) for already-formatted source -- <_>' -ForEach @('formatter', 'radFormatter') {
+            $engine = $_
+            if (-not (Get-Command "$engine.exe" -ErrorAction SilentlyContinue)) {
+                Set-ItResult -Skipped -Because "$engine.exe is not on PATH"
+                return
+            }
+
+            # Canonicalize a throwaway copy: format the demo source once in place
+            # (formatting is idempotent), then a check of that copy must report
+            # clean. Repository source is never modified.
+            $workDir = Join-Path $TestDrive "formatted-$engine"
+            New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+            Get-ChildItem -LiteralPath $script:DemoSource -File |
+                Where-Object { $_.Extension -in $script:SourceExtensions } |
+                Copy-Item -Destination $workDir -Force
+
+            $fmt = Invoke-DelphiFormat -FormatRoot $workDir -FormatEngine $engine -FormatOutputLevel quiet
+            $fmt.Success | Should -Be $true -Because 'formatting a throwaway copy in place should succeed'
+
+            $check = Invoke-DelphiFormat -FormatRoot $workDir -FormatEngine $engine -FormatCheck -FormatOutputLevel quiet
+            $check.Success  | Should -Be $true
+            $check.ExitCode | Should -Be 0
+        }
+
+    }
+
 }

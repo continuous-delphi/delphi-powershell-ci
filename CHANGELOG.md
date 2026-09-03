@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.26]
+- Test: add a skip-if-engine-absent integration test for the delphi-format step.
+  Runs the real bundled `delphi-format.ps1` in check mode against the demo source
+  (asserts the result shape and the dirty -> `Success:$false` / exit 1 mapping),
+  covers a deterministic clean-path case on a throwaway copy, verifies check mode
+  never modifies repository source, and skips (rather than fails) when no
+  formatting engine is on PATH.
+  [#21](https://github.com/continuous-delphi/delphi-powershell-ci/issues/21)
+
+---
 ## [0.4.24]
 - Expose the `Format*` shorthand parameters in the `tools/delphi-ci.ps1` CLI
   wrapper so a format-check gate can run through the wrapper

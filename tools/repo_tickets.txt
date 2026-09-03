@@ -564,6 +564,7 @@ Acceptance criteria:
 ---
 Title: Add a skip-if-engine-absent integration test for the delphi-format step
 Issue: #21
+Status: closed
 Body:
 The Format step currently has only mock-based tests
 (`tests/pwsh/Invoke-DelphiFormat.Tests.ps1` mocks `Invoke-BundledTool`, and the
