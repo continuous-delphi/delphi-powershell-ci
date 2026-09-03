@@ -41,7 +41,7 @@ test projects or other utilities as needed.
 
 ## v1 scope
 
-v1 supports **Clean**, **IncVer**, **Build**, **Run**, **Coverage**, **CallGraph**, **Copy**, and **Compress** steps.
+v1 supports **Clean**, **Format**, **IncVer**, **Build**, **Run**, **Coverage**, **CallGraph**, **Copy**, **Compress**, and **Codesign** steps.
 
 ---
 
@@ -409,6 +409,8 @@ docs/                   Per-command reference documentation
   Invoke-DelphiCopy.md
   Invoke-DelphiCoverage.md
   Invoke-DelphiCallGraph.md
+  Invoke-DelphiCodesign.md
+  Invoke-DelphiFormat.md
   Invoke-DelphiIncVer.md
   Invoke-DelphiRun.md
 tests/                  Pester test suite
@@ -430,6 +432,7 @@ tests/                  Pester test suite
 | `Invoke-DelphiCoverage` | Coverage step (code coverage with threshold and badge generation) |
 | `Invoke-DelphiFormat` | Format step (format Delphi source, or audit-only with `-FormatCheck`) |
 | `Invoke-DelphiCallGraph` | CallGraph step (call graph and dependency graph analysis) |
+| `Invoke-DelphiCodesign` | Codesign step (sign or verify binaries via Azure Trusted Signing) |
 | `Invoke-DelphiIncVer` | IncVer step (increment version numbers in RC, DProj, or text files) |
 | `Invoke-DelphiRun` | Run step (execute a command and check exit code) |
 | `Get-DelphiCiConfig` | Inspect resolved configuration |

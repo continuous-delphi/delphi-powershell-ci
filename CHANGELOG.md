@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.21]
+- Docs: add a per-command `docs/Invoke-DelphiFormat.md` reference page and list
+  `Invoke-DelphiFormat` (and the previously-missing `Invoke-DelphiCodesign`) in
+  the README "v1 scope", "Repository structure", and "Reference documentation"
+  sections. Documentation only; no behavior change.
+  [#17](https://github.com/continuous-delphi/delphi-powershell-ci/issues/17)
+
+---
 ## [0.4.20]
 - Add a `Format` action to the `Invoke-DelphiCi` pipeline and `delphi-ci.schema.json`,
   wired to the `Invoke-DelphiFormat` wrapper. Formatting (and audit-only
