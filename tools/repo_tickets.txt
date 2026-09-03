@@ -483,3 +483,82 @@ Acceptance criteria:
 - [ ] All Pester tests pass
 
 ---
+Title: Expose Format shorthand parameters in the tools/delphi-ci.ps1 CLI wrapper
+Issue: #19
+Status: closed
+Labels: enhancement
+Body:
+`tools/delphi-ci.ps1` is the documented single-script CI entry point (README
+"CI wrapper scripts"). It declares an explicit parameter list and forwards it to
+`Invoke-DelphiCi` via `@PSBoundParameters`, exposing shorthand parameters for the
+common Clean / Build / Run steps. It does NOT declare any `Format*` parameters,
+so a Format run cannot be driven through the wrapper's CLI shorthands:
+
+    .\tools\delphi-ci.ps1 -Steps Format -FormatCheck $true
+    # A parameter cannot be found that matches parameter name 'FormatCheck'.
+
+Format-check is pitched as a common CI gate, so it belongs alongside the other
+common-step shorthands the wrapper already exposes.
+
+## Fix
+
+Add the 12 `Format*` parameters to `tools/delphi-ci.ps1`, mirroring the
+definitions in `Invoke-DelphiCi` (including the `formatter`/`radFormatter` and
+`detailed`/`summary`/`quiet` ValidateSets), all in the `Run` parameter set. No
+other change is needed -- the existing `Invoke-DelphiCi @PSBoundParameters`
+forward already dispatches them.
+
+Parameters to add: `-FormatEngine`, `-FormatEnginePath`, `-FormatEngineConfigFile`,
+`-FormatPath`, `-FormatIncludeFilePattern`, `-FormatExcludeDirectoryPattern`,
+`-FormatEncoding`, `-FormatCreateBackups`, `-FormatOutputLevel`,
+`-FormatConfigFile`, `-FormatCheck`.
+
+## Scope note
+
+The wrapper intentionally exposes shorthands only for the common steps and relies
+on `-ConfigFile .\delphi-ci.json` as the escape hatch for everything else. The
+data-heavy actions (Coverage, CallGraph, Copy, Compress, Codesign, IncVer) and a
+couple of newer Build shorthands (`-ToolchainRootDir`, `-NoConfig`) are likewise
+not exposed by the wrapper today; they remain reachable via `-ConfigFile`. This
+ticket only closes the Format gap. Whether to broaden the wrapper (or rework it to
+a drift-proof pass-through) is a separate decision.
+
+Acceptance criteria:
+- [ ] `.\tools\delphi-ci.ps1 -Steps Format -FormatCheck $true -Root <dir>` runs a Format check and maps a dirty result to exit code 1
+- [ ] `-FormatEngine` accepts only `formatter` / `radFormatter`; `-FormatOutputLevel` only `detailed` / `summary` / `quiet`
+- [ ] Existing Clean / Build / Run wrapper behavior is unchanged
+- [ ] README CI-wrapper section mentions the Format gate is reachable through the wrapper
+
+---
+Title: Add a Format action to the annotated Examples/delphi-ci.json
+Issue: #20
+Status: closed
+Labels: documentation
+Body:
+`Examples/delphi-ci.json` is the fully-annotated reference config linked from the
+README. It demonstrates Clean, IncVer, Build, Run, Copy, and Compress actions but
+has no `Format` action (nor a `defaults.format` section), so users copying the
+example have no in-repo template for wiring up a Format / format-check step.
+
+## Fix
+
+- Add a `format` block to the `defaults` section showing the available keys
+  (engine, outputLevel, check, includeFilePattern, excludeDirectoryPattern, etc.).
+- Add a `Format` action to the `pipeline` -- a natural placement is a
+  `check: true` gate early in the pipeline (e.g. right after Clean) so the run
+  fails fast on unformatted source, plus optionally a job that formats a specific
+  subtree.
+- Keep it consistent with the existing annotated style (explicit fields, sample
+  values). Confirm the file still validates against `schemas/delphi-ci.schema.json`
+  and resolves cleanly through `Get-DelphiCiConfig -ConfigFile`.
+
+This is documentation/example-only; no code or schema change (the schema already
+defines the Format action).
+
+Acceptance criteria:
+- [ ] `Examples/delphi-ci.json` contains a `defaults.format` section and a `Format` pipeline action
+- [ ] The file parses and resolves via `Get-DelphiCiConfig -ConfigFile` without error
+- [ ] The example still validates against `delphi-ci.schema.json`
+- [ ] Annotated style matches the surrounding actions
+
+---

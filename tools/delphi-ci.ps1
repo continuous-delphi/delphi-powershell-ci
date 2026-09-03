@@ -30,6 +30,9 @@ VersionInfo mode: the structured version object is written to the pipeline
 .\tools\delphi-ci.ps1 -ConfigFile .\delphi-ci.json
 
 .EXAMPLE
+.\tools\delphi-ci.ps1 -Steps Format -FormatCheck $true -Root C:\MyRepo
+
+.EXAMPLE
 .\tools\delphi-ci.ps1 -VersionInfo
 #>
 
@@ -118,7 +121,42 @@ param(
     [string[]]$RunArguments,
 
     [Parameter(ParameterSetName = 'Run')]
-    [int]$RunTimeoutSeconds
+    [int]$RunTimeoutSeconds,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [ValidateSet('formatter', 'radFormatter')]
+    [string]$FormatEngine,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$FormatEnginePath,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$FormatEngineConfigFile,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$FormatPath,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$FormatIncludeFilePattern,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string[]]$FormatExcludeDirectoryPattern,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$FormatEncoding,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [bool]$FormatCreateBackups,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [ValidateSet('detailed', 'summary', 'quiet')]
+    [string]$FormatOutputLevel,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [string]$FormatConfigFile,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [bool]$FormatCheck
 )
 
 Set-StrictMode -Version Latest

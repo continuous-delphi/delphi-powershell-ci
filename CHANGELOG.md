@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.24]
+- Expose the `Format*` shorthand parameters in the `tools/delphi-ci.ps1` CLI
+  wrapper so a format-check gate can run through the wrapper
+  (`.\tools\delphi-ci.ps1 -Steps Format -FormatCheck $true`).
+  [#19](https://github.com/continuous-delphi/delphi-powershell-ci/issues/19)
+- Add a `Format` action (and `defaults.format` section) to the annotated
+  `Examples/delphi-ci.json` reference config.
+  [#20](https://github.com/continuous-delphi/delphi-powershell-ci/issues/20)
+
+---
 ## [0.4.21]
 - Docs: add a per-command `docs/Invoke-DelphiFormat.md` reference page and list
   `Invoke-DelphiFormat` (and the previously-missing `Invoke-DelphiCodesign`) in

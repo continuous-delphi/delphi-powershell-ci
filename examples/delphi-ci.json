@@ -45,6 +45,19 @@
     "compress": {
       "overwrite": true,
       "checksum": false
+    },
+    "format": {
+      "engine": "formatter",
+      "enginePath": "",
+      "engineConfigFile": "",
+      "path": [],
+      "includeFilePattern": [],
+      "excludeDirectoryPattern": ["vendor"],
+      "encoding": "",
+      "createBackups": false,
+      "outputLevel": "detailed",
+      "configFile": "",
+      "check": false
     }
   },
   "pipeline": [
@@ -72,6 +85,19 @@
         {
           "name": "Test clean",
           "root": "./tests"
+        }
+      ]
+    },
+    {
+      "action": "Format",
+      "engine": "radFormatter",
+      "outputLevel": "summary",
+      "check": true,
+      "jobs": [
+        {
+          "name": "Source format check",
+          "root": "./source",
+          "excludeDirectoryPattern": ["vendor", "thirdparty"]
         }
       ]
     },
