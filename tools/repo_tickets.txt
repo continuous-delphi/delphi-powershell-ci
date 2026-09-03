@@ -562,3 +562,97 @@ Acceptance criteria:
 - [ ] Annotated style matches the surrounding actions
 
 ---
+Title: Add a skip-if-engine-absent integration test for the delphi-format step
+Issue: #21
+Body:
+The Format step currently has only mock-based tests
+(`tests/pwsh/Invoke-DelphiFormat.Tests.ps1` mocks `Invoke-BundledTool`, and the
+`Invoke-DelphiCi` Format-dispatch tests mock `Invoke-DelphiFormat`). Nothing
+exercises the real bundled `delphi-format.ps1` end-to-end. By contrast the Clean
+wrapper has an `Invoke-DelphiClean -- integration` test that runs the real
+`delphi-clean.ps1` against `Examples/ConsoleProjectGroup/Source`.
+
+Add an equivalent integration test for Format. It was deliberately deferred when
+the Format wrapper (#17), pipeline step (#18), and CLI shorthands (#19) landed,
+because a formatting engine is not guaranteed on CI runners.
+
+## Design
+
+- Run `Invoke-DelphiFormat -FormatCheck` (and optionally
+  `Invoke-DelphiCi -Steps Format -FormatCheck $true`) against
+  `Examples/ConsoleProjectGroup/Source`. Use CHECK MODE ONLY -- never modify repo
+  source.
+- Guard with skip-if-engine-absent: probe `Get-Command formatter.exe` /
+  `radFormatter.exe` (and honor an explicit `-FormatEnginePath`); when neither
+  engine is on PATH, `Set-ItResult -Skipped -Because 'no formatting engine on PATH'`
+  so the suite stays green on engine-less machines/CI.
+- Assert the result shape (`StepName = 'Format'`, `Tool = 'delphi-format.ps1'`,
+  `ProjectFile = $null`) and that the wrapper faithfully surfaces the engine's
+  verdict: a dirty tree maps to `Success = $false` / `ExitCode = 1`.
+- For a deterministic clean-path assertion (`Success = $true`, exit 0), consider
+  adding a tiny already-formatted `.pas` fixture and pointing `-FormatPath` at it,
+  rather than depending on the state of the demo sources.
+
+## Context
+
+Verified manually during #19 that both engines are available on the dev machine
+(`C:\code\bin\formatter.exe`, `C:\code\bin\radFormatter.exe`) and that a check
+run against the demo source exits 1 (radFormatter reports 1 file, formatter 3).
+The two engines use different strategies (radFormatter native `-check`;
+formatter copy-to-temp-and-diff), so an engine-agnostic assertion should key on
+`Success`/`ExitCode`, not a specific file count.
+
+Acceptance criteria:
+- [ ] An integration test runs the real `delphi-format.ps1` in check mode against a repo fixture
+- [ ] The test is skipped (not failed) when no formatting engine is on PATH
+- [ ] It asserts the Format result shape and the dirty -> Success:$false / exit 1 mapping
+- [ ] A deterministic clean-path case (Success:$true / exit 0) is covered, e.g. via a formatted fixture
+- [ ] The test never modifies repository source (check mode only)
+- [ ] Full Pester suite passes with and without an engine present
+
+---
+Title: Sync tools/delphi-ci.ps1 shorthands with Invoke-DelphiCi (ToolchainRootDir, NoConfig, other actions)
+Issue: #22
+Body:
+`tools/delphi-ci.ps1` is the documented single-script CI entry point. It exposes
+shorthand parameters for the common steps but has drifted from `Invoke-DelphiCi`.
+After #19 added the `Format*` shorthands, the wrapper is still missing:
+
+- **Build shorthands** that belong to the "common build" category the wrapper
+  already covers: `-ToolchainRootDir` (added to `Invoke-DelphiCi` in #14) and
+  `-NoConfig` (added in #16). These are genuine omissions -- a caller using the
+  wrapper cannot pin a portable toolchain root or skip `dcc32.cfg`.
+- **Whole actions with no shorthands at all**: IncVer, Copy, Compress, Coverage,
+  CallGraph, Codesign. Today these are reachable through the wrapper only via
+  `-ConfigFile .\delphi-ci.json`.
+
+## Options
+
+1. **Add the missing params explicitly** (mirrors the current design; keeps
+   ValidateSets and tab-completion). Straightforward but drifts again with every
+   new action/parameter added to `Invoke-DelphiCi` -- which is exactly how this
+   gap arose.
+2. **Rework to a drift-proof pass-through** so the wrapper never falls behind.
+   Must preserve the `VersionInfo` vs `Run` parameter-set behavior and typed
+   binding. Candidate approaches: generate the param block from
+   `Invoke-DelphiCi`'s parameter metadata, or accept `-VersionInfo` +
+   `[Parameter(ValueFromRemainingArguments)]` and reconstruct a splat (trade-off:
+   loses typed binding / ValidateSet validation at the wrapper boundary).
+
+## Recommendation
+
+At minimum, add `-ToolchainRootDir` and `-NoConfig` (clear omissions in the
+build category the wrapper already targets). Then make an explicit decision about
+the data-heavy actions: either expose them too, or document that they are
+intentionally `-ConfigFile`-only and keep the wrapper focused on common
+shorthands. Whichever way, record the boundary so the next reader is not left
+guessing (this supersedes the interim scope note in #19).
+
+Acceptance criteria:
+- [ ] `.\tools\delphi-ci.ps1 -ToolchainRootDir <dir>` and `-NoConfig` forward to Invoke-DelphiCi correctly
+- [ ] A decision is made and documented on whether IncVer/Copy/Compress/Coverage/CallGraph/Codesign get wrapper shorthands or remain -ConfigFile-only
+- [ ] If the pass-through rework is chosen, VersionInfo-vs-Run behavior and exit-code semantics are preserved
+- [ ] README CI-wrapper section reflects the final wrapper surface
+- [ ] Existing Clean / Build / Run / Format wrapper behavior is unchanged
+
+---
