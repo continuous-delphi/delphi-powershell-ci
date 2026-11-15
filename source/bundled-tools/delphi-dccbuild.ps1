@@ -56,6 +56,21 @@ NOTES
   it makes the output depend on rtlNNN.bpl / vclNNN.bpl at load time, so the
   default remains statically linked so standalone exes keep working.
 
+  -Linker, -LibraryPath, -LinkerOption, -AllowUndefined, and -TargetTriple drive
+  the LLVM back-end and the external linker on the targets that use one -- Linux64
+  in particular, whose dcclinux64 advertises them as --linker, --libpath,
+  --linker-option, --allow-undefined, and --target.  Delphi 13 Update 2 ships
+  bin64\dcc-ld.lld.exe (LLD 20.1.8) alongside the older bin64\ld.lld.exe, and
+  dcclinux64 selects the new one automatically, so these switches are needed only
+  to pin a specific linker, point at a Linux sysroot, or pass a raw
+  linker/back-end option.  -Linker and -LibraryPath are PATHS and are resolved
+  against the caller's original CWD like the other path params (dcclinux64 would
+  otherwise resolve them against the compiler's working directory, i.e. the
+  project folder).  -LinkerOption and -TargetTriple are passed through verbatim.
+  None of them are gated on -Platform: the script does not validate
+  switch/platform pairings anywhere else, and other LLVM-backed targets may
+  accept them.
+
   -ExtraArgs is an escape hatch: each element is appended verbatim after all
   modeled switches (no splitting or re-escaping) for dcc32 options this script
   does not model (e.g. -$D0, -$L-, -JL, -V*).
@@ -87,7 +102,7 @@ NOTES
   DCC output is always captured and returned in the result object's .output
   property.  -ShowOutput additionally streams each line to the host in real
   time (a tee, matching delphi-msbuild.ps1); it does not suppress capture, so
-  .output and the warning/error tally are populated either way.
+  .output and the hint/warning/error tally are populated either way.
 
   -OutputFile writes the full result object as compressed JSON to the given
   path.  -Format json emits the result object as a single compressed JSON line
@@ -96,15 +111,30 @@ NOTES
   either engine's result uniformly.  Omitting both preserves the current
   default (object to the pipeline).
 
-  The result object carries integer .warnings and .errors counts (matching
-  delphi-msbuild.ps1).  dcc32 emits no MSBuild-style summary block, so these are
-  counted from the compiler's diagnostic codes: .warnings from W#### lines and
-  .errors from E#### plus F#### (fatal) lines; hints (H####) count as neither.
-  Codes are counted rather than the localized severity words so the tally holds
-  under non-English toolchains.  Because output is always captured (even under
-  -ShowOutput, which tees rather than suppresses), the counts are populated on
-  every code path.  -Verbosity quiet (-Q) suppresses hints and warnings (so
-  .warnings drops toward 0) but not errors, which are still counted.
+  The result object carries integer .hints, .warnings and .errors counts
+  (.warnings/.errors matching delphi-msbuild.ps1; .hints has no msbuild
+  counterpart, see below).  dcc32 emits no MSBuild-style summary block, so these
+  are counted from the compiler's diagnostic codes: .hints from H#### lines,
+  .warnings from W#### lines, and .errors from E#### plus F#### (fatal) lines.
+  The three are DISJOINT -- a hint is counted as a hint only, never folded into
+  .warnings -- so a caller that wants the msbuild-style "hints are warnings too"
+  reading adds the two.  Codes are counted rather than the localized severity
+  words so the tally holds under non-English toolchains.  All three patterns
+  match a bare code on word boundaries, so a token that merely looks like one --
+  a file named W1035.pas, or an H code quoted inside another diagnostic's text --
+  is counted too; for the "equals zero" gates these counts exist to feed, that
+  direction can fail a clean build but can never pass a dirty one.  Because
+  output is always captured (even under -ShowOutput, which tees rather than
+  suppresses), the counts are populated on every code path.  -Verbosity quiet
+  (-Q) suppresses hints and warnings (so .hints and .warnings both drop toward
+  0) but not errors, which are still counted.
+
+  Why .hints exists at all: delphi-msbuild.ps1 reads msbuild's "N Warning(s)"
+  summary, and for a Delphi project that total INCLUDES hints -- an unused local
+  reported as "Hint: H2164" is in it.  This script's .warnings, by design, is
+  not.  Without a hint count a caller gating "zero diagnostics" therefore holds
+  the same code to different standards depending on the engine, and has to
+  re-implement this counting to close the gap.
 
   Any supplied output directory (-ExeOutputDir, -DcuOutputDir, -BplOutputDir,
   -DcpOutputDir, -BpiOutputDir) is created before the compiler runs if it does
@@ -203,6 +233,36 @@ param(
   # rtlNNN.bpl is absent on the target.
   [string[]]$LinkPackage = @(),
 
+  # Linker executable to use instead of the compiler's default (--linker:<file>).
+  # Relevant to the targets that invoke an external linker -- Linux64 above all.
+  # Delphi 13 Update 2 ships bin64\dcc-ld.lld.exe (LLD 20.1.8) next to the older
+  # bin64\ld.lld.exe, and dcclinux64 picks dcc-ld.lld.exe on its own, so this is
+  # only needed to pin a specific linker.  A PATH: resolved to absolute against
+  # the caller's CWD before the working-directory change, because dcclinux64
+  # would otherwise resolve a relative value against the project folder.
+  [string]$Linker,
+
+  # Linker library search paths (--libpath:<paths>).  Multiple paths are joined
+  # with semicolons into a single switch -- matching how dcclinux64 parses it
+  # (verified: --libpath:C:\a;C:\b emits -L C:\a -L C:\b) and how -U / -I behave
+  # here.  PATHS: each entry is resolved to absolute against the caller's CWD.
+  [string[]]$LibraryPath = @(),
+
+  # Raw options appended to the linker command line (--linker-option:<string>).
+  # Repeatable: one --linker-option switch is emitted per array element, and each
+  # value is passed through verbatim (not a path, never resolved or re-escaped).
+  [string[]]$LinkerOption = @(),
+
+  # Do not pass --no-undefined to the linker (--allow-undefined), permitting
+  # unresolved symbols at link time.  Visible on shared-library (.so) targets,
+  # where --no-undefined is on by default; a console exe's link line does not
+  # carry it either way.
+  [switch]$AllowUndefined,
+
+  # Target triple handed to the LLVM back-end (--target:<triple>), e.g.
+  # x86_64-unknown-linux-gnu.  Passed through verbatim (not a path).
+  [string]$TargetTriple,
+
   # Skip loading dcc32.cfg (--no-config).  By default DCC auto-loads
   # <RootDir>\bin\dcc32.cfg, which on portable/trimmed toolchains can carry
   # stale absolute or $(BDS)-relative library paths that silently inject wrong
@@ -272,7 +332,7 @@ $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 $ExitOutputDirError   = 6
 
-$script:Version = '0.4.13'
+$script:Version = '0.4.15'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -448,7 +508,7 @@ function New-DccOutputDirectory {
 # Returns [pscustomobject]@{ ExitCode; Output }.  Output is ALWAYS the captured
 # compiler text (never null): each line is accumulated, and additionally written
 # to the host when -ShowOutput is set.  This tee mirrors delphi-msbuild.ps1's
-# Invoke-MsbuildExe so the warning/error tally (Get-DccBuildCount) works even
+# Invoke-MsbuildExe so the diagnostic tally (Get-DccBuildCount) works even
 # when the caller streams -- notably delphi-powershell-ci's Invoke-BuildPipeline,
 # which always passes -ShowOutput.  Separated into its own function so tests can
 # mock it.
@@ -522,6 +582,11 @@ function Invoke-DccProject {
     [string]$DcpOutputDir,
     [string]$BpiOutputDir,
     [string[]]$LinkPackage    = @(),
+    [string]$Linker,
+    [string[]]$LibraryPath    = @(),
+    [string[]]$LinkerOption   = @(),
+    [switch]$AllowUndefined,
+    [string]$TargetTriple,
     [switch]$NoConfig,
     [string[]]$ExtraArgs      = @(),
     [string]$WorkingDirectory,
@@ -532,16 +597,19 @@ function Invoke-DccProject {
   # before Invoke-DccExe changes the compiler's working directory.  This keeps
   # these outputs anchored to the caller's CWD (pre-cd behavior) rather than
   # having them silently follow the compiler into the project folder.  The
-  # project file, defines, namespaces, link packages, and -ExtraArgs are left
-  # untouched (already absolute, or not paths, or a verbatim escape hatch).
+  # project file, defines, namespaces, link packages, linker options, the target
+  # triple, and -ExtraArgs are left untouched (already absolute, or not paths, or
+  # a verbatim escape hatch).
   $ExeOutputDir   = Resolve-DccPath  -Path  $ExeOutputDir
   $DcuOutputDir   = Resolve-DccPath  -Path  $DcuOutputDir
   $BplOutputDir   = Resolve-DccPath  -Path  $BplOutputDir
   $DcpOutputDir   = Resolve-DccPath  -Path  $DcpOutputDir
   $BpiOutputDir   = Resolve-DccPath  -Path  $BpiOutputDir
+  $Linker         = Resolve-DccPath  -Path  $Linker
   $UnitSearchPath = @(Resolve-DccPaths -Paths $UnitSearchPath)
   $IncludePath    = @(Resolve-DccPaths -Paths $IncludePath)
   $ResourcePath   = @(Resolve-DccPaths -Paths $ResourcePath)
+  $LibraryPath    = @(Resolve-DccPaths -Paths $LibraryPath)
 
   $dccArgs = @($ProjectFile)
 
@@ -581,6 +649,23 @@ function Invoke-DccProject {
   # Runtime packages to link (opt-in): joined with semicolons into a single -LU flag
   if ($LinkPackage.Count -gt 0) { $dccArgs += "-LU$($LinkPackage -join ';')" }
 
+  # LLVM back-end / external-linker switches (Linux64 and other LLVM-backed
+  # targets).  Not gated on platform -- the script validates no other
+  # switch/platform pairing either.
+  if (-not [string]::IsNullOrWhiteSpace($TargetTriple)) { $dccArgs += "--target:$TargetTriple" }
+  if (-not [string]::IsNullOrWhiteSpace($Linker))       { $dccArgs += "--linker:$Linker" }
+
+  # Library search paths: semicolon-joined into ONE --libpath switch (dcclinux64
+  # splits it into a -L per entry), not one switch per path.
+  if ($LibraryPath.Count -gt 0) { $dccArgs += "--libpath:$($LibraryPath -join ';')" }
+
+  if ($AllowUndefined) { $dccArgs += '--allow-undefined' }
+
+  # Raw linker options: one --linker-option switch per element, value verbatim.
+  foreach ($opt in $LinkerOption) {
+    if (-not [string]::IsNullOrWhiteSpace($opt)) { $dccArgs += "--linker-option:$opt" }
+  }
+
   # Extra pass-through args appended verbatim after all modeled switches.
   # Adding the array with += preserves each element as a distinct argument.
   if ($ExtraArgs.Count -gt 0) { $dccArgs += $ExtraArgs }
@@ -596,35 +681,45 @@ function Invoke-DccProject {
 # delphi-powershell-ci can marshal either engine's result uniformly.  Separated
 # into its own function so tests can exercise the file/format contract without
 # invoking a compiler.
-# Count warnings and errors from captured dcc32 output.
-# Returns [pscustomobject]@{ Warnings; Errors }.
+# Count hints, warnings and errors from captured dcc32 output.
+# Returns [pscustomobject]@{ Hints; Warnings; Errors }.
 #
 # Unlike MSBuild, dcc32 emits no "N Warning(s) / N Error(s)" summary block; it
 # emits per-diagnostic lines carrying stable message codes: H#### (hint),
 # W#### (warning), E#### (error), F#### (fatal).  Counting the CODES is
 # locale-robust -- the codes are invariant while the severity words
 # ("Warning:", "Fatal:") are localized.  FATAL (F####) is folded into Errors
-# for parity with MSBuild's error tally; hints (H####) count as neither.
+# for parity with MSBuild's error tally.  HINTS ARE THEIR OWN COUNT and are
+# folded into neither of the others: a hint is not a warning, which is what the
+# warnings/errors field pair means, but a caller that wants to GATE hints needs
+# a number to read -- without one it re-implements this pattern, which is the
+# duplication issue #21 was filed for.  Adding .hints to .warnings reproduces
+# msbuild's reading, where a Delphi hint IS part of the "N Warning(s)" total.
 #
 # Output is always captured by Invoke-DccExe (it tees under -ShowOutput rather
 # than streaming without capture), so these counts are populated on every code
 # path.  When output is empty -- e.g. -Verbosity quiet (-Q) told dcc32 not to
-# emit hints/warnings -- both counts are 0.
+# emit hints/warnings -- all three counts are 0.
 #
-# Heuristic caveat: the code patterns match on word boundaries, so a token that
-# is literally a code (e.g. a file named W1035.pas echoed in the output) would
+# Heuristic caveat, and it applies to all three patterns equally: the codes
+# match on word boundaries, so a token that is literally a code (e.g. a file
+# named W1035.pas, or an H-code quoted inside another diagnostic's text) would
 # be counted.  Harmless in practice -- dcc32 does not echo such names -- and far
 # simpler than anchoring to the full "File.pas(line): Wnnnn " diagnostic shape.
+# The direction is also the safe one for the "equals zero" gate these counts
+# exist to feed: it can fail a clean build, never pass a dirty one.
 function Get-DccBuildCount {
   param([string]$Output)
 
+  $hints    = 0
   $warnings = 0
   $errors   = 0
   if (-not [string]::IsNullOrWhiteSpace($Output)) {
+    $hints    = [regex]::Matches($Output, '\bH\d{4}\b').Count
     $warnings = [regex]::Matches($Output, '\bW\d{4}\b').Count
     $errors   = [regex]::Matches($Output, '\b[EF]\d{4}\b').Count
   }
-  return [pscustomobject]@{ Warnings = $warnings; Errors = $errors }
+  return [pscustomobject]@{ Hints = $hints; Warnings = $warnings; Errors = $errors }
 }
 
 function Write-DccResult {
@@ -739,14 +834,20 @@ try {
     -DcpOutputDir      $DcpOutputDir `
     -BpiOutputDir      $BpiOutputDir `
     -LinkPackage       $LinkPackage `
+    -Linker            $Linker `
+    -LibraryPath       $LibraryPath `
+    -LinkerOption      $LinkerOption `
+    -AllowUndefined:$AllowUndefined `
+    -TargetTriple      $TargetTriple `
     -NoConfig:$NoConfig `
     -ExtraArgs         $ExtraArgs `
     -WorkingDirectory  $resolvedWorkingDir `
     -ShowOutput:$ShowOutput
 
-  # Warning/error tally parsed from the captured compiler output.  Matches
-  # delphi-msbuild's warnings/errors fields so delphi-powershell-ci reads
-  # either engine's result uniformly.
+  # Diagnostic tally parsed from the captured compiler output.  warnings/errors
+  # match delphi-msbuild's fields so delphi-powershell-ci reads either engine's
+  # result uniformly; hints is this engine's own (msbuild publishes no separate
+  # hint total, it folds them into "N Warning(s)").
   $counts = Get-DccBuildCount -Output $buildResult.Output
 
   $resultObj = [pscustomobject]@{
@@ -769,12 +870,18 @@ try {
     dcpOutputDir   = if ([string]::IsNullOrWhiteSpace($DcpOutputDir)) { $null } else { $DcpOutputDir }
     bpiOutputDir   = if ([string]::IsNullOrWhiteSpace($BpiOutputDir)) { $null } else { $BpiOutputDir }
     linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
+    linker         = if ([string]::IsNullOrWhiteSpace($Linker)) { $null } else { $Linker }
+    libraryPath    = if ($LibraryPath.Count    -eq 0) { $null } else { $LibraryPath }
+    linkerOption   = if ($LinkerOption.Count   -eq 0) { $null } else { $LinkerOption }
+    allowUndefined = [bool]$AllowUndefined
+    targetTriple   = if ([string]::IsNullOrWhiteSpace($TargetTriple)) { $null } else { $TargetTriple }
     noConfig       = [bool]$NoConfig
     extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
     skipRsvars     = [bool]$SkipRsvars
     workingDir     = $resolvedWorkingDir
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
+    hints          = $counts.Hints
     warnings       = $counts.Warnings
     errors         = $counts.Errors
     output         = $buildResult.Output

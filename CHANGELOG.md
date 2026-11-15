@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.29]
+- Build results now carry a `Hints` count beside `Warnings` and `Errors`, so a
+  caller can gate Delphi hints (`H####`) without re-counting them from
+  `.Output`. `Invoke-BuildPipeline` marshals the bundled tool's `hints` field
+  through the existing defensive `$getProp` probe and both stand-in result
+  objects (the pre-flight failure and the declined-`ShouldProcess` path) carry
+  it, which `Set-StrictMode -Version Latest` requires of every property a
+  caller dereferences. `Hints` is 0 under the MSBuild engine, and the README,
+  `docs/Invoke-DelphiBuild.md` and the code now say why that is not the same as
+  "there were no hints": msbuild's
+  `N Warning(s)` summary already includes them, so there is no separate tally to
+  report, while DCCBuild keeps the two disjoint. Bundled `delphi-dccbuild.ps1`
+  updated 0.4.13 -> 0.4.15, which also brings its `dcclinux64` linker and
+  back-end switches (`-Linker`, `-LibraryPath`, `-LinkerOption`,
+  `-AllowUndefined`, `-TargetTriple`) into the bundle.
+  [#23](https://github.com/continuous-delphi/delphi-powershell-ci/issues/23)
+
+---
 ## [0.4.27]
 - Expose the `-ToolchainRootDir` and `-NoConfig` build shorthands in the
   `tools/delphi-ci.ps1` CLI wrapper (they were reachable only via `-ConfigFile`).

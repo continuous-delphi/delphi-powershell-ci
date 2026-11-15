@@ -380,8 +380,8 @@ Result shape:
 | `Steps` | Object[] | One result per job that ran |
 
 Clean and Format step results have `StepName`, `Success`, `Duration`,
-`ExitCode`, `Tool`, and `Message`. Build results add `ProjectFile`, `Warnings`,
-`Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
+`ExitCode`, `Tool`, and `Message`. Build results add `ProjectFile`, `Hints`,
+`Warnings`, `Errors`, `ExeOutputDir`, and `Output`. IncVer results add `File`,
 `OldVersion`, and `NewVersion`. Run results have `Execute` instead of
 `ProjectFile`. Coverage results add `Execute`, `CoveragePercent`,
 `LinesCovered`, `LinesTotal`, `ThresholdMet`, `OutputDir`, and `Badge`.
@@ -389,6 +389,15 @@ CallGraph results add `Engine`, `Inputs`, `OutputDir`, `Formats`, `Files`,
 and `Summary`. Copy results add `Source`, `Destination`, `FileCount`,
 and `BytesCopied`. Compress results add `Source`, `Destination`,
 `ArchiveSize`, and `Checksum`.
+
+A build result's `Hints` counts Delphi `H####` diagnostics and is **0 under the
+MSBuild engine** -- which does not mean there were none. `delphi-msbuild.ps1`
+reads msbuild's `N Warning(s)` summary, and for a Delphi project that figure
+already includes hints (an unused local reported as `Hint: H2164` is counted
+there as a warning), so there is no separate tally to report. `delphi-dccbuild.ps1`
+keeps the two disjoint and reports `hints` of its own. A caller gating "no
+diagnostics" therefore wants `Warnings -eq 0 -and Hints -eq 0`, which is correct
+under both engines; reading `Hints` alone as an absence of hints is not.
 
 ---
 

@@ -179,6 +179,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Tool         = 'delphi-msbuild.ps1'
             Message      = if ($Success) { 'Build completed' } else { 'Exit code 5' }
             ProjectFile  = 'C:\Fake\Source\App.dproj'
+            # Hints is part of the build result shape as of issue #23. Invoke-DelphiCi only
+            # reads .Success off this object today, but the module runs under Set-StrictMode
+            # -Version Latest, so a fixture missing a real field throws from whichever future
+            # call site reads it -- in tests whose names mention neither the field nor
+            # StrictMode. Keep this literal matching Invoke-DelphiBuild's returned shape.
+            Hints        = 0
             Warnings     = 0
             Errors       = 0
             ExeOutputDir = $null

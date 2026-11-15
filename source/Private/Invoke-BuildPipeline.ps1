@@ -22,12 +22,12 @@ function Invoke-BuildPipeline {
     $buildToolPath = Join-Path $script:BundledToolsDir $buildToolName
 
     # Failure results must carry the full property set the caller reads
-    # (Warnings/Errors/ExeOutputDir/Output). The module runs under
+    # (Hints/Warnings/Errors/ExeOutputDir/Output). The module runs under
     # Set-StrictMode -Version Latest, so a partial object would throw when
     # Invoke-DelphiBuild dereferences the missing properties.
     $newFailure = {
         param([int]$Code)
-        [PSCustomObject]@{ ExitCode = $Code; Success = $false; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
+        [PSCustomObject]@{ ExitCode = $Code; Success = $false; Hints = 0; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
     }
 
     if (-not [string]::IsNullOrWhiteSpace($ExplicitRootDir)) {
@@ -127,18 +127,29 @@ function Invoke-BuildPipeline {
         catch { <# result file missing or malformed; fall back to exit-code only #> }
 
         # Read result properties defensively: the two engines emit different
-        # result shapes -- delphi-msbuild carries warnings/errors, delphi-dccbuild
-        # does not. Under Set-StrictMode a direct $toolResult.warnings dereference
-        # throws when the property is absent, so probe for each property and fall
-        # back to a default when the engine (or a malformed file) omits it.
+        # result shapes. Both carry warnings/errors, but only delphi-dccbuild
+        # carries hints -- delphi-msbuild has no separate hint total to report
+        # (see the Hints note below). Under Set-StrictMode a direct
+        # $toolResult.hints dereference throws when the property is absent, so
+        # probe for each property and fall back to a default when the engine (or
+        # a malformed result file) omits it.
         $getProp = {
             param($Obj, [string]$Name, $Default)
             if ($null -ne $Obj -and $null -ne $Obj.PSObject.Properties[$Name]) { $Obj.PSObject.Properties[$Name].Value } else { $Default }
         }
 
+        # HINTS IS 0 UNDER MSBUILD, AND THAT DOES NOT MEAN THERE WERE NONE.
+        # delphi-msbuild reads msbuild's "N Warning(s)" summary, and for a Delphi
+        # project that figure INCLUDES hints (an unused local reported as
+        # "Hint: H2164" is counted there as a warning). So under MSBuild the
+        # hints are already inside Warnings and there is no separate tally to
+        # marshal; under DCCBuild the two are disjoint and Hints is its own
+        # count. A caller gating "zero diagnostics" wants Warnings -eq 0 -and
+        # Hints -eq 0, which is correct under both engines.
         return [PSCustomObject]@{
             ExitCode     = $buildExit
             Success      = ($buildExit -eq 0)
+            Hints        = [int](& $getProp $toolResult 'hints' 0)
             Warnings     = [int](& $getProp $toolResult 'warnings' 0)
             Errors       = [int](& $getProp $toolResult 'errors' 0)
             ExeOutputDir = & $getProp $toolResult 'exeOutputDir' $null

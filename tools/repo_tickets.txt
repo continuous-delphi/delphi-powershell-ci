@@ -658,3 +658,66 @@ Acceptance criteria:
 - [ ] Existing Clean / Build / Run / Format wrapper behavior is unchanged
 
 ---
+---
+Title: Surface a Hints count through Invoke-BuildPipeline and Invoke-DelphiBuild
+Issue: #23
+Status: closed
+Labels: enhancement
+Body:
+`Invoke-DelphiBuild`'s result object carries `Warnings` and `Errors` but no hint
+count, so a caller that wants to gate Delphi hints cannot -- it has to re-count
+them from `.Output` itself. radSecureSocket does exactly that today
+(`tools/Build-Harnesses.ps1`, its issue #118), which puts a copy of a counting
+pattern in a consuming repo and leaves every other repo on this module with the
+weaker gate.
+
+The asymmetry being closed is measurable and is the reason the count matters: the
+`N Warning(s)` summary that `delphi-msbuild.ps1` parses INCLUDES Delphi hints
+(an unused local reported as `Hint: H2164` is in MSBuild's warning tally), while
+`delphi-dccbuild.ps1` counts only `W####` as warnings. So the same unused local
+fails an MSBuild-gated build and passes a DCCBuild-gated one.
+
+The plumbing is already defensive, so the change is small:
+- `Invoke-BuildPipeline` reads result properties through `$getProp`, which exists
+  precisely because "the two engines emit different result shapes" -- one more
+  `& $getProp $toolResult 'hints' 0` line, and an engine that omits the field
+  still works.
+- Its `$newFailure` object must carry `Hints` too. The module runs under
+  `Set-StrictMode -Version Latest` and the comment beside that object already
+  says why: a partial object throws when the caller dereferences the missing
+  property.
+- `Invoke-DelphiBuild` surfaces `Hints` on its returned object, and on the
+  `$toolResult` default it uses when `ShouldProcess` declines (`-WhatIf`).
+
+Two things to get right rather than paper over:
+- `Hints` is 0 under the MSBuild engine, and that must be documented as "no
+  separate tally -- MSBuild folds Delphi hints into its Warning(s) count", NOT as
+  "there were no hints". Reading it the second way would be wrong in exactly the
+  case the field exists for.
+- The comment above `$getProp` currently says `delphi-dccbuild` does not carry
+  warnings/errors. That stopped being true when dccbuild #17 landed, and this
+  change makes the line it justifies about hints instead. Correct it while there.
+
+This also unblocks the warning/hint gate radSecureSocket asks for in its #117
+(a `failOnWarning`-style key honoured beside the `Success` check): that gate
+cannot count hints at this altitude until the count exists here.
+
+Depends on the matching delphi-dccbuild ticket -- the bundled
+`source/bundled-tools/delphi-dccbuild.ps1` has to be updated to a version that
+emits `hints`, or the marshalled value is always the 0 default.
+
+Acceptance criteria:
+- [ ] `Invoke-BuildPipeline` marshals `hints` through `$getProp`, defaulting to 0
+      when the engine omits the field
+- [ ] `$newFailure` and `Invoke-DelphiBuild`'s `-WhatIf` default object both carry
+      `Hints`, so no caller dereference throws under StrictMode
+- [ ] `Invoke-DelphiBuild`'s returned object carries `Hints`
+- [ ] The bundled `delphi-dccbuild.ps1` is updated to a version that emits `hints`
+- [ ] 0-under-MSBuild is documented as an absent tally, not as an absence of hints
+- [ ] The stale "delphi-dccbuild does not carry warnings/errors" comment is fixed
+- [ ] Tests cover: hints marshalled from a DCCBuild result, absent-field default,
+      and the failure/WhatIf objects carrying the property
+- [ ] README's result-shape note lists `Hints`
+- [ ] `pwsh -File ./tests/run-tests.ps1` passes, PSScriptAnalyzer gate included
+- [ ] CHANGELOG.md updated
+

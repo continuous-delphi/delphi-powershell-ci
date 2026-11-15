@@ -250,10 +250,20 @@ Returns a `PSCustomObject` with the following fields.
 | `Tool`       | String   | `'delphi-msbuild.ps1'` or `'delphi-dccbuild.ps1'` |
 | `Message`    | String   | `'Build completed'` on success; `'Exit code N'` on failure |
 | `ProjectFile`| String   | The path passed via `-ProjectFile` |
+| `Hints`      | Int32    | Hint (`H####`) count; DCCBuild only -- always 0 under MSBuild, see below |
 | `Warnings`   | Int32    | Warning count parsed from MSBuild/DCC output |
 | `Errors`     | Int32    | Error count parsed from MSBuild/DCC output |
 | `ExeOutputDir`| String  | Resolved output directory for the compiled executable |
 | `Output`     | String   | Full build output text |
+
+`Hints` is **0 under the MSBuild engine, and that does not mean there were
+none.** `delphi-msbuild.ps1` reads msbuild's `N Warning(s)` summary, and for a
+Delphi project that figure already includes hints (an unused local reported as
+`Hint: H2164` is counted there as a warning), so there is no separate tally to
+report. `delphi-dccbuild.ps1` keeps the two disjoint and reports a `hints` count
+of its own. A caller gating "no diagnostics" therefore wants
+`Warnings -eq 0 -and Hints -eq 0`, which is correct under either engine; reading
+`Hints` alone as an absence of hints is not.
 
 ---
 
@@ -357,8 +367,14 @@ $build = Invoke-DelphiBuild -ProjectFile .\source\MyApp.dproj
 if (-not $build.Success) {
     Write-Error "Build failed with exit code $($build.ExitCode)"
 }
-Write-Host "Warnings: $($build.Warnings), Errors: $($build.Errors)"
+Write-Host "Hints: $($build.Hints), Warnings: $($build.Warnings), Errors: $($build.Errors)"
 Write-Host "Build took $($build.Duration.TotalSeconds)s"
+
+# Gate on "no diagnostics at all". Both counts are needed: under MSBuild the
+# hints are already inside Warnings, under DCCBuild they are a separate tally.
+if ($build.Warnings -gt 0 -or $build.Hints -gt 0) {
+    Write-Error 'Build produced diagnostics'
+}
 ```
 
 ---

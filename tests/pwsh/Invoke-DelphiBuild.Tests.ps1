@@ -8,8 +8,12 @@ InModuleScope 'Delphi.PowerShell.CI' {
     Describe 'Invoke-DelphiBuild -- unit' {
 
         BeforeAll {
+            # Hints is deliberately NON-ZERO here. Every other count in this mock is 0, so a
+            # surfacing test that asserted 0 would pass just as well if the value came from the
+            # -WhatIf default object instead of the pipeline result -- which is the one failure
+            # mode 'is surfaced from pipeline result' is supposed to rule out.
             Mock Invoke-BuildPipeline {
-                [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = 'C:\Out\Win32\Debug'; Output = 'build output text' }
+                [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 2; Warnings = 0; Errors = 0; ExeOutputDir = 'C:\Out\Win32\Debug'; Output = 'build output text' }
             }
             Mock Write-DelphiCiMessage {}
         }
@@ -36,6 +40,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ProjectFile | Should -Be 'C:\Fake\App.dproj'
             }
 
+            It 'Hints is surfaced from pipeline result' {
+                (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Hints | Should -Be 2
+            }
+
             It 'Warnings is surfaced from pipeline result' {
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Warnings | Should -Be 0
             }
@@ -57,32 +65,32 @@ InModuleScope 'Delphi.PowerShell.CI' {
         Context 'success and failure' {
 
             It 'Success is true when pipeline exits 0' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 0; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Success | Should -Be $true
             }
 
             It 'ExitCode is 0 on success' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 0; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ExitCode | Should -Be 0
             }
 
             It 'Success is false when pipeline exits non-zero' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Hints = 0; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Success | Should -Be $false
             }
 
             It 'ExitCode reflects pipeline exit code on failure' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Hints = 0; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').ExitCode | Should -Be 5
             }
 
             It 'Message says Build completed on success' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 0; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Message | Should -Be 'Build completed'
             }
 
             It 'Message contains exit code on failure' {
-                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
+                Mock Invoke-BuildPipeline { [PSCustomObject]@{ ExitCode = 5; Success = $false; Hints = 0; Warnings = 0; Errors = 1; ExeOutputDir = $null; Output = $null } }
                 (Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj').Message | Should -BeLike '*5*'
             }
 
@@ -125,6 +133,17 @@ InModuleScope 'Delphi.PowerShell.CI' {
             It 'does not invoke the pipeline when -WhatIf is set' {
                 Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -WhatIf
                 Should -Invoke Invoke-BuildPipeline -Times 0
+            }
+
+            # The declined-ShouldProcess path builds its own stand-in result. The module runs
+            # under Set-StrictMode -Version Latest, so a count missing from that literal throws
+            # at the return statement -- which is why every count is asserted here and not just
+            # the new one.
+            It 'still returns every diagnostic count when -WhatIf is set' {
+                $result = Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -WhatIf
+                $result.Hints    | Should -Be 0
+                $result.Warnings | Should -Be 0
+                $result.Errors   | Should -Be 0
             }
 
         }
@@ -555,6 +574,93 @@ Set-Content -LiteralPath '$rootArgFile' -Value `$RootDir
             $result.Success               | Should -Be $true
             Test-Path -LiteralPath $marker | Should -Be $false   # inspect never ran
             (Get-Content -LiteralPath $rootArgFile -Raw).Trim() | Should -Be $explicitRoot
+        }
+
+    }
+
+    Describe 'Invoke-BuildPipeline -- diagnostic count marshalling' {
+
+        # Exercises the REAL (unmocked) pipeline against a fake build tool that writes a result
+        # JSON, which is the only way to prove the $getProp marshalling rather than a mock's
+        # echo. Issue #23: `hints` is new, and the two arrangements that matter are an engine
+        # that REPORTS it (delphi-dccbuild since its #21) and one that does not (delphi-msbuild,
+        # which has no separate hint tally) -- the second must marshal to 0 and must not throw
+        # under Set-StrictMode.
+
+        BeforeAll {
+            Mock Write-Error {}
+        }
+
+        It 'marshals hints from an engine result that carries the field' {
+            $fakeDir = Join-Path $TestDrive 'hints-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-dccbuild.ps1') -Value @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+Set-Content -LiteralPath $OutputFile -Value '{"hints":3,"warnings":2,"errors":0,"exeOutputDir":"C:\\Out\\Win32","output":"compiler text"}'
+'@
+
+            $explicitRoot = Join-Path $TestDrive 'hints-root'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dpr', '-ShowOutput') `
+                    -Engine          'DCCBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            $result.Hints    | Should -Be 3
+            $result.Warnings | Should -Be 2
+            $result.Errors   | Should -Be 0
+            $result.Hints    | Should -BeOfType [int]
+        }
+
+        It 'defaults hints to 0 for an engine result that omits the field' {
+            $fakeDir = Join-Path $TestDrive 'nohints-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-msbuild.ps1') -Value @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+Set-Content -LiteralPath $OutputFile -Value '{"warnings":4,"errors":0,"exeOutputDir":"C:\\Out\\Win32","output":"compiler text"}'
+'@
+
+            $explicitRoot = Join-Path $TestDrive 'nohints-root'
+            New-Item -ItemType Directory -Path $explicitRoot -Force | Out-Null
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-BuildPipeline `
+                    -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dproj', '-ShowOutput') `
+                    -Engine          'MSBuild' `
+                    -ExplicitRootDir $explicitRoot
+            }
+            finally {
+                $script:BundledToolsDir = $saved
+            }
+
+            # 0 because msbuild publishes no separate hint total -- its warning count already
+            # includes them -- NOT because the build had no hints. The warning count proves the
+            # result file was read at all, so a 0 here is the default and not a parse failure.
+            $result.Hints    | Should -Be 0
+            $result.Warnings | Should -Be 4
+        }
+
+        It 'carries Hints on the failure object so a StrictMode caller can read it' {
+            $missing = Join-Path $TestDrive 'no-such-root-for-hints'
+
+            $result = Invoke-BuildPipeline `
+                -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dpr', '-ShowOutput') `
+                -Engine          'DCCBuild' `
+                -ExplicitRootDir $missing
+
+            $result.Success | Should -Be $false
+            $result.PSObject.Properties['Hints'] | Should -Not -BeNullOrEmpty
+            $result.Hints | Should -Be 0
         }
 
     }

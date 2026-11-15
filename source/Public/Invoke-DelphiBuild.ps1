@@ -138,7 +138,11 @@ function Invoke-DelphiBuild {
         $buildArgs.Add('-NoConfig')
     }
 
-    $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
+    # The -WhatIf / declined-ShouldProcess stand-in. It carries the same property
+    # set Invoke-BuildPipeline returns, Hints included: the module runs under
+    # Set-StrictMode -Version Latest, so a property missing here throws at the
+    # return statement below rather than where it was forgotten.
+    $toolResult = [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 0; Warnings = 0; Errors = 0; ExeOutputDir = $null; Output = $null }
 
     if ($PSCmdlet.ShouldProcess($ProjectFile, "Build ($Platform|$Configuration)")) {
         $pipelineParams = @{
@@ -172,6 +176,12 @@ function Invoke-DelphiBuild {
         Tool         = $tool
         Message      = if ($toolResult.Success) { 'Build completed' } else { "Exit code $($toolResult.ExitCode)" }
         ProjectFile  = $ProjectFile
+        # Hints is the DCCBuild engine's own count and is 0 under MSBuild, which
+        # publishes no separate hint total -- its "N Warning(s)" summary already
+        # includes Delphi hints. So "zero diagnostics" is Warnings -eq 0 -and
+        # Hints -eq 0 under either engine; reading Hints alone as "there were no
+        # hints" is wrong for MSBuild. See the note in Invoke-BuildPipeline.
+        Hints        = $toolResult.Hints
         Warnings     = $toolResult.Warnings
         Errors       = $toolResult.Errors
         ExeOutputDir = $toolResult.ExeOutputDir

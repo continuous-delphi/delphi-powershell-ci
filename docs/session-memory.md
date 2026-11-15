@@ -1,0 +1,148 @@
+# Session Memory
+
+This file preserves durable, cross-session insights about `delphi-powershell-ci`
+that would otherwise live only in the per-machine Claude auto-memory folder
+(`~/.claude/projects/.../memory/`). Because that folder is outside the repo, its
+contents are lost when the development VM is retired or replaced. Anything worth
+remembering across sessions belongs here, in the tracked repo, instead.
+
+See the project `CLAUDE.md` for the policy: session memories go in `/docs`.
+
+> These entries are point-in-time observations migrated from the auto-memory
+> folder. Verify against current code before relying on any file/parameter
+> claim.
+
+---
+
+## Invoke-DelphiClean parameter naming convention
+
+_Type: feedback. Originally recorded ~2026-04 (verified accurate 2026-08-06)._
+
+All parameters on `Invoke-DelphiClean` use the `Clean` prefix to match the
+naming convention of the other Clean-related parameters (`CleanLevel`,
+`CleanIncludeFilePattern`, `CleanExcludeDirectoryPattern`, `CleanConfigFile`).
+
+**Why:** Consistent prefixing makes parameters unambiguous when splatted or
+called from `Invoke-DelphiCi`, which also uses a `Clean` prefix on its own
+corresponding parameters.
+
+**How to apply:** The root path parameter is `-CleanRoot`, not `-Root`. When
+updating callers or writing new tests, always use `-CleanRoot`. (Confirmed
+present in `source/Public/Invoke-DelphiClean.ps1` and documented in
+`docs/Invoke-DelphiClean.md` as of 2026-08-06.)
+
+---
+
+## Code coverage tool landscape
+
+_Type: project. Originally recorded ~2026-05._
+
+The user is building a code coverage tool called **radCodeCoverage**, which was
+reaching its RC1 phase. It supports DelphiCodeCoverage-compatible command-line
+parameters (a decision the user may revisit).
+
+**Why:** DelphiCodeCoverage's CLI usability is poor -- too many odd parameters
+and weak documentation. A `delphi-coverage` wrapper would simplify usage.
+
+**How to apply:** When designing `delphi-coverage`, abstract the engine so
+multiple tools can be supported (DelphiCodeCoverage first, radCodeCoverage
+later, potentially Coverage Validator). Don't hardcode to one engine's CLI --
+use an engine property similar to how `delphi-powershell-ci` uses an engine
+selector (MSBuild / DCCBuild) for builds.
+
+---
+
+## New markdown/txt/bat docs are gitignored -- keep docs in tracked files
+
+_Type: project. Recorded 2026-09-03 (during #17)._
+
+The repo `.gitignore` ends with catch-all patterns `*.bat`, `*.txt`, `*.md`,
+and `/.claude`. Files already tracked (README.md, CHANGELOG.md, CLAUDE.md,
+`docs/*.md`, `tools/repo_tickets.txt`) are unaffected because gitignore does
+not apply to tracked files -- but any NEW `.md`/`.txt`/`.bat` is invisible to
+`git add -A`.
+
+**Why:** The pattern exists to keep session commit bats and scratch
+plan/notes out of the repo. The side effect is that a brand-new per-command
+doc page (e.g. `docs/Invoke-DelphiFormat.md`) would be silently dropped by the
+normal `git add -A` commit-bat flow.
+
+**How to apply:** When adding a new command, document it INLINE in the existing
+tracked `README.md` (bundled-tools table, step-command examples, repository
+structure, reference table, result-shape note) rather than creating a new
+`docs/<Command>.md`. If a dedicated doc page is genuinely wanted, it must be
+`git add -f`'d explicitly. `Invoke-DelphiFormat` was documented inline in
+README for this reason; no `docs/Invoke-DelphiFormat.md` was created.
+
+---
+
+## Adding a bundled tool: bump the hard-coded count assertion
+
+_Type: project. Recorded 2026-09-03 (during #17)._
+
+`Get-BundledToolInfo` (`source/Private/Get-BundledToolInfo.ps1`) holds the
+authoritative `$toolDefs` list of bundled tools. `Invoke-DelphiCi.VersionInfo.Tests.ps1`
+asserts the exact count of real tools (`@($info).Count | Should -Be N`) in the
+`Get-BundledToolInfo -- unit` Describe.
+
+**Why:** The count is hard-coded, so registering a new tool without updating the
+assertion breaks the suite. (The separate `Should -Be 4` in the same file is
+against a MOCKED `Get-BundledToolInfo` and is independent of the real count.)
+
+**How to apply:** When adding an entry to `$toolDefs`, bump the real-count
+assertion in `Invoke-DelphiCi.VersionInfo.Tests.ps1` to match, and add an
+`includes <tool-name>` case. As of #17 the count is 9
+(inspect, clean, msbuild, dccbuild, incver, coverage, callgraph,
+codesign-azure, format).
+
+## Adding a property to the build result: the mocks are part of the contract
+
+_Type: project. Recorded 2026-11-14 (during #23)._
+
+`Invoke-BuildPipeline` returns the build result and `Invoke-DelphiBuild`
+re-publishes it. Under `Set-StrictMode -Version Latest` a property missing from
+ANY of the places that construct that object throws where it is dereferenced,
+not where it was forgotten -- so adding one (e.g. `Hints` in #23) means editing
+four kinds of site, not one:
+
+1. the marshalled return in `Invoke-BuildPipeline` (via the `$getProp` probe, so
+   an engine that omits the field still works),
+2. its `$newFailure` stand-in for pre-compiler failures,
+3. `Invoke-DelphiBuild`'s `$toolResult` literal, used when `ShouldProcess`
+   declines (`-WhatIf`) -- easy to miss because no build runs on that path,
+4. **every `Mock Invoke-BuildPipeline` in `Invoke-DelphiBuild.Tests.ps1`** (7 of
+   them at the time of #23). A mock returning the old shape fails the whole
+   Describe, including tests that have nothing to do with the new property.
+
+**Why:** measured by mutation during #23 -- dropping the property from site 2 or
+3 reddened tests whose names mention neither the property nor StrictMode (e.g.
+"does not invoke the pipeline when -WhatIf is set"), and the integration
+Describes that run a real msbuild went red too. The failure is loud but points
+at the wrong line, so knowing the four-site list is what makes it quick.
+
+**How to apply:** when a mocked result object exists only to stand in for the
+pipeline, give the NEW count a distinct non-zero value in the shared
+`BeforeAll` mock. A surfacing test that asserts 0 passes just as well when the
+value silently comes from the `-WhatIf` default object instead of the result.
+
+## The psd1 version and the CHANGELOG heading are off by one on the remote
+
+_Type: project. Recorded 2026-11-14 (during #23)._
+
+`tools/hooks/pre-commit` runs `Invoke-DelphiIncVer` DURING `git commit` and
+re-stages `source/Delphi.PowerShell.CI.psd1`, so the version that ships is the
+working-tree value PLUS 1 on the patch. At HEAD (2026-11-14) `ModuleVersion` is
+`0.4.28` while the newest CHANGELOG heading is `[0.4.27]` -- i.e. that entry was
+authored from the pre-increment value and is one behind the commit that carries
+it.
+
+**Why:** it makes the CHANGELOG an unreliable way to infer the current version,
+and it is self-perpetuating: reading the previous heading and adding one
+reproduces the error.
+
+**How to apply:** read `ModuleVersion` from the psd1 at authoring time and add 1
+for the CHANGELOG heading, the commit-message version line, and the commit-bat
+name. #23's entry is `[0.4.29]` on that basis (psd1 read `0.4.28`). Note
+`delphi-dccbuild` does NOT have this drift -- its `$script:Version` and
+CHANGELOG top agreed at `0.4.14`, and `tools/tag-release.ps1` there validates
+that they match, which is why the error cannot accumulate in that repo.
