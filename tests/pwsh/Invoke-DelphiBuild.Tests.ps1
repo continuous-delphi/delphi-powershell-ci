@@ -331,6 +331,13 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 }
             }
 
+            It 'passes -Verbosity diagnostic unchanged for MSBuild' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -BuildVerbosity 'diagnostic'
+                Should -Invoke Invoke-BuildPipeline -ParameterFilter {
+                    $BuildArgs -contains '-Verbosity' -and $BuildArgs -contains 'diagnostic'
+                }
+            }
+
             It 'passes -Target Build by default' {
                 Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj'
                 Should -Invoke Invoke-BuildPipeline -ParameterFilter {
@@ -453,6 +460,99 @@ InModuleScope 'Delphi.PowerShell.CI' {
 
         }
 
+        Context 'verbosity mapping per engine' {
+
+            # ISSUE #26. -BuildVerbosity offers msbuild's five levels for BOTH engines, but
+            # delphi-dccbuild.ps1's own ValidateSet is quiet/normal only -- dcc32 has no
+            # five-level verbosity. Forwarding the other three failed the CHILD process's
+            # parameter binding, and a PowerShell script that exits without setting a code
+            # exits 0, so the bug these tests pin is not "the wrong verbosity reached dcc" but
+            # "nothing compiled and the result said Success with no output".
+            #
+            # The mock records the verbosity each call actually forwarded. Reading it back from
+            # a recorded list rather than from a -ParameterFilter closure is deliberate: a
+            # filter scriptblock does not close over the enclosing It's loop variable, so the
+            # table-driven assertions below would silently compare against $null.
+
+            BeforeAll {
+                $script:AllVerbosities  = @('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')
+                $script:ForwardedVerb   = [System.Collections.Generic.List[string]]::new()
+
+                Mock Invoke-BuildPipeline {
+                    $i = [array]::IndexOf($BuildArgs, '-Verbosity')
+                    $script:ForwardedVerb.Add($(if ($i -ge 0) { $BuildArgs[$i + 1] } else { '<absent>' }))
+                    [PSCustomObject]@{ ExitCode = 0; Success = $true; Hints = 2; Warnings = 0; Errors = 0; ExeOutputDir = 'C:\Out\Win32\Debug'; Output = 'build output text' }
+                }
+            }
+
+            BeforeEach { $script:ForwardedVerb.Clear() }
+
+            It 'maps DCCBuild minimal to quiet' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity 'minimal' | Out-Null
+                $script:ForwardedVerb[0] | Should -Be 'quiet'
+            }
+
+            It 'maps DCCBuild detailed to normal' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity 'detailed' | Out-Null
+                $script:ForwardedVerb[0] | Should -Be 'normal'
+            }
+
+            It 'maps DCCBuild diagnostic to normal' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity 'diagnostic' | Out-Null
+                $script:ForwardedVerb[0] | Should -Be 'normal'
+            }
+
+            It 'leaves DCCBuild quiet unchanged' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity 'quiet' | Out-Null
+                $script:ForwardedVerb[0] | Should -Be 'quiet'
+            }
+
+            It 'leaves DCCBuild normal unchanged' {
+                Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity 'normal' | Out-Null
+                $script:ForwardedVerb[0] | Should -Be 'normal'
+            }
+
+            It 'forwards only values the real DCC tool accepts, for every value in the module ValidateSet' {
+                # THE REGRESSION TEST FOR #26, and the one that fails if a sixth level is added
+                # to -BuildVerbosity without extending the mapping switch. The accepted set is
+                # read from delphi-dccbuild.ps1's own parameter metadata rather than hard-coded,
+                # so the two sides cannot drift apart unnoticed: this is exactly the mismatch
+                # that produced the silent success.
+                $dccAccepts = (Get-Command (Join-Path $script:BundledToolsDir 'delphi-dccbuild.ps1')).Parameters['Verbosity'].Attributes |
+                    Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] } |
+                    ForEach-Object { $_.ValidValues }
+                @($dccAccepts) | Should -Not -BeNullOrEmpty -Because 'the DCC tool must declare a Verbosity ValidateSet'
+
+                foreach ($v in $script:AllVerbosities) {
+                    $script:ForwardedVerb.Clear()
+                    Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity $v | Out-Null
+                    $script:ForwardedVerb[0] | Should -BeIn $dccAccepts -Because "-BuildVerbosity '$v' must reach the DCC tool as a value it can bind"
+                }
+            }
+
+            It 'forwards every module verbosity verbatim for the MSBuild engine' {
+                # The mapping must not leak into MSBuild, whose tool accepts all five natively.
+                foreach ($v in $script:AllVerbosities) {
+                    $script:ForwardedVerb.Clear()
+                    Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dproj' -BuildEngine MSBuild -BuildVerbosity $v | Out-Null
+                    $script:ForwardedVerb[0] | Should -Be $v
+                }
+            }
+
+            It 'returns a result carrying the build output for every verbosity under DCCBuild' {
+                # The acceptance criterion as the CALLER sees it: the three previously broken
+                # values must produce a result that came from the build, not the all-zero,
+                # no-output shape of a build that never ran.
+                foreach ($v in $script:AllVerbosities) {
+                    $result = Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -BuildVerbosity $v
+                    $result.Success | Should -Be $true          -Because "verbosity '$v' must reach the DCC tool"
+                    $result.Output  | Should -Be 'build output text' -Because "verbosity '$v' must not silently skip the build"
+                    $result.Hints   | Should -Be 2              -Because "verbosity '$v' must surface real counts, not a zeroed stand-in"
+                }
+            }
+
+        }
+
         Context 'engine routing' {
 
             It 'passes Engine MSBuild to pipeline for MSBuild engine' {
@@ -548,11 +648,14 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-inspect.ps1') `
                 -Value "Set-Content -LiteralPath '$marker' -Value 'called'; Write-Output '{}'"
 
-            # A fake build tool that records the -RootDir it received.
+            # A fake build tool that records the -RootDir it received. It must also write the
+            # result file: since #26 a tool that writes none is a failure regardless of its
+            # exit code, so a fake that skips it is no longer a stand-in for a real build.
             $rootArgFile = Join-Path $TestDrive 'build-rootdir.txt'
             Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-msbuild.ps1') -Value @"
 param([string]`$RootDir, [string]`$OutputFile, [Parameter(ValueFromRemainingArguments)]`$Rest)
 Set-Content -LiteralPath '$rootArgFile' -Value `$RootDir
+Set-Content -LiteralPath `$OutputFile -Value '{"warnings":0,"errors":0,"output":"fake build output"}'
 "@
 
             # The explicit root must exist (Test-Path -PathType Container).
@@ -665,6 +768,167 @@ Set-Content -LiteralPath $OutputFile -Value '{"warnings":4,"errors":0,"exeOutput
 
     }
 
+    Describe 'Invoke-BuildPipeline -- a tool that produced no result is a failure' {
+
+        # ISSUE #26. This is the shape that makes EVERY unbindable-argument bug silent, so it is
+        # tested directly rather than only through the verbosity case that exposed it. A .ps1 that
+        # fails parameter binding never runs its body and never sets an exit code, and a
+        # PowerShell process that exits without one exits 0 -- so the pipeline used to return
+        # Success with $null Output and zero Hints/Warnings/Errors, indistinguishable from a
+        # genuinely clean build and enough to pass a failOnWarning/failOnHint gate (#24) on a
+        # project nobody compiled.
+
+        BeforeAll {
+            Mock Write-Error {}
+
+            # Builds a fake-tools dir whose build tool behaves as described, and runs the real
+            # pipeline against it with an explicit root (so no inspect subprocess is involved).
+            function script:Invoke-FakeToolPipeline {
+                param([string]$Name, [string]$ToolBody, [string]$Engine = 'DCCBuild')
+
+                $fakeDir = Join-Path $TestDrive $Name
+                New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+                $toolName = if ($Engine -eq 'DCCBuild') { 'delphi-dccbuild.ps1' } else { 'delphi-msbuild.ps1' }
+                Set-Content -LiteralPath (Join-Path $fakeDir $toolName) -Value $ToolBody
+
+                $root = Join-Path $TestDrive "$Name-root"
+                New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+                $saved = $script:BundledToolsDir
+                $script:BundledToolsDir = $fakeDir
+                try {
+                    Invoke-BuildPipeline `
+                        -BuildArgs       @('-ProjectFile', 'C:\Fake\App.dpr', '-Verbosity', 'minimal', '-ShowOutput') `
+                        -Engine          $Engine `
+                        -ExplicitRootDir $root
+                }
+                finally { $script:BundledToolsDir = $saved }
+            }
+        }
+
+        It 'fails when the child cannot bind an argument, even though the child exits 0' {
+            # The #26 defect reproduced at the layer that has to catch it: a ValidateSet the
+            # forwarded value is not in. No -OutputFile is written because the body never runs.
+            $result = script:Invoke-FakeToolPipeline -Name 'bindfail-tools' -ToolBody @'
+param(
+  [string]$RootDir,
+  [string]$OutputFile,
+  [string]$ProjectFile,
+  [ValidateSet('quiet','normal')][string]$Verbosity = 'normal',
+  [switch]$ShowOutput
+)
+Set-Content -LiteralPath $OutputFile -Value '{"hints":0,"warnings":0,"errors":0,"output":"compiled"}'
+'@
+
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Not -Be 0
+        }
+
+        It 'surfaces the child stderr in the error message so the cause is diagnosable' {
+            script:Invoke-FakeToolPipeline -Name 'bindfail-stderr-tools' -ToolBody @'
+param(
+  [string]$RootDir,
+  [string]$OutputFile,
+  [string]$ProjectFile,
+  [ValidateSet('quiet','normal')][string]$Verbosity = 'normal',
+  [switch]$ShowOutput
+)
+Set-Content -LiteralPath $OutputFile -Value '{"warnings":0,"errors":0}'
+'@ | Out-Null
+
+            # The binding error names the offending parameter; without it the failure message
+            # would say only "no result file" and leave the caller nothing to act on.
+            Should -Invoke Write-Error -ParameterFilter { $Message -like "*Verbosity*" }
+            Should -Invoke Write-Error -ParameterFilter { $Message -like "*no result file*" }
+        }
+
+        It 'fails when the tool writes no result file at all despite exiting 0' {
+            # The general case: any tool that returns without writing -OutputFile. Exiting 0 is
+            # not evidence a build happened.
+            $result = script:Invoke-FakeToolPipeline -Name 'noresult-tools' -ToolBody @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+exit 0
+'@
+
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Be 3
+        }
+
+        It 'fails when the result file is present but malformed' {
+            $result = script:Invoke-FakeToolPipeline -Name 'badjson-tools' -ToolBody @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+Set-Content -LiteralPath $OutputFile -Value 'this is not json {'
+'@
+
+            $result.Success | Should -Be $false
+        }
+
+        It 'carries the full property set on the no-result failure so a StrictMode caller can read it' {
+            # Invoke-DelphiBuild dereferences every count; a partial object would throw there
+            # instead of here, which is why the shape is asserted at the source.
+            $result = script:Invoke-FakeToolPipeline -Name 'noresult-shape-tools' -ToolBody @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+exit 0
+'@
+
+            foreach ($p in @('ExitCode', 'Success', 'Hints', 'Warnings', 'Errors', 'ExeOutputDir', 'Output')) {
+                $result.PSObject.Properties[$p] | Should -Not -BeNullOrEmpty -Because "a StrictMode caller reads .$p"
+            }
+        }
+
+        It 'keeps the child exit code when the tool failed loudly AND wrote no result' {
+            # A non-zero child code is more informative than the pipeline's own 3, so it wins.
+            $result = script:Invoke-FakeToolPipeline -Name 'loudfail-tools' -ToolBody @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+exit 9
+'@
+
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Be 9
+        }
+
+        It 'does NOT fail a build whose result file reports empty output' {
+            # EMPTINESS OF .output IS NOT THE TEST. 'quiet' legitimately produces no build
+            # output -- Invoke-TestBuild passes -Verbosity quiet on every test build -- so
+            # gating on empty output would fail real, clean builds. A missing result file never
+            # happens on a tool that ran to completion; an empty .output routinely does.
+            $result = script:Invoke-FakeToolPipeline -Name 'quietok-tools' -ToolBody @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+Set-Content -LiteralPath $OutputFile -Value '{"hints":0,"warnings":0,"errors":0,"output":""}'
+'@
+
+            $result.Success | Should -Be $true
+            $result.Output  | Should -Be ''
+        }
+
+        It 'surfaces the no-result failure through Invoke-DelphiBuild as an unsuccessful step' {
+            # End to end: the guard must reach the public result object, not just the private
+            # helper, since that object is what a CI gate reads.
+            $fakeDir = Join-Path $TestDrive 'public-noresult-tools'
+            New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $fakeDir 'delphi-dccbuild.ps1') -Value @'
+param([string]$RootDir, [string]$OutputFile, [Parameter(ValueFromRemainingArguments)]$Rest)
+exit 0
+'@
+            $root = Join-Path $TestDrive 'public-noresult-root'
+            New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+            Mock Write-DelphiCiMessage {}
+
+            $saved = $script:BundledToolsDir
+            $script:BundledToolsDir = $fakeDir
+            try {
+                $result = Invoke-DelphiBuild -ProjectFile 'C:\Fake\App.dpr' -BuildEngine DCCBuild -ToolchainRootDir $root
+            }
+            finally { $script:BundledToolsDir = $saved }
+
+            $result.Success  | Should -Be $false
+            $result.ExitCode | Should -Not -Be 0
+            Should -Invoke Write-DelphiCiMessage -ParameterFilter { $Level -eq 'ERROR' }
+        }
+
+    }
+
     Describe 'Invoke-BuildPipeline -- multi-value array forwarding' {
 
         # Exercises the REAL (unmocked) pipeline against a fake build tool that
@@ -702,6 +966,7 @@ param(
   namespace      = `$Namespace
   define         = `$Define
 } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+Set-Content -LiteralPath `$OutputFile -Value '{"hints":0,"warnings":0,"errors":0,"output":"fake build output"}'
 "@
 
             $explicitRoot = Join-Path $TestDrive 'fake-root'
@@ -752,6 +1017,7 @@ param(
   [switch]`$ShowOutput
 )
 [PSCustomObject]@{ namespace = `$Namespace } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+Set-Content -LiteralPath `$OutputFile -Value '{"hints":0,"warnings":0,"errors":0,"output":"fake build output"}'
 "@
 
             $explicitRoot = Join-Path $TestDrive 'fake-root-single'
@@ -789,6 +1055,7 @@ param(
   [switch]`$ShowOutput
 )
 [PSCustomObject]@{ noConfig = [bool]`$NoConfig } | ConvertTo-Json -Compress | Set-Content -LiteralPath '$recordLiteral'
+Set-Content -LiteralPath `$OutputFile -Value '{"hints":0,"warnings":0,"errors":0,"output":"fake build output"}'
 "@
 
             $explicitRoot = Join-Path $TestDrive 'fake-root-noconfig'

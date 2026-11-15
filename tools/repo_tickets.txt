@@ -839,6 +839,7 @@ Acceptance criteria:
 ---
 Title: DCCBuild with -BuildVerbosity minimal/detailed/diagnostic returns a clean SUCCESS for a build that never ran
 Issue: #26
+Status: closed
 Labels: bug
 Body:
 Measured while implementing #24, on radSecureSocket's tree with Delphi 13:

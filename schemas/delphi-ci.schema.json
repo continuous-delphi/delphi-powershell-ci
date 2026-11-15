@@ -160,7 +160,7 @@
           "type": "string",
           "enum": ["quiet", "minimal", "normal", "detailed", "diagnostic"],
           "default": "normal",
-          "description": "Build output verbosity."
+          "description": "Build output verbosity. Forwarded verbatim to MSBuild. The DCCBuild engine has only two levels, so values are mapped for it: minimal -> quiet, detailed/diagnostic -> normal. quiet and minimal cannot be combined with failOnWarning/failOnHint."
         },
         "target": {
           "type": "string",

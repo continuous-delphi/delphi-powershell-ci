@@ -168,3 +168,48 @@ name. #23's entry is `[0.4.29]` on that basis (psd1 read `0.4.28`). Note
 `delphi-dccbuild` does NOT have this drift -- its `$script:Version` and
 CHANGELOG top agreed at `0.4.14`, and `tools/tag-release.ps1` there validates
 that they match, which is why the error cannot accumulate in that repo.
+
+## A child .ps1 whose parameters fail to bind exits 0, so the parent sees success
+
+_Type: project. Recorded 2026-11-15 (during #26)._
+
+`Invoke-BuildPipeline` runs the bundled build tools in a child `pwsh`. If an
+argument fails the CHILD's parameter binding (a `ValidateSet` it is not in, a
+parameter that does not exist), PowerShell writes the binding error to stderr
+and never runs the script body -- so `$LASTEXITCODE` is never set and the child
+process exits **0**. Measured directly: a fake tool given a `-Verbosity` outside
+its set produced `child exit code: 0`, a zero-byte result file, and the binding
+error on stderr only.
+
+The parent therefore read exit 0 and reported `Success = $true` with `$null`
+`Output` and zero `Hints`/`Warnings`/`Errors` -- byte-identical to a clean
+build. That is how `-BuildEngine DCCBuild -BuildVerbosity minimal` passed a
+`failOnWarning` gate on a project that was never compiled (#26).
+
+**Why:** exit code is the only signal most of this code trusts across the
+process boundary, and in this one case it is actively wrong rather than merely
+uninformative. Every `[ValidateSet]` on a public parameter is a potential
+instance: `Invoke-DelphiBuild` validates against msbuild's five verbosity levels
+while `delphi-dccbuild.ps1` accepts two.
+
+**How to apply:** two rules, both now in the code.
+1. A parameter forwarded to a bundled tool must be checked against THAT tool's
+   accepted set, not the module's. Map it in `Invoke-DelphiBuild` (as verbosity
+   now is: `minimal`->`quiet`, `detailed`/`diagnostic`->`normal` for DCCBuild)
+   or reject it the way `IncludePath`/`Namespace`/`NoConfig` are rejected for
+   MSBuild. A test can read the tool's real set without hard-coding it:
+   `(Get-Command <tool>.ps1).Parameters['X'].Attributes` filtered to
+   `[ValidateSetAttribute]` and read via `.ValidValues`.
+2. The general guard is RESULT-FILE PRESENCE, not exit code and not output
+   emptiness. `-OutputFile` is passed on every invocation and both tools write
+   it before returning, so a missing/unparseable result file means the tool
+   never reached its end -- `Invoke-BuildPipeline` now fails on that whatever
+   the child exited with, and surfaces the captured stderr so the binding error
+   is readable. Do NOT gate on empty `.output`: `quiet` legitimately produces
+   none and `Invoke-TestBuild` passes `-Verbosity quiet` on every test build.
+
+Also measured, and contrary to its documentation: dcc32 `-Q` did NOT suppress
+diagnostics on Delphi 13 (compiler 37.0) -- a project with one `W1036` and two
+`H2164`s still reported `Hints=2 Warnings=1` under it. The suppression is
+version-dependent, so do not rely on it in either direction; that is why #24's
+refusal of a gate combined with `quiet`/`minimal` stays in place.

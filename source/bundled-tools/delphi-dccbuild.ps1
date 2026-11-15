@@ -332,7 +332,7 @@ $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 $ExitOutputDirError   = 6
 
-$script:Version = '0.4.15'
+$script:Version = '0.4.16'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script

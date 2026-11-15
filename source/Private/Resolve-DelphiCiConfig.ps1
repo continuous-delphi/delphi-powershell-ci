@@ -742,8 +742,9 @@ function Assert-BuildConfig {
     #   MSBuild  normal  -> Warnings=1   (delphi-msbuild parses the "N Warning(s)" summary line,
     #                                     which msbuild omits below normal)
     #   DCCBuild quiet   -> dcc -Q, documented to suppress hints and warnings outright
-    # DCCBuild's minimal/detailed/diagnostic are broken for a different reason and are issue #26,
-    # not this check: the tool accepts only quiet/normal, so the others compile nothing at all.
+    #   DCCBuild minimal -> mapped to dcc -Q by Invoke-DelphiBuild (#26), so it suppresses too --
+    #                       which is why 'minimal' is refused here for BOTH engines, not msbuild
+    #                       alone. DCCBuild's detailed/diagnostic map to 'normal' and are fine.
     $gatesOn = (($Config.ContainsKey('failOnWarning') -and $Config['failOnWarning']) -or
                 ($Config.ContainsKey('failOnHint')    -and $Config['failOnHint']))
     if ($gatesOn -and $Config.ContainsKey('verbosity') -and $Config['verbosity'] -in @('quiet', 'minimal')) {

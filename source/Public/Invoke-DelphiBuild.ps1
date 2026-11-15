@@ -48,6 +48,9 @@ function Invoke-DelphiBuild {
         # has no dcc32.cfg, so it is rejected for that engine.
         [switch]$NoConfig,
 
+        # Accepts msbuild's five levels for BOTH engines so one config can drive either.
+        # dcc32 has no five-level verbosity, so the value is MAPPED for DCCBuild rather
+        # than forwarded -- see $toolVerbosity below.
         [ValidateSet('quiet', 'minimal', 'normal', 'detailed', 'diagnostic')]
         [string]$BuildVerbosity = 'normal',
 
@@ -75,6 +78,36 @@ function Invoke-DelphiBuild {
     $expectedExt = if ($BuildEngine -eq 'DCCBuild') { '.dpr' } else { '.dproj' }
     if ([System.IO.Path]::GetExtension($ProjectFile) -ne $expectedExt) {
         $ProjectFile = [System.IO.Path]::ChangeExtension($ProjectFile, $expectedExt)
+    }
+
+    # VERBOSITY IS MAPPED PER ENGINE, NOT FORWARDED VERBATIM (#26).
+    # -BuildVerbosity takes msbuild's five levels for every engine so a single config can
+    # drive both, but delphi-dccbuild.ps1 accepts only quiet/normal -- dcc32 has no
+    # five-level verbosity. Passing 'minimal', 'detailed' or 'diagnostic' straight through
+    # failed the child process's parameter binding, and a PowerShell script that exits
+    # without setting a code exits 0, so the module reported Success with no output, no
+    # counts and no compiler run at all. Mapping keeps every value in the ValidateSet
+    # meaningful for both engines and changes no caller:
+    #   minimal             -> quiet   (dcc -Q; both mean "say as little as possible")
+    #   detailed/diagnostic -> normal  (dcc has nothing more verbose than its default)
+    #   quiet/normal        -> unchanged (accepted by both tools as-is)
+    # A mapped 'minimal' inherits dcc -Q, which is DOCUMENTED to suppress hints and warnings.
+    # Measured on Delphi 13 (compiler 37.0) it did not -- a project with one W1036 and two
+    # H2164s still reported Hints=2 Warnings=1 under -Q -- so the suppression is
+    # version-dependent and must not be relied on either way. That is why Assert-BuildConfig
+    # still refuses failOnWarning/failOnHint with quiet or minimal (#24): a gate may not
+    # depend on a toolchain-version-specific behaviour.
+    $toolVerbosity = $BuildVerbosity
+    if ($BuildEngine -eq 'DCCBuild') {
+        $toolVerbosity = switch ($BuildVerbosity) {
+            'minimal'    { 'quiet' }
+            'detailed'   { 'normal' }
+            'diagnostic' { 'normal' }
+            default      { $BuildVerbosity }
+        }
+        if ($toolVerbosity -ne $BuildVerbosity) {
+            Write-Verbose "BuildVerbosity '$BuildVerbosity' mapped to dcc verbosity '$toolVerbosity' (the DCCBuild engine supports only quiet and normal)."
+        }
     }
 
     $tool      = if ($BuildEngine -eq 'DCCBuild') { 'delphi-dccbuild.ps1' } else { 'delphi-msbuild.ps1' }
@@ -107,7 +140,7 @@ function Invoke-DelphiBuild {
         '-Platform',    $Platform,
         '-Config',      $Configuration,
         '-Target',      $BuildTarget,
-        '-Verbosity',   $BuildVerbosity,
+        '-Verbosity',   $toolVerbosity,
         '-ShowOutput'
     )
     if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) {

@@ -246,6 +246,15 @@ what failed). Which key you want depends on the engine: under MSBuild the
 `N Warning(s)` total already includes Delphi hints, so `failOnWarning` gates
 both and `failOnHint` can never fire; under DCCBuild the two counts are disjoint
 and "no diagnostics" needs both. Setting both is harmless under either.
+A gate cannot be combined with `verbosity` `quiet` or `minimal` -- that config is
+refused, because those levels suppress what the counts are read from (msbuild
+omits its `N Warning(s)` summary below `normal`; dcc gets `-Q`), so the gate
+would read 0 while the diagnostics sat in the build log.
+
+`verbosity` takes msbuild's five levels under **both** engines, but the DCCBuild
+engine has only two, so values are mapped for it rather than forwarded:
+`minimal` -> `quiet`, `detailed` and `diagnostic` -> `normal`, `quiet` and
+`normal` unchanged. MSBuild receives whatever was asked for verbatim.
 
 When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
 Without a config file, `Invoke-DelphiCi` generates a pipeline from `-Steps`
@@ -409,6 +418,16 @@ there as a warning), so there is no separate tally to report. `delphi-dccbuild.p
 keeps the two disjoint and reports `hints` of its own. A caller gating "no
 diagnostics" therefore wants `Warnings -eq 0 -and Hints -eq 0`, which is correct
 under both engines; reading `Hints` alone as an absence of hints is not.
+
+A build step fails when the build tool reported **no result at all**, even if
+that tool exited 0, and the child process's stderr is surfaced in the error
+message. The bundled tools always write a structured result file before
+returning, so a missing one means the tool never reached its end -- most often
+because an argument failed to bind, which in PowerShell skips the script body
+without setting an exit code. Previously that surfaced as `Success = $true` with
+`$null` `Output` and zero counts: identical to a clean build, and enough to pass
+a diagnostic gate on a project nobody compiled. (An *empty* `Output` on an
+otherwise valid result is not a failure -- `quiet` legitimately produces none.)
 
 ---
 

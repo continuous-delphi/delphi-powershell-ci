@@ -115,11 +115,28 @@ Default:  (empty)
 
 ### -BuildVerbosity
 
-Controls the verbosity of the build tool output.
+Controls the verbosity of the build tool output. All five of msbuild's levels are
+accepted for **both** engines, so one config can drive either.
 
-- MSBuild: maps to `/v:<level>`. All five levels are accepted.
-- DCCBuild: accepts `quiet` (adds `-Q` to suppress hints/warnings) and
-  `normal`. Other values are passed through and may be rejected by the tool.
+- MSBuild: forwarded verbatim as `/v:<level>`.
+- DCCBuild: **mapped**, because `dcc32` has no five-level verbosity and
+  `delphi-dccbuild.ps1` accepts only `quiet` and `normal`:
+
+  | `-BuildVerbosity`      | reaches DCCBuild as          |
+  | ---------------------- | ---------------------------- |
+  | `quiet`                | `quiet` (adds `-Q`)          |
+  | `minimal`              | `quiet` (adds `-Q`)          |
+  | `normal`               | `normal`                     |
+  | `detailed`             | `normal`                     |
+  | `diagnostic`           | `normal`                     |
+
+  `-Q` is documented to suppress hints and warnings, though measured on Delphi 13
+  (compiler 37.0) it did not suppress either -- the behaviour is version-dependent,
+  so do not rely on it in either direction.
+
+Note `quiet` and `minimal` cannot be combined with `failOnWarning` / `failOnHint`;
+the config is refused, because under MSBuild those levels omit the `N Warning(s)`
+summary line the counts are parsed from, and under DCCBuild they pass `-Q`.
 
 ```
 Type:     String
@@ -244,9 +261,9 @@ Returns a `PSCustomObject` with the following fields.
 | Field         | Type     | Notes |
 |--------------|----------|-------|
 | `StepName`   | String   | Always `'Build'` |
-| `Success`    | Boolean  | `$true` when the build exits with code 0. Inside a pipeline, `Invoke-DelphiCi` sets this to `$false` when a diagnostic gate trips -- see below |
+| `Success`    | Boolean  | `$true` when the build exits with code 0 **and** the build tool reported a result -- a tool that produced no result file is a failure even if it exited 0, see below. Inside a pipeline, `Invoke-DelphiCi` sets this to `$false` when a diagnostic gate trips -- see below |
 | `Duration`   | TimeSpan | Wall-clock time including toolchain detection |
-| `ExitCode`   | Int32    | Exit code from the build tool |
+| `ExitCode`   | Int32    | Exit code from the build tool; `3` when the tool reported no result but exited 0 |
 | `Tool`       | String   | `'delphi-msbuild.ps1'` or `'delphi-dccbuild.ps1'` |
 | `Message`    | String   | `'Build completed'` on success; `'Exit code N'` on failure |
 | `ProjectFile`| String   | The path passed via `-ProjectFile` |
@@ -264,6 +281,23 @@ report. `delphi-dccbuild.ps1` keeps the two disjoint and reports a `hints` count
 of its own. A caller gating "no diagnostics" therefore wants
 `Warnings -eq 0 -and Hints -eq 0`, which is correct under either engine; reading
 `Hints` alone as an absence of hints is not.
+
+### A build tool that reported no result is a failure
+
+The bundled build tools are always invoked with an `-OutputFile` and write their
+structured result to it before returning. If that result is missing or
+unparseable, the step fails -- **even when the tool exited 0** -- with the child
+process's stderr included in the error message.
+
+This matters because a `.ps1` whose parameters fail to bind never runs its body
+and never sets an exit code, and a PowerShell process that exits without one
+exits 0. Without this check the module reported `Success = $true` with `$null`
+`Output` and zero `Hints`/`Warnings`/`Errors` -- indistinguishable from a
+genuinely clean build, and enough to pass a `failOnWarning` / `failOnHint` gate
+on a project that was never compiled.
+
+An **empty** `Output` on an otherwise valid result is *not* a failure: `quiet`
+legitimately produces no build output.
 
 ---
 

@@ -115,16 +115,53 @@ function Invoke-BuildPipeline {
     $paramFileLiteral = "'" + ($paramFile     -replace "'", "''") + "'"
     $childCommand = "`$p = Import-Clixml -LiteralPath $paramFileLiteral; & $toolPathLiteral @p; exit `$LASTEXITCODE"
 
+    # The child's stderr is captured to a file rather than left to flow into this process's
+    # error stream, because a build that produced no result file is diagnosed from it below
+    # (see the no-result guard) and the text has to be in hand to put in the error message --
+    # a parameter-binding failure says which parameter, and discarding that leaves the caller
+    # with nothing to act on. It is echoed to the host either way, so nothing the child wrote
+    # stops being visible; the one cost is that stderr now lands as a block after the build
+    # rather than interleaved with the streamed stdout.
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+
     try {
-        & $script:PowerShellExe -NoProfile -NonInteractive -Command $childCommand | Out-Host
+        & $script:PowerShellExe -NoProfile -NonInteractive -Command $childCommand 2>$stderrFile | Out-Host
         $buildExit = $LASTEXITCODE
+
+        $childStderr = ''
+        try {
+            $childStderr = (Get-Content -LiteralPath $stderrFile -Raw -ErrorAction Stop)
+            if ($null -eq $childStderr) { $childStderr = '' }
+        }
+        catch { $childStderr = '' }
+        if (-not [string]::IsNullOrWhiteSpace($childStderr)) { $childStderr.TrimEnd() | Out-Host }
 
         $toolResult = $null
         try {
             $raw = Get-Content -LiteralPath $resultFile -Raw -ErrorAction Stop
             $toolResult = $raw | ConvertFrom-Json
         }
-        catch { <# result file missing or malformed; fall back to exit-code only #> }
+        catch { <# result file missing or malformed; handled by the no-result guard below #> }
+
+        # A BUILD TOOL THAT WROTE NO RESULT IS A FAILURE, WHATEVER IT EXITED WITH (#26).
+        # -OutputFile is passed on every invocation and both bundled tools write it before
+        # returning, so a missing or unparseable result file means the tool did not reach
+        # its end -- and the way it most often does not is a parameter the child cannot
+        # bind. That failure used to be invisible: the child's binding error went to stderr,
+        # the script body never ran, and a PowerShell script that exits without setting a
+        # code exits 0, so this function returned Success with $null Output and zero
+        # Hints/Warnings/Errors -- indistinguishable from a genuinely clean build, and
+        # enough to pass a failOnWarning/failOnHint gate on a project nobody compiled.
+        # Issue #26 measured it with -BuildVerbosity minimal under DCCBuild; the mapping in
+        # Invoke-DelphiBuild fixes that particular argument, and this guard is what catches
+        # the next one. Note this is deliberately NOT a test of whether .output is empty:
+        # 'quiet' legitimately produces no build output (Invoke-TestBuild relies on it), so
+        # emptiness is normal while a missing result file never is.
+        if ($null -eq $toolResult) {
+            $detail = if (-not [string]::IsNullOrWhiteSpace($childStderr)) { " Child process stderr: $($childStderr.Trim())" } else { ' The child process wrote nothing to stderr.' }
+            Write-Error "$buildToolName produced no result file (exit code $buildExit), so no build can be assumed to have run.$detail"
+            return & $newFailure $(if ($buildExit -ne 0) { $buildExit } else { 3 })
+        }
 
         # Read result properties defensively: the two engines emit different
         # result shapes. Both carry warnings/errors, but only delphi-dccbuild
@@ -159,5 +196,6 @@ function Invoke-BuildPipeline {
     finally {
         Remove-Item -LiteralPath $resultFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $paramFile  -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
     }
 }

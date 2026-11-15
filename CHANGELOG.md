@@ -3,6 +3,42 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.31]
+- `-BuildVerbosity` is now MAPPED per engine instead of forwarded verbatim, and
+  a build tool that reports no result at all is now a FAILURE. Both halves fix
+  the same defect: `-BuildEngine DCCBuild` with `-BuildVerbosity minimal`,
+  `detailed` or `diagnostic` returned `Success=True ExitCode=0 Output=''` with
+  zero Hints/Warnings/Errors for a build that never compiled anything.
+  `Invoke-DelphiBuild` validates the verbosity against msbuild's five levels and
+  passed the value to whichever tool was selected, but `delphi-dccbuild.ps1`
+  accepts only `quiet` and `normal` -- dcc32 has no five-level verbosity -- so
+  the other three failed the CHILD process's parameter binding, which skips the
+  script body without setting an exit code, and a PowerShell process that exits
+  without one exits 0. The result was indistinguishable from a genuinely clean
+  build, so the `failOnWarning`/`failOnHint` gates added in 0.4.30 passed on a
+  project nobody had compiled.
+  - All five levels are still accepted for both engines so one config can drive
+    either, but under DCCBuild `minimal` now maps to `quiet` and
+    `detailed`/`diagnostic` map to `normal`; `quiet`/`normal` and every MSBuild
+    value are unchanged. No caller has to change.
+  - `Invoke-BuildPipeline` now treats a missing or unparseable result file as a
+    failure whatever the child exited with, and surfaces the child's stderr in
+    the error message (so the binding error that caused it is readable rather
+    than discarded). That is the half that catches the NEXT unmapped argument
+    rather than just this one, and it moves a guard consumers were writing
+    locally -- radSecureSocket's `tools/Build-Harnesses.ps1` treats empty build
+    output as a failure for exactly this reason -- into the module. Emptiness of
+    `Output` is deliberately NOT the test, since `quiet` legitimately produces
+    none and `Invoke-TestBuild` relies on that.
+  - Tests cover the no-result shape directly, in both the argument-binding form
+    and the general one, since it is what makes every other argument bug silent.
+    The verbosity regression test reads the accepted set from
+    `delphi-dccbuild.ps1`'s own parameter metadata rather than hard-coding it,
+    so the module and the tool cannot drift apart unnoticed again. Documented in
+    README, `docs/Invoke-DelphiBuild.md` and `schemas/delphi-ci.schema.json`
+  [#26](https://github.com/continuous-delphi/delphi-powershell-ci/issues/26)
+
+---
 ## [0.4.30]
 - Add `failOnWarning` and `failOnHint` to the Build action (and
   `-BuildFailOnWarning` / `-BuildFailOnHint` on `Invoke-DelphiCi`,
