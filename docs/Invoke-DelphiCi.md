@@ -30,6 +30,8 @@ Invoke-DelphiCi
     [-IncludePath <String[]>]
     [-Namespace <String[]>]
     [-NoConfig]
+    [-BuildFailOnWarning]
+    [-BuildFailOnHint]
     [-CleanLevel <String>]
     [-CleanOutputLevel <String>]
     [-CleanIncludeFilePattern <String[]>]
@@ -152,11 +154,20 @@ Action types to include in the pipeline. Valid values: `Clean`, `Build`,
 
 CLI shorthand: creates a single build job with this project file.
 
-### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace, -NoConfig
+### -Platform, -Configuration, -Toolchain, -BuildEngine, -Defines, -BuildVerbosity, -BuildTarget, -ExeOutputDir, -DcuOutputDir, -UnitSearchPath, -IncludePath, -Namespace, -NoConfig, -BuildFailOnWarning, -BuildFailOnHint
 
 Build defaults. Apply to all build jobs through the merge chain.
 See `Invoke-DelphiBuild` for descriptions. `-NoConfig` (DCCBuild-only) skips
 loading the toolchain's `dcc32.cfg`.
+
+`-BuildFailOnWarning` and `-BuildFailOnHint` fail the run when a build reports
+warnings or hints. Neither engine does that by itself, which is why the gate is
+here. When one trips, that step's own `Success` becomes `$false` and its
+`Message` names the counts, while `ExitCode` stays as the tool returned it. Note
+which key to use: under MSBuild the warning total already includes Delphi hints,
+so `-BuildFailOnWarning` gates both and `-BuildFailOnHint` can never fire; under
+DCCBuild the two counts are disjoint and "no diagnostics" needs both. See
+`docs/Invoke-DelphiBuild.md` for the table.
 
 ### -CleanLevel, -CleanOutputLevel, -CleanIncludeFilePattern, -CleanExcludeDirectoryPattern, -CleanConfigFile, -CleanRecycleBin, -CleanCheck
 

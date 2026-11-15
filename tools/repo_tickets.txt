@@ -720,4 +720,183 @@ Acceptance criteria:
 - [ ] README's result-shape note lists `Hints`
 - [ ] `pwsh -File ./tests/run-tests.ps1` passes, PSScriptAnalyzer gate included
 - [ ] CHANGELOG.md updated
+---
+Title: Gate a build job on warnings and hints (failOnWarning / failOnHint), honoured beside the Success check
+Issue: #24
+Status: closed
+Labels: enhancement
+Body:
+`Invoke-DelphiCi`'s build branch ends with
+`if (-not $result.Success) { $overallSuccess = $false; break pipeline }` and never reads the
+counts. `Invoke-DelphiBuild` returns `Warnings`, `Errors` and (since #23) `Hints`, and both
+bundled engines populate them -- but neither engine FAILS a build on a warning, and msbuild
+certainly does not. So a repo whose standard is "zero warnings as well as zero errors" cannot
+enforce it through this module at all; it is enforced by a human reading the log, or not at all.
+
+MEASURED IN A CONSUMER, which is why this is filed rather than assumed. radSecureSocket's
+standing rule is "both platforms, and zero warnings as well as zero errors -- a warning here has
+twice been a real defect" (an uninitialised variable W1036, and a dead store H2077 hiding a
+missing assignment). Its pipeline has never failed on either: the Build action gates on Success,
+and the two defect classes it names are exactly the ones a Success-only gate cannot see. It ended
+up writing its own warning-and-hint gate in a repo-local script for the ONE project kind that
+script builds, which leaves the library and the test suite -- the code that matters -- ungated,
+and leaves every other repo on this module with the weaker gate.
+
+THE SHAPE PROPOSED, deliberately narrow:
+- Two booleans on the build action/job, `failOnWarning` and `failOnHint`, both defaulting to
+  false so no existing pipeline changes behaviour.
+- Honoured in the build branch where the Success check already is, because `break pipeline` lives
+  there. A direct `Invoke-DelphiBuild` caller keeps reading `.Warnings`/`.Hints` itself -- that is
+  what a per-build reporter wants, and it is already what radSecureSocket's harness stage does.
+- When a gate trips, the STEP RESULT must say so too, not just the overall run: set its `Success`
+  to false and its `Message` to the reason. A step reporting Success while the run fails is a
+  reporting defect, and `tools/delphi-ci.ps1` maps overall success to the exit code.
+- `ExitCode` stays whatever the tool returned (0), because the compiler did succeed and the GATE
+  is what failed. Document that pairing rather than faking a non-zero code.
+
+TWO BOOLEANS AND NOT ONE, because the engines differ and the difference is already documented in
+this repo (see #23): under MSBuild `Hints` is always 0 and Delphi hints are already inside the
+`N Warning(s)` total, so `failOnWarning` catches them and `failOnHint` can never fire; under
+DCCBuild the two counts are disjoint, so "no diagnostics" needs both. One combined key would have
+to pick one of those meanings and be wrong under the other engine.
+
+A `maxWarnings` budget is NOT proposed. Nobody has asked to ratchet a count down, "equals zero"
+is the standard every consumer states, and a boolean cannot be misread the way `maxWarnings: 0`
+versus unset can. It can be added later without breaking these keys.
+
+Sites to touch (the schema and the resolver are both multi-site, which is where this gets missed):
+- `source/Private/Resolve-DelphiCiConfig.ps1`: the built-in `build` defaults, the build CLI
+  override layer, and `Assert-BuildConfig` if the values need validating.
+- `source/Public/Invoke-DelphiCi.ps1`: two CLI parameters following the existing flat prefixed
+  convention, their `$overrides` entries, and the gate itself in the build branch.
+- `schemas/delphi-ci.schema.json`: `buildConfig` properties plus the `buildJob` and `buildAction`
+  `$ref` lists -- three places, as `noConfig` is.
+- `tools/delphi-ci.ps1`: the wrapper shorthands, so it does not drift again (see #22).
+- `Examples/delphi-ci.json`, README's build-action and result-shape sections, and
+  `docs/Invoke-DelphiBuild.md`.
+
+Acceptance criteria:
+- [ ] A build that emits a warning FAILS the pipeline when `failOnWarning` is true, and does not
+      when it is false or absent. Measured against a real build, not only a mocked result.
+- [ ] The same for `failOnHint` under the DCCBuild engine, with the MSBuild asymmetry documented
+      rather than papered over (`Hints` is 0 there because msbuild publishes no separate tally).
+- [ ] The failing step's own result carries `Success = $false` and a message naming the counts, so
+      `Steps` and the overall result cannot disagree.
+- [ ] Neither key changes any existing pipeline's behaviour when unset.
+- [ ] A bad value (a string where a boolean belongs) fails with a clear message rather than being
+      silently truthy.
+- [ ] Schema, example config, README and the per-command doc describe both keys and the engine
+      asymmetry; `pwsh -File ./tests/run-tests.ps1` passes with the PSScriptAnalyzer gate.
+- [ ] CHANGELOG.md updated.
+---
+Title: Nothing checks that delphi-ci.schema.json matches the resolver's key set, so the two drift silently
+Issue: #25
+Labels: bug, ci
+Body:
+Found while adding the `failOnWarning` / `failOnHint` keys for #24. The schema is
+the editor-facing contract (`additionalProperties: false` on every `$defs` block,
+so it REJECTS a key it does not know), while `Resolve-DelphiCiConfig.ps1` is the
+runtime source of truth. Nothing compares them.
+
+Two ways that bites, both silent:
+- A key added to the resolver and not to the schema is valid at runtime and
+  flagged as an error by any editor validating against the schema. The author
+  sees a red squiggle on working config.
+- A key added to the schema and not to the resolver completes in the editor and
+  is then ignored at runtime. The author sees config that appears to work and
+  does nothing -- which is the worse direction for anything gate-shaped.
+
+WHY IT IS EASY TO MISS: a build key has to be added in THREE schema places (the
+`buildConfig` `properties` block, plus the `buildJob` and `buildAction` `$ref`
+lists), and the tests cover none of them -- `tests/pwsh/` has no test that opens
+`schemas/delphi-ci.schema.json` at all. #24 added two keys to all three places by
+hand, verified only by reading the file.
+
+Implementation notes:
+- A Pester test can do this without a JSON-Schema library: load the schema, pull
+  `$defs.<action>Config.properties` key names, and compare against the built-in
+  defaults hashtable the resolver declares for that action. The two differ in
+  known, enumerable ways (the schema also carries the `key!` array-replacement
+  spellings and `projectFile`/`root`/`name` metadata; the resolver omits keys it
+  derives), so the test needs an explicit allow-list of permitted differences --
+  which is the point: a NEW difference then has to be declared deliberately.
+- The `$ref` lists are the other half. For each action's `*Job` and `*Action`
+  `$defs`, every property of the matching `*Config` should be reachable; a
+  missing `$ref` is the defect this ticket is really about.
+- Cheapest first step, if the full comparison is too fiddly: assert that every
+  key in each action's built-in defaults appears somewhere in the schema text.
+  That alone would have caught a forgotten `$ref`.
+
+Acceptance criteria:
+- [ ] A key present in the resolver's defaults and absent from the schema fails
+      the suite. Measured by removing one, reverted in a finally.
+- [ ] A key present in the schema's `buildConfig` but missing from the `buildJob`
+      or `buildAction` `$ref` list fails the suite.
+- [ ] Permitted differences are an explicit, commented list rather than a loose
+      comparison, so a new one has to be added deliberately.
+- [ ] The schema still parses as JSON in the test (a trailing-comma edit should
+      fail here rather than in an editor).
+---
+Title: DCCBuild with -BuildVerbosity minimal/detailed/diagnostic returns a clean SUCCESS for a build that never ran
+Issue: #26
+Labels: bug
+Body:
+Measured while implementing #24, on radSecureSocket's tree with Delphi 13:
+
+    Invoke-DelphiBuild -ProjectFile projects/TlsLoopback/TlsLoopbackSmoke.dpr `
+      -Platform Win64 -Configuration Debug -BuildEngine DCCBuild `
+      -BuildVerbosity minimal ...
+
+    Success=True  ExitCode=0  Output=''  Hints=0  Warnings=0  Errors=0
+
+No compiler ran. The project compiles cleanly at `-BuildVerbosity normal` (and
+emits a `W1036` when one is injected), so this is not a project problem -- and
+the result object is indistinguishable from a genuinely clean build.
+
+THE CAUSE IS THE VERBOSITY SET. `Invoke-DelphiBuild` validates
+`-BuildVerbosity` against msbuild's five values (quiet, minimal, normal,
+detailed, diagnostic) and forwards the value to whichever tool is selected.
+`delphi-dccbuild.ps1` accepts only `quiet` and `normal` -- dcc32 has no
+five-level verbosity -- so the other three fail its parameter binding in the
+child process. The failure is then lost: `Invoke-BuildPipeline` reads the exit
+code of a child that never produced a result file, and a PowerShell script that
+exits without a code exits 0.
+
+WHY IT MATTERS MORE SINCE #24: a diagnostic gate reads `Warnings`/`Hints` off
+that object. Zero counts from a build that never happened look exactly like zero
+counts from a clean build, so the gate passes on a project nobody compiled. A
+consumer already defends against this locally -- radSecureSocket's
+`tools/Build-Harnesses.ps1` treats empty build output as a FAILURE, with a
+comment recording the same measurement ("when the module's child process cannot
+run the build tool at all it exits 0 with $null Output and zero counts, which
+would otherwise print [OK] for twelve builds that never happened"). That guard
+belongs here, not in every consumer.
+
+Fixes to weigh, rather than a decided one:
+- MAP the verbosity per engine in `Invoke-DelphiBuild` (minimal -> quiet,
+  detailed/diagnostic -> normal for DCCBuild) so every value in the module's
+  ValidateSet is meaningful for both engines. Changes no caller.
+- Or REJECT the three values for DCCBuild with a clear error, the way
+  `includePath`/`namespace`/`noConfig` are rejected for MSBuild. Honest, but
+  turns a working-looking config into an error for anyone who set it.
+- EITHER WAY, make the silent-success case impossible: an empty `Output` from a
+  tool that was supposed to compile something should be a failure in
+  `Invoke-BuildPipeline`, with the child's stderr surfaced. That is the half
+  that protects against the next unmapped argument, not just this one.
+- Note `quiet` is its own trap and is NOT this ticket: for DCCBuild it passes
+  dcc `-Q`, documented as suppressing hints and warnings (this Delphi still
+  reported a W1036 under it, so the behaviour is version-dependent), and for
+  MSBuild both `quiet` and `minimal` suppress the `N Warning(s)` summary line
+  the engine's counts are parsed from -- measured 0 while the warning sat in
+  the log. #24 refuses a gate combined with those two for that reason.
+
+Acceptance criteria:
+- [ ] `-BuildEngine DCCBuild -BuildVerbosity minimal` either compiles the
+      project or fails loudly. It must not report Success with no output.
+- [ ] The same for `detailed` and `diagnostic`.
+- [ ] A build tool that produces no output at all is a failure, with whatever
+      the child wrote to stderr surfaced in the message.
+- [ ] A test covers the empty-output case directly, since it is the shape that
+      makes every other argument bug silent.
+- [ ] `pwsh -File ./tests/run-tests.ps1` passes; CHANGELOG.md updated.
 

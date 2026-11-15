@@ -87,6 +87,33 @@ Describe 'Get-DelphiCiConfig' {
             $config.Pipeline[1].Defaults['noConfig'] | Should -Be $true
         }
 
+        # Issue #24. Both gates default OFF, which is the half that matters for every existing
+        # pipeline: turning them on by default would fail runs that are green today.
+        It 'returns false as default build failOnWarning' {
+            $config = Get-DelphiCiConfig
+            $config.Pipeline[1].Defaults['failOnWarning'] | Should -Be $false
+        }
+
+        It 'returns false as default build failOnHint' {
+            $config = Get-DelphiCiConfig
+            $config.Pipeline[1].Defaults['failOnHint'] | Should -Be $false
+        }
+
+        It 'sets build failOnWarning true when -BuildFailOnWarning is supplied' {
+            $config = Get-DelphiCiConfig -BuildFailOnWarning
+            $config.Pipeline[1].Defaults['failOnWarning'] | Should -Be $true
+        }
+
+        It 'sets build failOnHint true when -BuildFailOnHint is supplied' {
+            $config = Get-DelphiCiConfig -BuildFailOnHint
+            $config.Pipeline[1].Defaults['failOnHint'] | Should -Be $true
+        }
+
+        It 'leaves the other gate alone when only one is supplied' {
+            $config = Get-DelphiCiConfig -BuildFailOnWarning
+            $config.Pipeline[1].Defaults['failOnHint'] | Should -Be $false
+        }
+
         It 'sets root to the current working directory' {
             $config = Get-DelphiCiConfig
             $expected = [System.IO.Path]::GetFullPath((Get-Location).Path)
@@ -225,6 +252,194 @@ Describe 'Get-DelphiCiConfig' {
 
             $config = Get-DelphiCiConfig -ConfigFile $cfgFile
             $config.Pipeline[0].Jobs[0]['noConfig'] | Should -Be $true
+        }
+
+        # Issue #24. Both scopes are tested because a job value overrides the action's, so a gate
+        # resolved correctly at one scope says nothing about the other.
+        It 'resolves an action-level failOnWarning down to the job' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "failOnWarning": true, "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['failOnWarning'] | Should -Be $true
+            $config.Pipeline[0].Jobs[0]['failOnHint']    | Should -Be $false
+        }
+
+        It 'lets a job-level failOnWarning false override an action-level true' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "failOnWarning": true, "jobs": [
+                        { "projectFile": "src/App.dproj", "failOnWarning": false }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['failOnWarning'] | Should -Be $false
+        }
+
+        It 'resolves a job-level failOnHint true from a config file' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "engine": "DCCBuild", "jobs": [
+                        { "projectFile": "src/App.dpr", "failOnHint": true }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            $config = Get-DelphiCiConfig -ConfigFile $cfgFile
+            $config.Pipeline[0].Jobs[0]['failOnHint'] | Should -Be $true
+        }
+
+    }
+
+    Context 'diagnostic gate validation' {
+
+        # A QUOTED boolean is the arrangement worth refusing: PowerShell's [bool] cast makes any
+        # non-empty string true, so "false" would read as off while gating every build in the
+        # pipeline. Both scopes are covered, since validating only the action defaults left a job
+        # able to carry anything.
+        It 'throws when an action-level failOnWarning is a string' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "failOnWarning": "false", "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Expected a boolean*'
+        }
+
+        It 'throws when a job-level failOnHint is a string' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "jobs": [
+                        { "projectFile": "src/App.dproj", "failOnHint": "true" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*Expected a boolean*'
+        }
+
+        It 'names the offending key so the error points at the right line' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "failOnHint": "yes", "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*failOnHint*'
+        }
+
+        # A gate paired with a verbosity that hides what it counts is refused, because the pair
+        # produces a gate that cannot fire -- measured: MSBuild reports Warnings=0 at 'minimal'
+        # with the warning sitting in the log, since the "N Warning(s)" summary it parses is only
+        # printed at 'normal' and above.
+        It 'throws when failOnWarning is combined with minimal verbosity' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "verbosity": "minimal", "failOnWarning": true, "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*cannot be used with verbosity*'
+        }
+
+        It 'throws when failOnHint is combined with quiet verbosity' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "engine": "DCCBuild", "verbosity": "quiet", "failOnHint": true, "jobs": [
+                        { "projectFile": "src/App.dpr" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*cannot be used with verbosity*'
+        }
+
+        It 'catches the pair when the verbosity comes from the action and the gate from the job' {
+            # The two halves can arrive at different scopes, which is why the check runs on the
+            # RESOLVED job rather than on either layer alone.
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "verbosity": "minimal", "jobs": [
+                        { "projectFile": "src/App.dproj", "failOnWarning": true }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Throw '*cannot be used with verbosity*'
+        }
+
+        It 'allows a quiet build when no gate is set' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "verbosity": "minimal", "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Not -Throw
+        }
+
+        It 'allows a gate at normal verbosity' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "verbosity": "normal", "failOnWarning": true, "jobs": [
+                        { "projectFile": "src/App.dproj" }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Not -Throw
+        }
+
+        It 'accepts real JSON booleans at both scopes' {
+            $cfgFile = Join-Path $TestDrive 'test.json'
+            $json = '{
+                "pipeline": [
+                    { "action": "Build", "failOnWarning": true, "jobs": [
+                        { "projectFile": "src/App.dproj", "failOnHint": false }
+                    ]}
+                ]
+            }'
+            Set-Content -LiteralPath $cfgFile -Value $json
+
+            { Get-DelphiCiConfig -ConfigFile $cfgFile } | Should -Not -Throw
         }
 
     }

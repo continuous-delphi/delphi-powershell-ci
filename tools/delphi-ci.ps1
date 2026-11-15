@@ -9,7 +9,8 @@ Lets callers use a single script path instead of managing module imports.
 All parameters are forwarded to Invoke-DelphiCi unchanged.
 
 Parameter surface (by design): this wrapper exposes shorthand parameters only for
-the common steps -- Clean, Build (including -ToolchainRootDir and -NoConfig), Run,
+the common steps -- Clean, Build (including -ToolchainRootDir, -NoConfig and the
+-BuildFailOnWarning / -BuildFailOnHint diagnostic gates), Run,
 and Format. The data-heavy actions -- IncVer, Copy, Compress, Coverage, CallGraph,
 and Codesign -- are intentionally NOT exposed as CLI shorthands here; drive them
 through a pipeline config with -ConfigFile .\delphi-ci.json. This keeps the
@@ -103,6 +104,15 @@ param(
 
     [Parameter(ParameterSetName = 'Run')]
     [switch]$NoConfig,
+
+    # Fail the run when a build reports warnings, and/or hints. Under MSBuild the warning total
+    # already includes Delphi hints, so -BuildFailOnWarning gates them and the hint count is always
+    # 0; under DCCBuild the two are disjoint and "no diagnostics" needs both.
+    [Parameter(ParameterSetName = 'Run')]
+    [switch]$BuildFailOnWarning,
+
+    [Parameter(ParameterSetName = 'Run')]
+    [switch]$BuildFailOnHint,
 
     [Parameter(ParameterSetName = 'Run')]
     [ValidateSet('basic', 'standard', 'deep')]

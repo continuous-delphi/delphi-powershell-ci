@@ -122,7 +122,10 @@ InModuleScope 'Delphi.PowerShell.CI' {
             [string]$ProjectFile = 'C:\Fake\Source\App.dproj',
             [string[]]$Platform = @('Win32'),
             [string[]]$Configuration = @('Debug'),
-            [bool]$NoConfig = $false
+            [bool]$NoConfig = $false,
+            # Both off by default, matching the resolver's built-in defaults (#24).
+            [bool]$FailOnWarning = $false,
+            [bool]$FailOnHint = $false
         )
         @{
             name           = $Name
@@ -140,6 +143,8 @@ InModuleScope 'Delphi.PowerShell.CI' {
             includePath    = @()
             namespace      = @()
             noConfig       = $NoConfig
+            failOnWarning  = $FailOnWarning
+            failOnHint     = $FailOnHint
         }
     }
 
@@ -170,7 +175,13 @@ InModuleScope 'Delphi.PowerShell.CI' {
     }
 
     function script:New-BuildResult {
-        param([bool]$Success = $true)
+        param(
+            [bool]$Success = $true,
+            # The counts the #24 diagnostic gates read. Defaulted to 0, so every existing caller of
+            # this helper keeps producing a clean result and keeps the gates quiet.
+            [int]$Warnings = 0,
+            [int]$Hints = 0
+        )
         [PSCustomObject]@{
             StepName     = 'Build'
             Success      = $Success
@@ -179,13 +190,13 @@ InModuleScope 'Delphi.PowerShell.CI' {
             Tool         = 'delphi-msbuild.ps1'
             Message      = if ($Success) { 'Build completed' } else { 'Exit code 5' }
             ProjectFile  = 'C:\Fake\Source\App.dproj'
-            # Hints is part of the build result shape as of issue #23. Invoke-DelphiCi only
-            # reads .Success off this object today, but the module runs under Set-StrictMode
-            # -Version Latest, so a fixture missing a real field throws from whichever future
-            # call site reads it -- in tests whose names mention neither the field nor
+            # Hints is part of the build result shape as of issue #23. Invoke-DelphiCi reads
+            # .Success, and since #24 also .Warnings and .Hints -- and the module runs under
+            # Set-StrictMode -Version Latest, so a fixture missing a real field throws from
+            # whichever call site reads it, in tests whose names mention neither the field nor
             # StrictMode. Keep this literal matching Invoke-DelphiBuild's returned shape.
-            Hints        = 0
-            Warnings     = 0
+            Hints        = $Hints
+            Warnings     = $Warnings
             Errors       = 0
             ExeOutputDir = $null
             Output       = $null
@@ -872,6 +883,112 @@ InModuleScope 'Delphi.PowerShell.CI' {
                 Should -Invoke Invoke-DelphiBuild -ParameterFilter {
                     $ProjectFile -eq 'C:\Fake\Source\App.dproj'
                 }
+            }
+
+        }
+
+        Context 'diagnostic gates -- failOnWarning / failOnHint' {
+
+            # Issue #24. Neither engine fails a build on a warning, so these keys are the only thing
+            # that can enforce a "zero diagnostics" standard through this module. Each test below
+            # pairs a count with a gate setting, because the pair is the behaviour -- a test that
+            # only ever set the gate ON could not tell a working gate from one that always fails.
+
+            # The settings travel through SCRIPT-SCOPED variables, not through this function's
+            # parameters: Pester evaluates a Mock's script block when the mock is INVOKED, by which
+            # time a helper's locals are long out of scope ("The variable '$FailOnWarning' cannot be
+            # retrieved because it has not been set" -- measured, on the first run of these tests).
+            #
+            # And each mock builds a FRESH result rather than returning one captured object,
+            # deliberately: the gate under test REWRITES .Success and .Message on the result it is
+            # given, so a shared instance would carry one test's mutation into the next call.
+            function script:New-GatedPipeline {
+                param([int]$Warnings = 0, [int]$Hints = 0, [bool]$FailOnWarning = $false, [bool]$FailOnHint = $false)
+                $script:gateWarnings      = $Warnings
+                $script:gateHints         = $Hints
+                $script:gateFailOnWarning = $FailOnWarning
+                $script:gateFailOnHint    = $FailOnHint
+                Mock Invoke-DelphiBuild { script:New-BuildResult -Warnings $script:gateWarnings -Hints $script:gateHints }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        (script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -FailOnWarning $script:gateFailOnWarning -FailOnHint $script:gateFailOnHint
+                        )),
+                        (script:New-PipelineEntry -Action 'Run' -Jobs @(script:New-RunJob))
+                    )
+                }
+            }
+
+            It 'fails the run when failOnWarning is set and the build reported warnings' {
+                script:New-GatedPipeline -Warnings 2 -FailOnWarning $true
+                (Invoke-DelphiCi).Success | Should -Be $false
+            }
+
+            It 'passes when warnings are reported and failOnWarning is not set' {
+                script:New-GatedPipeline -Warnings 2 -FailOnWarning $false
+                (Invoke-DelphiCi).Success | Should -Be $true
+            }
+
+            It 'passes when failOnWarning is set and the build was clean' {
+                script:New-GatedPipeline -Warnings 0 -FailOnWarning $true
+                (Invoke-DelphiCi).Success | Should -Be $true
+            }
+
+            It 'fails the run when failOnHint is set and the build reported hints' {
+                script:New-GatedPipeline -Hints 3 -FailOnHint $true
+                (Invoke-DelphiCi).Success | Should -Be $false
+            }
+
+            It 'does not gate hints when only failOnWarning is set' {
+                # The engine asymmetry made executable: under DCCBuild the counts are disjoint, so a
+                # hint does NOT reach the warning gate. (Under MSBuild the engine has already folded
+                # hints into Warnings before this code sees them, which is why that case needs no
+                # separate branch here.)
+                script:New-GatedPipeline -Hints 3 -FailOnWarning $true
+                (Invoke-DelphiCi).Success | Should -Be $true
+            }
+
+            It 'stops the pipeline, so a later action does not run' {
+                script:New-GatedPipeline -Warnings 1 -FailOnWarning $true
+                Invoke-DelphiCi
+                Should -Invoke Invoke-DelphiRun -Times 0
+            }
+
+            It 'marks the failing STEP as unsuccessful, not just the overall run' {
+                # A step reporting Success while the run fails is a reporting defect: tools/delphi-ci.ps1
+                # maps the overall result to an exit code, and anything reading Steps would disagree
+                # with it.
+                script:New-GatedPipeline -Warnings 2 -FailOnWarning $true
+                $step = @((Invoke-DelphiCi).Steps | Where-Object { $_.StepName -eq 'Build' })[0]
+                $step.Success | Should -Be $false
+            }
+
+            It 'names the counts in the failing step message' {
+                script:New-GatedPipeline -Warnings 2 -Hints 3 -FailOnWarning $true -FailOnHint $true
+                $step = @((Invoke-DelphiCi).Steps | Where-Object { $_.StepName -eq 'Build' })[0]
+                $step.Message | Should -BeLike '*2 warning(s)*'
+                $step.Message | Should -BeLike '*3 hint(s)*'
+            }
+
+            It 'leaves ExitCode as the tool returned it' {
+                # The compiler succeeded; the GATE failed. Faking a non-zero exit code would
+                # misreport what the tool did, so Success and ExitCode deliberately disagree here.
+                script:New-GatedPipeline -Warnings 2 -FailOnWarning $true
+                $step = @((Invoke-DelphiCi).Steps | Where-Object { $_.StepName -eq 'Build' })[0]
+                $step.ExitCode | Should -Be 0
+            }
+
+            It 'does not relabel a genuine build failure as a gate failure' {
+                Mock Invoke-DelphiBuild { script:New-BuildResult -Success $false -Warnings 2 }
+                Mock Resolve-DelphiCiConfig {
+                    script:New-MockConfig -Pipeline @(
+                        script:New-PipelineEntry -Action 'Build' -Jobs @(
+                            script:New-BuildJob -FailOnWarning $true
+                        )
+                    )
+                }
+                $step = @((Invoke-DelphiCi).Steps | Where-Object { $_.StepName -eq 'Build' })[0]
+                $step.Message | Should -Be 'Exit code 5'
             }
 
         }

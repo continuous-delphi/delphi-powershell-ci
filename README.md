@@ -236,6 +236,17 @@ equivalent settings in the project's MSBuild property groups instead. `noConfig`
 skips loading the toolchain's `dcc32.cfg` (dcc32 `--no-config`) -- use it when
 that cfg carries actively wrong `-U`/`-I` paths or options.
 
+`failOnWarning` and `failOnHint` (both default `false`) fail the pipeline when a
+build reports warnings or hints. **Neither engine fails a build on a warning by
+itself** -- msbuild certainly does not -- so a repo whose standard is "zero
+warnings as well as zero errors" has to ask for it here. When a gate trips, that
+step's own `Success` becomes `$false` and its `Message` names the counts, while
+`ExitCode` stays as the tool returned it (the compiler succeeded; the gate is
+what failed). Which key you want depends on the engine: under MSBuild the
+`N Warning(s)` total already includes Delphi hints, so `failOnWarning` gates
+both and `failOnHint` can never fire; under DCCBuild the two counts are disjoint
+and "no diagnostics" needs both. Setting both is harmless under either.
+
 When `-ConfigFile` is used, the JSON file must define a `pipeline` array.
 Without a config file, `Invoke-DelphiCi` generates a pipeline from `-Steps`
 or the default `Clean, Build` steps. Absent action and job fields fall back

@@ -23,6 +23,10 @@ function Get-DelphiCiConfig {
         [string[]]$IncludePath,
         [string[]]$Namespace,
         [switch]$NoConfig,
+        # Diagnostic gates (#24). Mirrors Invoke-DelphiCi, so a caller can inspect the resolved
+        # value before running a pipeline with it.
+        [switch]$BuildFailOnWarning,
+        [switch]$BuildFailOnHint,
 
         # Clean defaults
         [ValidateSet('basic', 'standard', 'deep')]
@@ -140,6 +144,8 @@ function Get-DelphiCiConfig {
     if ($PSBoundParameters.ContainsKey('IncludePath'))                   { $overrides['IncludePath']                  = $IncludePath }
     if ($PSBoundParameters.ContainsKey('Namespace'))                     { $overrides['Namespace']                    = $Namespace }
     if ($PSBoundParameters.ContainsKey('NoConfig'))                      { $overrides['NoConfig']                     = [bool]$NoConfig }
+    if ($PSBoundParameters.ContainsKey('BuildFailOnWarning'))            { $overrides['BuildFailOnWarning']           = [bool]$BuildFailOnWarning }
+    if ($PSBoundParameters.ContainsKey('BuildFailOnHint'))               { $overrides['BuildFailOnHint']              = [bool]$BuildFailOnHint }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                    { $overrides['CleanLevel']                   = $CleanLevel }
     if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))              { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))       { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }

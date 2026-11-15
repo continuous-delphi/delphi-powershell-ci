@@ -125,6 +125,28 @@ pipeline, give the NEW count a distinct non-zero value in the shared
 `BeforeAll` mock. A surfacing test that asserts 0 passes just as well when the
 value silently comes from the `-WhatIf` default object instead of the result.
 
+## A Mock's script block cannot see a test helper's parameters
+
+_Type: project. Recorded 2026-11-15 (during #24)._
+
+Pester evaluates a `Mock`'s script block when the mock is INVOKED, not where it
+is declared. So a helper function that takes parameters and sets up mocks from
+them fails with "The variable '$X' cannot be retrieved because it has not been
+set" -- the helper's locals are out of scope by then. This is why every mock in
+`Invoke-DelphiCi.Tests.ps1` is either inlined in its `It` or reads a
+`script:`-scoped variable.
+
+**Why:** the failure looks like a test-logic bug rather than a scoping one, and
+it only appears once a helper is introduced to remove duplication -- which is
+exactly when a large test file tempts you into one.
+
+**How to apply:** pass setup values through `$script:`-scoped variables (the
+file's script scope is what a mock block can see), and have the mock BUILD its
+return value each call rather than closing over one instance. The second half
+matters here specifically: `Invoke-DelphiCi`'s diagnostic gate REWRITES
+`.Success` and `.Message` on the result object it is handed, so a shared
+instance would carry one call's mutation into the next.
+
 ## The psd1 version and the CHANGELOG heading are off by one on the remote
 
 _Type: project. Recorded 2026-11-14 (during #23)._

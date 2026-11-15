@@ -137,6 +137,7 @@
       "exeOutputDir": "",
       "dcuOutputDir": "",
       "unitSearchPath": ["lib/units"],
+      "failOnWarning": true,
       "jobs": [
         {
           "name": "Main App",

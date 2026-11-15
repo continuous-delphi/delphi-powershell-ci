@@ -62,6 +62,18 @@ function Invoke-DelphiCi {
         [Parameter(ParameterSetName = 'Run')]
         [switch]$NoConfig,
 
+        # Fail the pipeline when a build reports warnings, and/or hints. Neither bundled engine
+        # fails a build on either, so a "zero diagnostics" standard has to be asked for here.
+        # ENGINE ASYMMETRY, because reading these the wrong way gates nothing: under MSBuild the
+        # "N Warning(s)" summary already INCLUDES Delphi hints, so -BuildFailOnWarning catches them
+        # and Hints is always 0 (making -BuildFailOnHint a no-op); under DCCBuild the two counts are
+        # disjoint, so "no diagnostics" needs both.
+        [Parameter(ParameterSetName = 'Run')]
+        [switch]$BuildFailOnWarning,
+
+        [Parameter(ParameterSetName = 'Run')]
+        [switch]$BuildFailOnHint,
+
         # --- Clean defaults (CLI shorthand) ---
 
         [Parameter(ParameterSetName = 'Run')]
@@ -356,6 +368,8 @@ function Invoke-DelphiCi {
     if ($PSBoundParameters.ContainsKey('IncludePath'))                   { $overrides['IncludePath']                  = $IncludePath }
     if ($PSBoundParameters.ContainsKey('Namespace'))                     { $overrides['Namespace']                    = $Namespace }
     if ($PSBoundParameters.ContainsKey('NoConfig'))                      { $overrides['NoConfig']                     = [bool]$NoConfig }
+    if ($PSBoundParameters.ContainsKey('BuildFailOnWarning'))            { $overrides['BuildFailOnWarning']           = [bool]$BuildFailOnWarning }
+    if ($PSBoundParameters.ContainsKey('BuildFailOnHint'))               { $overrides['BuildFailOnHint']              = [bool]$BuildFailOnHint }
     if ($PSBoundParameters.ContainsKey('CleanLevel'))                    { $overrides['CleanLevel']                   = $CleanLevel }
     if ($PSBoundParameters.ContainsKey('CleanOutputLevel'))              { $overrides['CleanOutputLevel']             = $CleanOutputLevel }
     if ($PSBoundParameters.ContainsKey('CleanIncludeFilePattern'))       { $overrides['CleanIncludeFilePattern']      = $CleanIncludeFilePattern }
@@ -578,6 +592,30 @@ function Invoke-DelphiCi {
                                     -IncludePath    @($job['includePath']) `
                                     -Namespace      @($job['namespace']) `
                                     -NoConfig:([bool]$job['noConfig'])
+
+                                # DIAGNOSTIC GATES (#24), applied BEFORE the Success check rather
+                                # than beside it, so one check below still decides the pipeline and
+                                # the step result cannot disagree with the run. Neither engine fails
+                                # a build on a warning, so a repo whose standard is "zero warnings"
+                                # has nothing else to enforce it with.
+                                #
+                                # The step's own Success and Message are rewritten, deliberately: a
+                                # step reporting Success while the run fails is a reporting defect,
+                                # and tools/delphi-ci.ps1 maps the overall result to an exit code.
+                                # ExitCode is left as the tool returned it (0) -- the compiler did
+                                # succeed and the GATE is what failed; faking a non-zero code would
+                                # misreport what the tool did.
+                                if ($result.Success) {
+                                    $gateFailures = @()
+                                    if ([bool]$job['failOnWarning'] -and $result.Warnings -gt 0) { $gateFailures += "$($result.Warnings) warning(s)" }
+                                    if ([bool]$job['failOnHint']    -and $result.Hints    -gt 0) { $gateFailures += "$($result.Hints) hint(s)" }
+                                    if ($gateFailures.Count -gt 0) {
+                                        $gateReason = 'failed the diagnostic gate: ' + ($gateFailures -join ' and ')
+                                        Write-DelphiCiMessage -Level 'ERROR' -Message "Build $label $gateReason"
+                                        $result.Success = $false
+                                        $result.Message = "Build $gateReason"
+                                    }
+                                }
 
                                 $stepResults.Add($result)
                                 if (-not $result.Success) {

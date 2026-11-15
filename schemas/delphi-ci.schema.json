@@ -209,6 +209,16 @@
           "type": "boolean",
           "default": false,
           "description": "Skip loading the toolchain's dcc32.cfg (DCC --no-config). DCCBuild-only; MSBuild rejects this field."
+        },
+        "failOnWarning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fail the pipeline when a build reports warnings. Neither engine fails a build on a warning by itself. Under MSBuild the warning total already includes Delphi hints, so this gates hints as well."
+        },
+        "failOnHint": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fail the pipeline when a build reports hints (H####). DCCBuild in practice: MSBuild publishes no separate hint tally (hints are inside its warning count), so the hint count is always 0 there and this field cannot fire."
         }
       }
     },
@@ -771,7 +781,9 @@
         "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
         "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
         "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" },
-        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" }
+        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" },
+        "failOnWarning": { "$ref": "#/$defs/buildConfig/properties/failOnWarning" },
+        "failOnHint": { "$ref": "#/$defs/buildConfig/properties/failOnHint" }
       }
     },
     "runJob": {
@@ -936,7 +948,9 @@
         "includePath!": { "$ref": "#/$defs/buildConfig/properties/includePath!" },
         "namespace": { "$ref": "#/$defs/buildConfig/properties/namespace" },
         "namespace!": { "$ref": "#/$defs/buildConfig/properties/namespace!" },
-        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" }
+        "noConfig": { "$ref": "#/$defs/buildConfig/properties/noConfig" },
+        "failOnWarning": { "$ref": "#/$defs/buildConfig/properties/failOnWarning" },
+        "failOnHint": { "$ref": "#/$defs/buildConfig/properties/failOnHint" }
       }
     },
     "runAction": {

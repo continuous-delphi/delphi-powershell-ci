@@ -32,6 +32,11 @@ function Resolve-DelphiCiConfig {
             includePath    = @()
             namespace      = @()
             noConfig       = $false
+            # Diagnostic gates, both OFF by default so no existing pipeline changes behaviour (#24).
+            # Neither engine fails a build on a warning -- msbuild certainly does not -- so a repo
+            # whose standard is "zero warnings" has to ask for it here.
+            failOnWarning  = $false
+            failOnHint     = $false
         }
         run = @{
             timeoutSeconds = 10
@@ -232,6 +237,10 @@ function Resolve-DelphiCiConfig {
         $null -ne $Overrides['Namespace'])                                       { $buildCliLayer['namespace!']   = @($Overrides['Namespace']) }
     if ($Overrides.ContainsKey('NoConfig') -and
         $null -ne $Overrides['NoConfig'])                                        { $buildCliLayer['noConfig']     = [bool]$Overrides['NoConfig'] }
+    if ($Overrides.ContainsKey('BuildFailOnWarning') -and
+        $null -ne $Overrides['BuildFailOnWarning'])                              { $buildCliLayer['failOnWarning'] = [bool]$Overrides['BuildFailOnWarning'] }
+    if ($Overrides.ContainsKey('BuildFailOnHint') -and
+        $null -ne $Overrides['BuildFailOnHint'])                                 { $buildCliLayer['failOnHint']   = [bool]$Overrides['BuildFailOnHint'] }
     if ($buildCliLayer.Count -gt 0) {
         $effectiveDefaults['build'] = Merge-ActionConfig -Base $effectiveDefaults['build'] -Layer $buildCliLayer
     }
@@ -481,6 +490,11 @@ function Resolve-DelphiCiConfig {
             if ($actionType -eq 'build') {
                 $resolved['platform']      = @($resolved['platform'])
                 $resolved['configuration'] = @($resolved['configuration'])
+                # Validate the RESOLVED job, not only the action defaults above (#24). A job-level
+                # value overrides the action's, so validating one scope leaves the other able to
+                # carry anything -- which for the diagnostic gates means a quoted "false" reading as
+                # off while gating every build. engine/verbosity/target gain the same coverage.
+                Assert-BuildConfig $resolved
             }
 
             $resolvedJobs.Add($resolved)
@@ -702,6 +716,42 @@ function Assert-BuildConfig {
     }
     if ($Config.ContainsKey('target') -and $Config['target'] -notin $validTargets) {
         throw "Invalid build target '$($Config['target'])'. Valid values: $($validTargets -join ', ')"
+    }
+
+    # The diagnostic gates are validated as REAL booleans (#24). PowerShell's [bool] cast makes any
+    # non-empty string true, so a quoted "false" in JSON would silently gate every build in the
+    # pipeline -- a value that reads as off while behaving as on. The older boolean keys (noConfig)
+    # are deliberately left unvalidated here: tightening them would change the behaviour of configs
+    # that already pass a string, which is a separate decision from adding these two.
+    foreach ($gateKey in @('failOnWarning', 'failOnHint')) {
+        if (-not $Config.ContainsKey($gateKey)) { continue }
+        if ($Config[$gateKey] -isnot [bool]) {
+            throw "Invalid build $gateKey '$($Config[$gateKey])'. Expected a boolean (true or false), unquoted in JSON -- a quoted string is not a boolean and would read as off while gating every build."
+        }
+    }
+
+    # A GATE MAY NOT BE PAIRED WITH A VERBOSITY THAT HIDES WHAT IT COUNTS (#24). Refused rather
+    # than quietly honoured, because the combination produces a gate that CANNOT FIRE -- the exact
+    # defect the gate was added to fix, one layer down, and invisible: the diagnostics still appear
+    # in the build log while the count the gate reads is 0.
+    #
+    # MEASURED on Delphi 13 with a W1036 injected into a compiled unit, not inferred from the
+    # verbosity names:
+    #   MSBuild  quiet   -> Warnings=0, warning present in the log
+    #   MSBuild  minimal -> Warnings=0, warning present in the log
+    #   MSBuild  normal  -> Warnings=1   (delphi-msbuild parses the "N Warning(s)" summary line,
+    #                                     which msbuild omits below normal)
+    #   DCCBuild quiet   -> dcc -Q, documented to suppress hints and warnings outright
+    # DCCBuild's minimal/detailed/diagnostic are broken for a different reason and are issue #26,
+    # not this check: the tool accepts only quiet/normal, so the others compile nothing at all.
+    $gatesOn = (($Config.ContainsKey('failOnWarning') -and $Config['failOnWarning']) -or
+                ($Config.ContainsKey('failOnHint')    -and $Config['failOnHint']))
+    if ($gatesOn -and $Config.ContainsKey('verbosity') -and $Config['verbosity'] -in @('quiet', 'minimal')) {
+        $engineName = if ($Config.ContainsKey('engine')) { $Config['engine'] } else { 'MSBuild' }
+        throw ("Invalid build configuration: failOnWarning/failOnHint cannot be used with verbosity '$($Config['verbosity'])'. " +
+               "Under $engineName that verbosity suppresses what the counts are read from (msbuild omits its 'N Warning(s)' " +
+               "summary below 'normal'; dcc 'quiet' passes -Q), so the gate would report 0 while the diagnostics sit in the " +
+               "build log. Use 'normal' or higher, or turn the gate off.")
     }
 }
 

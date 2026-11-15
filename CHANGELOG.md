@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.30]
+- Add `failOnWarning` and `failOnHint` to the Build action (and
+  `-BuildFailOnWarning` / `-BuildFailOnHint` on `Invoke-DelphiCi`,
+  `Get-DelphiCiConfig` and the `tools/delphi-ci.ps1` wrapper), both defaulting
+  to `false` so no existing pipeline changes behaviour. **Neither bundled engine
+  fails a build on a warning** -- msbuild certainly does not -- so until now a
+  repo whose standard was "zero warnings as well as zero errors" could not
+  enforce it through this module at all; the only gate was a human reading the
+  log. When a gate trips, the failing STEP's own `Success` becomes `$false` and
+  its `Message` names the counts, so `Steps` cannot disagree with the overall
+  result; `ExitCode` stays as the tool returned it, because the compiler
+  succeeded and the gate is what failed. Which key you want depends on the
+  engine: under MSBuild the warning total already includes Delphi hints so
+  `failOnWarning` gates both and `failOnHint` cannot fire, while under DCCBuild
+  the counts are disjoint and "no diagnostics" needs both -- documented in
+  README, `docs/Invoke-DelphiBuild.md` and `docs/Invoke-DelphiCi.md`. Build
+  JOBS are now validated as well as action defaults, so a quoted `"false"` (any
+  non-empty string is truthy once cast) is refused with a clear message at
+  either scope instead of silently gating every build
+  [#24](https://github.com/continuous-delphi/delphi-powershell-ci/issues/24)
+
+---
 ## [0.4.29]
 - Build results now carry a `Hints` count beside `Warnings` and `Errors`, so a
   caller can gate Delphi hints (`H####`) without re-counting them from

@@ -244,7 +244,7 @@ Returns a `PSCustomObject` with the following fields.
 | Field         | Type     | Notes |
 |--------------|----------|-------|
 | `StepName`   | String   | Always `'Build'` |
-| `Success`    | Boolean  | `$true` when the build exits with code 0 |
+| `Success`    | Boolean  | `$true` when the build exits with code 0. Inside a pipeline, `Invoke-DelphiCi` sets this to `$false` when a diagnostic gate trips -- see below |
 | `Duration`   | TimeSpan | Wall-clock time including toolchain detection |
 | `ExitCode`   | Int32    | Exit code from the build tool |
 | `Tool`       | String   | `'delphi-msbuild.ps1'` or `'delphi-dccbuild.ps1'` |
@@ -286,12 +286,43 @@ used with `Get-DelphiCiConfig` or `Invoke-DelphiCi`.
     "dcuOutputDir": "",
     "unitSearchPath": [],
     "includePath": [],
-    "namespace": []
+    "namespace": [],
+    "failOnWarning": false,
+    "failOnHint": false
   }
 }
 ```
 
 `includePath` and `namespace` apply only when `engine` is `DCCBuild`.
+
+### The diagnostic gates
+
+`failOnWarning` and `failOnHint` are **pipeline** keys, not parameters of this
+command. `Invoke-DelphiBuild` always reports the counts and never fails a build
+because of them -- a direct caller decides what to do with `.Warnings` and
+`.Hints` itself. `Invoke-DelphiCi` honours the two keys in its build branch:
+when a gate trips it rewrites that step's `Success` to `$false` and its
+`Message` to name the counts, then stops the pipeline the same way a failed
+build does.
+
+They exist because **neither engine fails a build on a warning.** MSBuild
+certainly does not, so a repo whose standard is "zero warnings as well as zero
+errors" had no way to enforce it through this module.
+
+`ExitCode` stays as the build tool returned it -- `0` -- when a gate trips. The
+compiler did succeed; the gate is what failed, and faking a non-zero exit code
+would misreport the tool. Read `Success` for the outcome, `ExitCode` for what
+the tool did.
+
+Pick the keys by engine, because one of them cannot fire under MSBuild:
+
+| Engine | `failOnWarning` | `failOnHint` |
+|---|---|---|
+| MSBuild | Gates warnings **and hints** -- msbuild's warning total already includes Delphi hints | Never fires: `Hints` is always 0 (no separate tally exists to read) |
+| DCCBuild | Gates `W####` only -- the counts are disjoint | Gates `H####` |
+
+So "no diagnostics" is `failOnWarning` alone under MSBuild, and both keys under
+DCCBuild. Setting both is harmless under either.
 
 To use DCCBuild, set `"engine": "DCCBuild"` and point `projectFile` at
 a `.dpr` file rather than a `.dproj`.
