@@ -286,3 +286,42 @@ Prefer perturbing through a PARSER over text matching (load the JSON, mutate the
 object, dump it) so a perturbation cannot silently no-op on a layout assumption;
 the file is restored from backup afterwards, so reformatting does not matter.
 Assert the perturbation actually changed the file.
+
+## A clean lint/scan result and a scan that ran nothing look identical
+
+_Type: feedback. Recorded 2026-11-15 (during #27)._
+
+`PSScriptAnalyzer.Tests.ps1` asserted `$script:violations | Should
+-BeNullOrEmpty` against a variable NOTHING in the suite ever assigned. It
+evaluated `$null | Should -BeNullOrEmpty`, passed unconditionally in ~15ms, and
+`Invoke-ScriptAnalyzer` was never invoked -- hiding 23 real violations in
+`source/` for the gate's entire lifetime, while `tests/README.md` and `CLAUDE.md`
+both described it as a working gate.
+
+**Why:** this is the general shape behind #25, #27 and #28 in one day. Any check
+whose "pass" state is an EMPTY RESULT passes just as convincingly when it
+examined nothing -- an unassigned variable, a glob that matched no files, a
+settings file that excluded every rule, a path typo, an `-ForEach` collection
+that computed to nothing. Green is not evidence the check ran.
+
+**How to apply:** for any gate shaped as "collect findings, assert the
+collection is empty", add assertions that the COLLECTION STEP happened, and make
+them name things:
+1. Compute the subject inside the test. Never read an ambient variable another
+   file is supposed to have set -- that is the exact defect here.
+2. Assert specific KNOWN inputs were examined (one named file per directory the
+   gate covers), not just a count. A path typo then fails by name instead of
+   silently shrinking the scope.
+3. Assert any deliberate carve-out is still scoped -- e.g. that no
+   `bundled-tools` file is in the analysed set -- so an exclusion cannot widen
+   unnoticed.
+4. Add a PLANTED-DEFECT assertion: run the real tool over a temp file containing
+   a known violation and assert it is still reported. That is the one check that
+   fails if the tool silently stops working or the config over-excludes.
+5. Verify every exclusion is LOAD-BEARING by removing it and confirming the gate
+   fires. An exclusion that is no longer needed is indistinguishable from one
+   that is, and it hides whatever drifts into its rule later.
+
+Points 2-5 are all in `PSScriptAnalyzer.Tests.ps1` now; the same reasoning
+produced the anti-vacuity assertion in `Schema.Tests.ps1`. See
+[[verify-a-new-test-fails-before-trusting-it-perturb-do-not-reason]].

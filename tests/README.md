@@ -9,7 +9,7 @@ tests/
 +- pwsh/
    +- PesterConfig.psd1                       Pester 5.7+ configuration
    +- TestHelpers.ps1                         Shared utilities dot-sourced by test files
-   +- PSScriptAnalyzer.Tests.ps1              Lint gate (currently inert -- see below)
+   +- PSScriptAnalyzer.Tests.ps1              Lint gate
    +- Schema.Tests.ps1                        Schema / resolver drift gate
    +- Resolve-DefaultPlatform.Tests.ps1       Platform resolution tests
    +- Get-DelphiCiConfig.Tests.ps1            Config normalization tests
@@ -86,17 +86,40 @@ Install-Module PSScriptAnalyzer -MinimumVersion 1.21.0 -Force
 
 ### PSScriptAnalyzer.Tests.ps1
 
-Intended as the lint gate: assert zero `Invoke-ScriptAnalyzer` violations on the
-source using the default rule set, listing rule name, severity and line number
-on failure.
+The lint gate. Runs `Invoke-ScriptAnalyzer` over the code this repo authors and
+asserts zero violations, listing each with rule name, severity, file and line.
 
-**It does not currently do that.** The assertion reads `$script:violations`,
-which nothing in the suite ever assigns, so it evaluates `$null | Should
--BeNullOrEmpty` and passes unconditionally -- `Invoke-ScriptAnalyzer` is never
-run. Measured while adding `Schema.Tests.ps1`: `source/` has 23 real violations
-the gate has never reported. Tracked in
-[#27](https://github.com/continuous-delphi/delphi-powershell-ci/issues/27) -- do not
-read a green run here as evidence the source is lint-clean.
+Analyses `source/`, `tests/` and `tools/` (`*.ps1`, `*.psm1`, `*.psd1`) using
+`PSScriptAnalyzerSettings.psd1` at the repo root -- the same file the VS Code
+PowerShell extension picks up, so an editor warns about what CI fails on.
+`source/bundled-tools/` is deliberately **excluded**: those nine scripts are
+vendored verbatim from their own standalone Continuous-Delphi repos and are linted
+there, so linting them here would either cause drift from upstream or report
+violations nobody in this repo may fix.
+
+**Adding a violation is not a reason to widen the exclusions.** Fix it, suppress it
+at the site with `[Diagnostics.CodeAnalysis.SuppressMessageAttribute]` and a
+`Justification`, or exclude the rule in the settings file with a recorded reason.
+Current state: three rules excluded (each with its reasoning and site count in the
+settings file) and four individual suppressions.
+
+It also asserts that the gate is *running*, which is not the same as passing:
+
+- specific known files were analysed, one per covered directory, so a path typo or
+  a layout change fails by name instead of silently shrinking the analysed set
+- no `bundled-tools` file is in the set, so the carve-out cannot widen unnoticed
+- a file planted with an assigned-but-unread variable still produces a violation,
+  so the gate cannot go vacuous if the settings file over-excludes or the module
+  stops loading
+
+That last group exists because this file previously did none of its job: the only
+assertion read a `$script:violations` variable nothing ever assigned, so it
+evaluated `$null | Should -BeNullOrEmpty`, passed unconditionally in ~15ms, and the
+analyzer was never invoked -- hiding 23 real violations in `source/` for the gate's
+whole lifetime
+([#27](https://github.com/continuous-delphi/delphi-powershell-ci/issues/27)). A lint
+gate reports zero violations both when the code is clean and when it analysed
+nothing, and those two states must not look alike.
 
 ### Schema.Tests.ps1
 

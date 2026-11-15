@@ -31,7 +31,10 @@ function Invoke-TestRunner {
     $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
 
     if (-not $finished) {
-        try { $proc.Kill() } catch {}
+        # The process can exit on its own between WaitForExit timing out and Kill being
+        # called, which throws. That race is benign -- it is already gone -- but say so
+        # rather than swallowing it silently.
+        try { $proc.Kill() } catch { Write-Verbose "Could not kill the timed-out process: $($_.Exception.Message)" }
         $proc.Dispose()
         return [PSCustomObject]@{
             ExitCode = -1

@@ -108,10 +108,12 @@ function Get-SchemaPropertyName {
         [Parameter(Mandatory)][string]$DefName
     )
 
+    # The [string[]] casts are what the declared OutputType claims, not decoration:
+    # a bare @(...) is Object[], which PSUseOutputTypeCorrectly correctly flagged.
     $def = $Defs.PSObject.Properties[$DefName]
     if ($null -eq $def) { return $null }
-    if ($null -eq $def.Value.PSObject.Properties['properties']) { return @() }
-    return @($def.Value.properties.PSObject.Properties.Name)
+    if ($null -eq $def.Value.PSObject.Properties['properties']) { return [string[]]@() }
+    return [string[]]@($def.Value.properties.PSObject.Properties.Name)
 }
 
 $schemaFile   = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..' 'schemas' 'delphi-ci.schema.json'))

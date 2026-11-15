@@ -466,6 +466,7 @@ docs/                   Per-command reference documentation
 tests/                  Pester test suite
   run-tests.ps1
   pwsh/
+PSScriptAnalyzerSettings.psd1   Lint rules (used by the suite and by VS Code)
 ```
 
 ---

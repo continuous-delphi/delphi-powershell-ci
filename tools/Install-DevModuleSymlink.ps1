@@ -28,6 +28,15 @@ function Fail {
 }
 
 function Start-ElevatedSelf {
+    # No ShouldProcess: this is an interactive dev utility, never called
+    # programmatically, and the operation it performs IS the UAC prompt -- Windows
+    # already asks the user to confirm. A -WhatIf that still relaunched the script
+    # elevated would be a lie, and one that did not would make the switch useless.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Interactive dev script; the elevation prompt is itself the confirmation.')]
+    [CmdletBinding()]
+    param()
+
     $argumentList = @(
         '-NoProfile'
         '-ExecutionPolicy', 'Bypass'
@@ -42,6 +51,13 @@ function Start-ElevatedSelf {
 }
 
 function New-ModuleSymlink {
+    # No ShouldProcess: interactive dev utility, called only from this script's own
+    # main flow, which already prints each step and refuses to delete anything that
+    # is not a symlink (see the Fail below). Adding the attribute without gating every
+    # mutation behind it would make -WhatIf claim a safety it does not provide.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Interactive dev script; refuses non-symlink targets and reports each step.')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$LinkPath,
         [Parameter(Mandatory = $true)][string]$TargetPath

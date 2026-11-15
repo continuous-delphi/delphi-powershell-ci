@@ -906,6 +906,7 @@ Acceptance criteria:
 ---
 Title: The PSScriptAnalyzer lint gate is inert -- $script:violations is never assigned, hiding 23 real violations
 Issue: #27
+Status: closed
 Labels: bug, ci
 Body:
 Found while adding the schema drift test for #25.

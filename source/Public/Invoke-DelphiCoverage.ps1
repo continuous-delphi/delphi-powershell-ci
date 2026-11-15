@@ -102,7 +102,8 @@ function Invoke-DelphiCoverage {
                 $thresholdMet    = if ($null -ne $parsed.thresholdMet)    { $parsed.thresholdMet }    else { $true }
             }
             catch {
-                # Result file missing or malformed
+                # Result file missing or malformed; the defaults assigned above stand.
+                Write-Verbose "Could not read the coverage result file: $($_.Exception.Message)"
             }
         }
     }

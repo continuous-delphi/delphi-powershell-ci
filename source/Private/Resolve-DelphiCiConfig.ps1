@@ -794,6 +794,12 @@ function Assert-CopyConfig {
     .SYNOPSIS
         Validates fields in a resolved copy configuration.
     #>
+    # $Config is deliberately unused. Every action is validated through the same
+    # `Assert-${action}Config $actionDefaults` switch, so each validator carries the
+    # identical signature whether or not it currently has anything to check -- and a
+    # present-but-empty validator is what makes it obvious where to add the first rule.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Config',
+        Justification = 'Uniform signature for the Assert-<action>Config dispatch switch; this action has no enum-like fields yet.')]
     param([hashtable]$Config)
     # No enum-like fields to validate. Boolean fields are type-coerced
     # during merge. Required fields (source, destination) are validated
@@ -805,6 +811,9 @@ function Assert-CompressConfig {
     .SYNOPSIS
         Validates fields in a resolved compress configuration.
     #>
+    # See Assert-CopyConfig: $Config is unused on purpose, for signature uniformity.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Config',
+        Justification = 'Uniform signature for the Assert-<action>Config dispatch switch; this action has no enum-like fields yet.')]
     param([hashtable]$Config)
     # No enum-like fields to validate.
 }

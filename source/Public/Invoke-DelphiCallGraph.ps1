@@ -108,7 +108,8 @@ function Invoke-DelphiCallGraph {
                 if ($null -ne $parsed.summary) { $resultSummary = $parsed.summary }
             }
             catch {
-                # Result file missing or malformed; keep exit-code-only result.
+                # Result file missing or malformed; keep the exit-code-only result.
+                Write-Verbose "Could not read the callgraph result file: $($_.Exception.Message)"
             }
         }
     }

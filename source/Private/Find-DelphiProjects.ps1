@@ -1,5 +1,6 @@
 function Find-DelphiProjects {
     [CmdletBinding()]
+    [OutputType([string[]])]
     param(
         [Parameter(Mandatory)]
         [string]$Root
@@ -21,9 +22,11 @@ function Find-DelphiProjects {
         }
         $found = @(Get-ChildItem -LiteralPath $resolved -Filter '*.dproj' -File)
         if ($found.Count -gt 0) {
-            return $found.FullName
+            # Cast to match the declared OutputType: a property access across an array
+            # yields Object[], which is what PSUseOutputTypeCorrectly flagged.
+            return [string[]]$found.FullName
         }
     }
 
-    return @()
+    return [string[]]@()
 }

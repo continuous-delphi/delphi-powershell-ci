@@ -141,7 +141,13 @@ function Invoke-BuildPipeline {
             $raw = Get-Content -LiteralPath $resultFile -Raw -ErrorAction Stop
             $toolResult = $raw | ConvertFrom-Json
         }
-        catch { <# result file missing or malformed; handled by the no-result guard below #> }
+        catch {
+            # Result file missing or malformed. Not fatal here -- the no-result guard
+            # below turns it into the failure -- but the reason is logged rather than
+            # dropped, because it is the difference between "the tool never ran" and
+            # "the tool wrote something unparseable".
+            Write-Verbose "Could not read the build result file: $($_.Exception.Message)"
+        }
 
         # A BUILD TOOL THAT WROTE NO RESULT IS A FAILURE, WHATEVER IT EXITED WITH (#26).
         # -OutputFile is passed on every invocation and both bundled tools write it before

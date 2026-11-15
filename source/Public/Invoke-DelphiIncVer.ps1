@@ -59,7 +59,8 @@ function Invoke-DelphiIncVer {
                 $newVersion = $parsed.newVersion
             }
             catch {
-                # Result file missing or malformed -- version info unavailable
+                # Result file missing or malformed -- version info stays unavailable.
+                Write-Verbose "Could not read the incver result file: $($_.Exception.Message)"
             }
         }
     }

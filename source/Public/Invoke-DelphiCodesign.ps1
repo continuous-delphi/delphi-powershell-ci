@@ -93,7 +93,8 @@ function Invoke-DelphiCodesign {
                 }
             }
             catch {
-                # Result file missing or malformed
+                # Result file missing or malformed; keep the exit-code-only result.
+                Write-Verbose "Could not read the codesign result file: $($_.Exception.Message)"
             }
         }
     }

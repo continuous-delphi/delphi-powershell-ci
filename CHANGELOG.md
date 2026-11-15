@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.33]
+- The PSScriptAnalyzer lint gate now actually lints. `PSScriptAnalyzer.Tests.ps1`
+  asserted on a `$script:violations` variable nothing in the suite ever assigned,
+  so it evaluated `$null | Should -BeNullOrEmpty`, passed unconditionally in
+  ~15ms, and never invoked the analyzer at all -- hiding 23 real violations in
+  `source/` for the gate's whole lifetime. It now analyses `source/`, `tests/`
+  and `tools/` (47 files) against a new root-level `PSScriptAnalyzerSettings.psd1`,
+  which the VS Code PowerShell extension also picks up so an editor warns about
+  what the suite fails on. `source/bundled-tools/` is excluded: those scripts are
+  vendored verbatim from their own standalone repos and are linted there.
+- All 83 violations across the analysed tree are accounted for, none by blanket
+  disabling. **Fixed:** six empty catch blocks now log the swallowed error with
+  `Write-Verbose` (strictly better than suppressing, and the lesson of #26 where a
+  discarded child-process error cost real debugging time); four incorrect
+  `OutputType` declarations, two of them in code added only last version;
+  one trailing-whitespace line. **Suppressed at the site with a `Justification`:**
+  the two deliberately-uniform `Assert-*Config` validators that ignore their
+  `$Config`, and the two interactive symlink helpers in `tools/`. **Excluded by
+  rule, with the reasoning and site count recorded in the settings file:**
+  `PSAvoidUsingWriteHost` (41 -- console output is the product for a CI tool;
+  `Write-DelphiCiMessage` is the module's output channel), `PSAvoidUsingPositional`
+  `Parameters` (24 -- every one is `Join-Path $a $b $c`, which cannot be written
+  with named parameters past the second segment) and `PSUseSingularNouns` (3 --
+  private helpers that genuinely return collections).
+- The gate also asserts that it is *running*, which a passing lint test does not
+  otherwise show: that specific known files were analysed, that no
+  `bundled-tools` file is in the set, and that a file planted with a violation is
+  still reported. A lint gate reports zero violations both when the code is clean
+  and when it analysed nothing, and those two states must not look alike. Verified
+  by planting a violation in each of `source/`, `tests/` and `tools/` (each fails
+  the suite), in `bundled-tools/` (correctly ignored), and by confirming all three
+  rule exclusions and the suppressions are still load-bearing
+  [#27](https://github.com/continuous-delphi/delphi-powershell-ci/issues/27)
+
+---
 ## [0.4.32]
 - Add `tests/pwsh/Schema.Tests.ps1`, a drift gate between
   `schemas/delphi-ci.schema.json` and `Resolve-DelphiCiConfig.ps1`. The schema

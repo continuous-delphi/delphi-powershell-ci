@@ -1,5 +1,6 @@
 function Resolve-DefaultPlatform {
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [string]$ProjectFile
