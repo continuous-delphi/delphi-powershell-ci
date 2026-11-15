@@ -791,6 +791,7 @@ Acceptance criteria:
 ---
 Title: Nothing checks that delphi-ci.schema.json matches the resolver's key set, so the two drift silently
 Issue: #25
+Status: closed
 Labels: bug, ci
 Body:
 Found while adding the `failOnWarning` / `failOnHint` keys for #24. The schema is
@@ -901,3 +902,131 @@ Acceptance criteria:
       makes every other argument bug silent.
 - [ ] `pwsh -File ./tests/run-tests.ps1` passes; CHANGELOG.md updated.
 
+
+---
+Title: The PSScriptAnalyzer lint gate is inert -- $script:violations is never assigned, hiding 23 real violations
+Issue: #27
+Labels: bug, ci
+Body:
+Found while adding the schema drift test for #25.
+
+`tests/pwsh/PSScriptAnalyzer.Tests.ps1` is documented (in `tests/README.md`,
+`CLAUDE.md` and its own comment-based help) as the suite's lint gate: "Runs
+Invoke-ScriptAnalyzer using the default rule set and asserts zero violations."
+
+IT HAS NEVER RUN THE ANALYZER. The only assertion in the file reads
+`$script:violations`:
+
+    $script:violations | Should -BeNullOrEmpty -Because $because
+
+and NOTHING in the test suite ever assigns that variable -- grep for
+`violations` across `tests/` returns only the comment, the It name, and this
+line. So it evaluates `$null | Should -BeNullOrEmpty`, which passes
+unconditionally. `Invoke-ScriptAnalyzer` is never invoked, no files are read,
+and the test takes ~15ms.
+
+MEASURED on the current tree:
+
+    Invoke-ScriptAnalyzer -Path ./source -Recurse   ->  23 violations
+
+    8  PSAvoidUsingPositionalParameters
+    6  PSAvoidUsingEmptyCatchBlock
+    3  PSUseSingularNouns
+    2  PSReviewUnusedParameter
+    2  PSUseOutputTypeCorrectly
+    1  PSAvoidTrailingWhitespace
+    1  PSAvoidUsingWriteHost
+
+None of these have ever been reported by the suite. This is not a claim that
+all 23 should be fixed -- `PSAvoidUsingWriteHost` is deliberate in
+`Write-DelphiCiMessage`, and several empty catch blocks are intentional with
+explanatory comments -- which is exactly why this needs a deliberate pass
+rather than a silent one. The decision to make is per rule: fix, suppress with
+`[Diagnostics.CodeAnalysis.SuppressMessage...]`, or exclude the rule in a
+settings file.
+
+Implementation notes:
+- The fix to the test is small: actually call `Invoke-ScriptAnalyzer` (in a
+  `BeforeAll`, assigning `$script:violations`) against `source/` and `tests/`.
+  The work is deciding what to do with what it then reports.
+- Consider a `PSScriptAnalyzerSettings.psd1` so the rule set is explicit and
+  reviewable rather than "the default rule set", and so intentional exclusions
+  live in one documented place.
+- Whatever lands, the vacuous-assertion shape is the real lesson: a test whose
+  subject is a variable nothing assigns cannot fail. Prefer computing the
+  subject inside the test over reading an ambient variable.
+- `tests/README.md` was updated during #25 to stop claiming the gate works;
+  update it again when it does.
+
+Acceptance criteria:
+- [ ] `PSScriptAnalyzer.Tests.ps1` actually invokes `Invoke-ScriptAnalyzer` and
+      the assertion is made against its real output.
+- [ ] Deliberately introducing a violation fails the suite. Measured, reverted.
+- [ ] Every remaining violation is either fixed, or suppressed/excluded with a
+      recorded reason -- no blanket disabling to get to green.
+- [ ] `tests/README.md` and `CLAUDE.md` describe what the gate actually does.
+- [ ] `pwsh -File ./tests/run-tests.ps1` passes; CHANGELOG.md updated.
+
+---
+Title: run-tests.ps1 exits 0 when a test file fails DISCOVERY, so a whole file can silently vanish from the suite
+Issue: #28
+Status: closed
+Labels: bug, ci
+Body:
+Found while adding the schema drift test for #25, and the reason that test
+captures its parse errors instead of throwing them.
+
+`tests/run-tests.ps1` decides the process exit code from the failed-test count
+alone:
+
+    if ($result.FailedCount -gt 0) { exit 1 }
+
+A Pester DISCOVERY failure -- a syntax error in a `.Tests.ps1` file, or any
+exception thrown at discovery time (file read, JSON parse, AST walk, a helper
+that throws while building `-ForEach` data) -- does not produce failed TESTS. It
+produces a failed CONTAINER, and that file contributes nothing at all.
+
+MEASURED by putting a trailing comma in `schemas/delphi-ci.schema.json` while
+`Schema.Tests.ps1` parsed it at discovery time:
+
+    Invoke-Pester -PassThru  ->  FailedCount = 0
+                                 TotalCount  = 0
+                                 Result      = Failed
+
+    tests/run-tests.ps1      ->  prints "Discovery in ...Schema.Tests.ps1
+                                 failed with: ... Invalid property identifier"
+                                 EXIT CODE 0
+
+So the runner printed the error in red, dropped all 85 of that file's tests,
+reported "Tests Passed: 477, Failed: 0", and exited 0. In CI that is a green
+build. The error text scrolls past in the middle of several hundred lines of
+output.
+
+The scope is every test file, not just the new one: any future test file with a
+syntax error silently stops testing anything and nothing fails.
+
+Implementation notes:
+- `$result.Result` is already `'Failed'` in this case, so the narrow fix is to
+  gate on that as well as (or instead of) `FailedCount`:
+  `if ($result.Result -ne 'Passed') { exit 1 }`. Verify against a green run
+  first -- confirm `Result` is exactly `'Passed'` when all tests pass, so the
+  change does not invert the gate.
+- Pester also exposes container-level counts (`$result.Containers` and their
+  `Result`) if a more specific message is wanted, e.g. naming which file failed
+  to discover.
+- Worth asserting a FLOOR on the discovered test count too. A gate on `Result`
+  catches a thrown discovery error, but not a file that discovers zero tests
+  for a subtler reason (an empty `-ForEach` collection generates no `It`s at
+  all and is perfectly "passing"). `Schema.Tests.ps1` carries its own
+  anti-vacuity assertion for exactly this reason; a suite-level floor would
+  make that unnecessary per-file.
+
+Acceptance criteria:
+- [ ] A test file that throws at discovery makes `run-tests.ps1` exit non-zero.
+      Measured by temporarily breaking a file, reverted in a finally.
+- [ ] A normal green run still exits 0, and a normal test failure still exits 1.
+- [ ] The failure output names which container failed to discover, rather than
+      leaving it to be spotted in the scroll.
+- [ ] Consider and decide on a discovered-test-count floor (implement or record
+      why not).
+- [ ] `pwsh -File ./tests/run-tests.ps1` passes; CHANGELOG.md updated.

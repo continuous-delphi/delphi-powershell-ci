@@ -213,3 +213,76 @@ diagnostics on Delphi 13 (compiler 37.0) -- a project with one `W1036` and two
 `H2164`s still reported `Hints=2 Warnings=1` under it. The suppression is
 version-dependent, so do not rely on it in either direction; that is why #24's
 refusal of a gate combined with `quiet`/`minimal` stays in place.
+
+## A Pester discovery failure produces FailedCount = 0
+
+_Type: project. Recorded 2026-11-15 (during #25). The runner was fixed the same
+day in #28; the Pester behaviour below is permanent and still shapes how test
+files should be written._
+
+A DISCOVERY failure produces no failed TESTS -- it produces a failed CONTAINER
+whose `TotalCount` is 0 -- so any gate written on `$result.FailedCount` stays
+false while a whole file contributes nothing. `tests/run-tests.ps1` was gated
+that way.
+
+MEASURED, with a trailing comma in `schemas/delphi-ci.schema.json` while
+`Schema.Tests.ps1` parsed it at discovery time:
+
+    Invoke-Pester -PassThru  ->  FailedCount = 0, TotalCount = 0, Result = Failed
+    tests/run-tests.ps1      ->  prints the discovery error in red, drops all 85
+                                 of that file's tests, reports
+                                 "Tests Passed: 477, Failed: 0", EXITS 0
+
+The red error text scrolls past in the middle of several hundred lines. In CI
+that is a green build. This applies to ANY test file: a syntax error, or
+anything that throws while building `-ForEach` data, silently removes the file.
+
+**Why:** it inverts the normal assumption that a visibly broken test run fails.
+It also makes "I added a test file and the suite is green" worthless as evidence
+the new tests ran at all.
+
+**How to apply:** the runner now also gates on `$result.Result -eq 'Failed'` and
+on any container with `TotalCount -eq 0`, naming the file (#28), so the exit code
+can be trusted again. Two habits still matter, because they put the diagnosis in
+the right place rather than relying on the runner to notice:
+1. In a test file, do discovery-time work DEFENSIVELY -- `try`/`catch` the parse
+   or file read, stash the error text, and assert on it in a run-time `It`.
+   `Schema.Tests.ps1` does this deliberately; that is why its 'parses as JSON'
+   test reads a captured string instead of calling `ConvertFrom-Json` in the
+   script body.
+2. Add an ANTI-VACUITY assertion whenever `-ForEach` data is computed rather
+   than literal: assert the generated case count equals what it should be. An
+   empty `-ForEach` collection generates zero `It`s and is perfectly "passing",
+   so a Describe can contain nothing and never say so.
+
+After adding a test file, confirm the suite's total test count ROSE by the
+expected amount. 477 -> 565 for the 88 that #25 added. A green run at the old
+count means the new file never executed.
+
+## Verify a new test fails before trusting it -- perturb, do not reason
+
+_Type: feedback. Recorded 2026-11-15 (during #25 and #26)._
+
+Both of these sessions produced a test that passed for the wrong reason until it
+was measured. #26's guard tests passed against fakes that happened not to
+exercise the path; #25's 'parses as JSON' test reported SUCCESS on a file with a
+trailing comma, because the failure arrived as a discovery crash instead of an
+assertion (see [[a-pester-discovery-failure-produces-failedcount-0]] above) --
+which is also how the runner's own gate (#28) turned out to be wrong.
+
+**Why:** a new assertion's passing state is indistinguishable from a vacuous
+one, and the vacuous version is what gets committed, because green looks done.
+
+**How to apply:** for each new assertion, break the thing it guards and confirm
+THAT assertion is the one that fails -- not merely that something failed. A
+scripted harness is worth writing when there are more than two or three: back up
+the file, apply one perturbation, run only the affected test file, assert the
+failing test NAME matches the intended one, restore from backup, and `filecmp`
+the restore. #25's run covered 13 perturbations that way and caught one
+assertion that never fired. Delete the harness afterwards -- it is scaffolding,
+not a test.
+
+Prefer perturbing through a PARSER over text matching (load the JSON, mutate the
+object, dump it) so a perturbation cannot silently no-op on a layout assumption;
+the file is restored from backup afterwards, so reformatting does not matter.
+Assert the perturbation actually changed the file.

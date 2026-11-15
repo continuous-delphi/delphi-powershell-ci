@@ -3,6 +3,51 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [0.4.32]
+- Add `tests/pwsh/Schema.Tests.ps1`, a drift gate between
+  `schemas/delphi-ci.schema.json` and `Resolve-DelphiCiConfig.ps1`. The schema
+  is the editor-facing contract and sets `additionalProperties: false`
+  everywhere, so it REJECTS keys it does not know; the resolver's
+  `$builtInDefaults` is the runtime source of truth. Nothing compared them, and
+  drift was silent in both directions -- a resolver-only key puts a red squiggle
+  on working config, and a schema-only key completes in the editor then does
+  nothing at runtime, which is the worse direction for anything gate-shaped
+  (#24's `failOnWarning`/`failOnHint` were added to three schema places by hand,
+  verified only by reading the file). The test reads the resolver's defaults out
+  of the source with the PowerShell parser, so no production change was needed
+  to expose them, and checks per action: every resolver default is declared;
+  every schema key is a resolver default or an explicitly allow-listed required
+  input, with the allow-list itself checked for stale entries; array-valued
+  defaults have a matching `key!` replacement spelling and vice versa; and
+  `<action>Job` / `<action>Action` re-list every `<action>Config` property as a
+  `$ref` -- a forgotten one being the defect the ticket was really about. It also
+  checks that the file parses, that every local `$ref` resolves to a node that
+  exists (a typo'd pointer validates nothing), and that every action is reachable
+  through `defaults` and `pipelineAction.oneOf`. 88 tests; each assertion was
+  verified to FIRE by perturbing one side and reverting
+  [#25](https://github.com/continuous-delphi/delphi-powershell-ci/issues/25)
+- `tests/run-tests.ps1` no longer exits 0 when a test file fails DISCOVERY or
+  contributes no tests at all, and names the file in both cases. Neither produces
+  a failed TEST -- a discovery failure produces a failed CONTAINER with
+  `TotalCount = 0` -- so gating on the failed-test count alone reported success
+  with a whole file missing. Found while doing #25 and measured: a trailing comma
+  in the schema dropped all 85 of the new tests, printed the parse error in red,
+  reported "Tests Passed: 477, Failed: 0" and exited 0. The per-file zero-test
+  check is deliberately used instead of an expected-total constant, which would
+  need bumping by every new test file and is a silent gate once stale; it also
+  catches a single file emptying out (an `-ForEach` collection that computes to
+  nothing generates no tests and "passes") while the suite total stays high
+  [#28](https://github.com/continuous-delphi/delphi-powershell-ci/issues/28)
+- `tests/README.md` now documents `Schema.Tests.ps1` and the runner's exit
+  conditions, and no longer claims `PSScriptAnalyzer.Tests.ps1` lints anything:
+  its assertion reads a `$script:violations` variable nothing ever assigns, so it
+  has never run the analyzer. Measured: `source/` has 23 real violations the gate
+  never reported. Left as-is and tracked, since the work is deciding per rule
+  whether to fix, suppress or exclude -- `PSAvoidUsingWriteHost` is deliberate in
+  `Write-DelphiCiMessage`
+  [#27](https://github.com/continuous-delphi/delphi-powershell-ci/issues/27)
+
+---
 ## [0.4.31]
 - `-BuildVerbosity` is now MAPPED per engine instead of forwarded verbatim, and
   a build tool that reports no result at all is now a FAILURE. Both halves fix

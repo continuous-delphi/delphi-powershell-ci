@@ -9,7 +9,8 @@ tests/
 +- pwsh/
    +- PesterConfig.psd1                       Pester 5.7+ configuration
    +- TestHelpers.ps1                         Shared utilities dot-sourced by test files
-   +- PSScriptAnalyzer.Tests.ps1              Lint gate
+   +- PSScriptAnalyzer.Tests.ps1              Lint gate (currently inert -- see below)
+   +- Schema.Tests.ps1                        Schema / resolver drift gate
    +- Resolve-DefaultPlatform.Tests.ps1       Platform resolution tests
    +- Get-DelphiCiConfig.Tests.ps1            Config normalization tests
    +- Invoke-DelphiCi.Tests.ps1               Orchestration command tests
@@ -34,6 +35,16 @@ tests/
 ```
 
 Exits with code `0` on success, `1` if any test fails.
+
+It also exits `1` when a test file **fails discovery** or **contributes no tests
+at all**, naming the file in either case. Neither of those produces a failed
+test, so a runner that gated on the failed-test count alone reported success
+while a whole file silently went missing -- a trailing comma in the schema once
+dropped 85 tests, printed the parse error in red, and still exited `0`
+([#28](https://github.com/continuous-delphi/delphi-powershell-ci/issues/28)).
+There is deliberately no expected-total constant: a stale one is itself a silent
+gate, and the per-file zero-test check catches one file emptying out while the
+suite total stays high.
 
 ### From Windows Explorer or a command prompt
 
@@ -75,9 +86,54 @@ Install-Module PSScriptAnalyzer -MinimumVersion 1.21.0 -Force
 
 ### PSScriptAnalyzer.Tests.ps1
 
-Lint gate. Runs `Invoke-ScriptAnalyzer` on the source and asserts zero
-violations using the default rule set. Violations are listed with rule
-name, severity, and line number on failure.
+Intended as the lint gate: assert zero `Invoke-ScriptAnalyzer` violations on the
+source using the default rule set, listing rule name, severity and line number
+on failure.
+
+**It does not currently do that.** The assertion reads `$script:violations`,
+which nothing in the suite ever assigns, so it evaluates `$null | Should
+-BeNullOrEmpty` and passes unconditionally -- `Invoke-ScriptAnalyzer` is never
+run. Measured while adding `Schema.Tests.ps1`: `source/` has 23 real violations
+the gate has never reported. Tracked in
+[#27](https://github.com/continuous-delphi/delphi-powershell-ci/issues/27) -- do not
+read a green run here as evidence the source is lint-clean.
+
+### Schema.Tests.ps1
+
+Drift gate between `schemas/delphi-ci.schema.json` (the editor-facing contract,
+which rejects unknown keys) and `Resolve-DelphiCiConfig.ps1` (the runtime source
+of truth). Nothing compared the two before, and drift was silent in both
+directions: a resolver-only key puts a red squiggle on working config, and a
+schema-only key completes in the editor then does nothing at runtime.
+
+Reads the resolver's `$builtInDefaults` hashtable literal via the PowerShell
+parser, so no production change was needed to expose it, and compares per action:
+
+- every resolver default key is declared in `<action>Config`
+- every `<action>Config` key is a resolver default or an explicitly allow-listed
+  required input (`projectFile`, `source`, `execute`, ...), with the allow-list
+  itself checked for stale entries
+- array-valued defaults have a matching `key!` replacement spelling, and vice
+  versa -- an exact invariant, since `Merge-ActionConfig` appends exactly those
+  keys whose base value is an array
+- `<action>Job` and `<action>Action` re-list every `<action>Config` property as a
+  `$ref` (a forgotten one is the defect this file is really about), and
+  `<action>Action.action` is the pipeline discriminator rather than the
+  same-named config key -- which only collides for `codesign`
+- the schema parses, every local `$ref` resolves to a node that exists, and every
+  action is reachable via `defaults` and `pipelineAction.oneOf`
+
+Each assertion was verified to FIRE by perturbing one side and reverting.
+
+Note the parse errors are captured at discovery and reported by a run-time
+assertion rather than thrown. A throw during discovery yields `FailedCount = 0`
+with `TotalCount = 0`, so that file's tests vanish without failing anything --
+which is how [#28](https://github.com/continuous-delphi/delphi-powershell-ci/issues/28)
+was found and why the runner no longer gates on `FailedCount` alone. Keeping the
+parse out of the script body means a malformed schema reads as a failed
+assertion, which is the clearer signal either way. There is an anti-vacuity
+assertion for the same reason: it fails if the per-action comparisons were not
+generated for every action the resolver declares.
 
 ### Resolve-DefaultPlatform.Tests.ps1
 
